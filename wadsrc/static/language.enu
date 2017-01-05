@@ -2319,7 +2319,8 @@ OPTVAL_EVERYTHING			= "Everything";
 OPTVAL_FULLSCREENONLY		= "Fullscreen only";
 OPTVAL_GL 					= "OpenGL";
 OPTVAL_D3D					= "Direct3D";
-OPTVAL_HWPOLY				= "OpenGL-Accelerated";
+OPTVAL_GZGL					= "OpenGL Renderer";
+OPTVAL_HARDPOLY				= "Hardpoly Renderer"
 OPTVAL_SWDOOM				= "Doom Software Renderer";
 
 // Colors

@@ -1181,7 +1181,13 @@ BOOL CALLBACK IWADBoxCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 		char	szString[256];
 
 		// Check the current video settings.
-		SendDlgItemMessage( hDlg, vid_renderer ? IDC_WELCOME_OPENGL : IDC_WELCOME_SOFTWARE, BM_SETCHECK, BST_CHECKED, 0 );
+		switch (vid_renderer)
+		{
+		default:
+		case 0: SendDlgItemMessage(hDlg, IDC_WELCOME_SOFTWARE, BM_SETCHECK, BST_CHECKED, 0); break;
+		case 1: SendDlgItemMessage(hDlg, IDC_WELCOME_OPENGL, BM_SETCHECK, BST_CHECKED, 0); break;
+		case 2: SendDlgItemMessage(hDlg, IDC_WELCOME_HARDPOLY, BM_SETCHECK, BST_CHECKED, 0); break;
+		}
 		SendDlgItemMessage( hDlg, IDC_WELCOME_FULLSCREEN, BM_SETCHECK, fullscreen ? BST_CHECKED : BST_UNCHECKED, 0 );
 
 		// [SP] This is our's
@@ -1227,7 +1233,9 @@ BOOL CALLBACK IWADBoxCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			SetQueryIWad(hDlg);
 			// [SP] Upstreamed from Zandronum
-			vid_renderer = SendDlgItemMessage( hDlg, IDC_WELCOME_OPENGL, BM_GETCHECK, 0, 0 ) == BST_CHECKED;
+			bool hardpoly = SendDlgItemMessage(hDlg, IDC_WELCOME_HARDPOLY, BM_GETCHECK, 0, 0) == BST_CHECKED;
+			bool opengl = SendDlgItemMessage(hDlg, IDC_WELCOME_OPENGL, BM_GETCHECK, 0, 0) == BST_CHECKED;
+			vid_renderer = hardpoly ? 2 : (opengl ? 1 : 0);
 			fullscreen = SendDlgItemMessage( hDlg, IDC_WELCOME_FULLSCREEN, BM_GETCHECK, 0, 0 ) == BST_CHECKED;
 
 			// [SP] This is our's.

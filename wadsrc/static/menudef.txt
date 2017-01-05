@@ -1759,7 +1759,8 @@ OptionMenu ModReplayerOptions
 OptionValue "PolyDoom"
 {
 	0, "$OPTVAL_SWDOOM"
-	1, "$OPTVAL_HWPOLY"
+	1, "$OPTVAL_GZGL"
+	2, "$OPTVAL_HARDPOLY"
 }
 
 OptionValue "D3DGL"

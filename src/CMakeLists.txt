@@ -803,6 +803,7 @@ file( GLOB HEADER_FILES
 	polyrenderer/math/*.h
 	polyrenderer/drawers/*.h
 	polyrenderer/scene/*.h
+	hardpoly/*.h
 	gl/*.h
 	gl/api/*.h
 	gl/data/*.h
@@ -884,6 +885,7 @@ set( FASTMATH_PCH_SOURCES
 	polyrenderer/drawers/screen_triangle.cpp
 	polyrenderer/math/tri_matrix.cpp
 	polyrenderer/math/poly_intersection.cpp
+	hardpoly/hardpolyrenderer.cpp
 	r_sky.cpp
 	s_advsound.cpp
 	s_environment.cpp
@@ -1510,6 +1512,7 @@ source_group("Poly Renderer" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/po
 source_group("Poly Renderer\\Math" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/polyrenderer/math/.+")
 source_group("Poly Renderer\\Drawers" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/polyrenderer/drawers/.+")
 source_group("Poly Renderer\\Scene" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/polyrenderer/scene/.+")
+source_group("Hardpoly Renderer" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/hardpoly/.+")
 source_group("Render Data\\Resource Headers" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/r_data/.+\\.h$")
 source_group("Render Data\\Resource Sources" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/r_data/.+\\.cpp$")
 source_group("Render Data\\Textures" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/textures/.+")
