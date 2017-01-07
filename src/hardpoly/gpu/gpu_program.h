@@ -39,19 +39,27 @@ public:
 	GPUProgram();
 	~GPUProgram();
 
-	void SetDefine(const std::string &name, bool value);
+	void SetDefine(const std::string &name);
 	void SetDefine(const std::string &name, int value);
+	void SetDefine(const std::string &name, float value);
+	void SetDefine(const std::string &name, double value);
 	void SetDefine(const std::string &name, const std::string &value);
-	void Compile(GPUShaderType type, const std::string &code);
+	void Compile(GPUShaderType type, const char *lumpName);
+	void Compile(GPUShaderType type, const char *name, const std::string &code);
 	void SetFragOutput(const std::string &name, int index);
-	void Link();
+	void Link(const std::string &name);
 
 private:
 	GPUProgram(const GPUProgram &) = delete;
 	GPUProgram &operator =(const GPUProgram &) = delete;
 
+	std::string PrefixCode() const;
+	std::string GetShaderInfoLog(int handle) const;
+	std::string GetProgramInfoLog() const;
+
 	int mHandle = 0;
 	std::map<int, int> mShaderHandle;
+	std::map<std::string, std::string> mDefines;
 };
 
 typedef std::shared_ptr<GPUProgram> GPUProgramPtr;
