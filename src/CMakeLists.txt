@@ -804,6 +804,7 @@ file( GLOB HEADER_FILES
 	polyrenderer/drawers/*.h
 	polyrenderer/scene/*.h
 	hardpoly/*.h
+	hardpoly/gpu/*.h
 	gl/*.h
 	gl/api/*.h
 	gl/data/*.h
@@ -886,6 +887,14 @@ set( FASTMATH_PCH_SOURCES
 	polyrenderer/math/tri_matrix.cpp
 	polyrenderer/math/poly_intersection.cpp
 	hardpoly/hardpolyrenderer.cpp
+	hardpoly/gpu/gpu_framebuffer.cpp
+	hardpoly/gpu/gpu_indexbuffer.cpp
+	hardpoly/gpu/gpu_program.cpp
+	hardpoly/gpu/gpu_sampler.cpp
+	hardpoly/gpu/gpu_storagebuffer.cpp
+	hardpoly/gpu/gpu_texture.cpp
+	hardpoly/gpu/gpu_uniformbuffer.cpp
+	hardpoly/gpu/gpu_vertexbuffer.cpp
 	r_sky.cpp
 	s_advsound.cpp
 	s_environment.cpp
@@ -1513,6 +1522,7 @@ source_group("Poly Renderer\\Math" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_D
 source_group("Poly Renderer\\Drawers" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/polyrenderer/drawers/.+")
 source_group("Poly Renderer\\Scene" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/polyrenderer/scene/.+")
 source_group("Hardpoly Renderer" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/hardpoly/.+")
+source_group("Hardpoly Renderer\\GPU" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/hardpoly/gpu/.+")
 source_group("Render Data\\Resource Headers" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/r_data/.+\\.h$")
 source_group("Render Data\\Resource Sources" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/r_data/.+\\.cpp$")
 source_group("Render Data\\Textures" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/textures/.+")
