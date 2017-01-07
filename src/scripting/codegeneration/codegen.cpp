@@ -3980,7 +3980,7 @@ ExpEmit FxConcat::Emit(VMFunctionBuilder *build)
 	}
 	else
 	{
-		int cast;
+		int cast = 0;
 		strng = ExpEmit(build, REGT_STRING);
 		if (op1.Konst)
 		{
@@ -10154,7 +10154,7 @@ ExpEmit FxLocalVariableDeclaration::Emit(VMFunctionBuilder *build)
 				}
 				emitval.Free(build);
 			}
-			else if (Init->ExprType != EFX_LocalVariable)
+			else if (!emitval.Fixed)
 			{
 				// take over the register that got allocated while emitting the Init expression.
 				RegNum = emitval.RegNum;
