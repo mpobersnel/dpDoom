@@ -22,11 +22,33 @@
 
 #include <stdlib.h>
 #include "gpu_uniformbuffer.h"
+#include "gl/system/gl_system.h"
 
 GPUUniformBuffer::GPUUniformBuffer(const void *data, int size)
 {
+	glGenBuffers(1, (GLuint*)&mHandle);
+
+	GLint oldHandle;
+	glGetIntegerv(GL_UNIFORM_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_UNIFORM_BUFFER, mHandle);
+	glBufferData(GL_UNIFORM_BUFFER, size, data, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_UNIFORM_BUFFER, oldHandle);
+}
+
+void GPUUniformBuffer::Upload(const void *data, int size)
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_UNIFORM_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_UNIFORM_BUFFER, mHandle);
+	glBufferData(GL_UNIFORM_BUFFER, size, data, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_UNIFORM_BUFFER, oldHandle);
 }
 
 GPUUniformBuffer::~GPUUniformBuffer()
 {
+	glDeleteBuffers(1, (GLuint*)&mHandle);
 }

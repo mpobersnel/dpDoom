@@ -22,11 +22,22 @@
 
 #include <stdlib.h>
 #include "gpu_indexbuffer.h"
+#include "gl/system/gl_system.h"
 
 GPUIndexBuffer::GPUIndexBuffer(const void *data, int size)
 {
+	glGenBuffers(1, (GLuint*)&mHandle);
+
+	GLint oldHandle;
+	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mHandle);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, oldHandle);
 }
 
 GPUIndexBuffer::~GPUIndexBuffer()
 {
+	glDeleteBuffers(1, (GLuint*)&mHandle);
 }

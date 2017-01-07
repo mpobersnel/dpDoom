@@ -30,6 +30,8 @@ public:
 	GPUStorageBuffer(const void *data, int size);
 	~GPUStorageBuffer();
 
+	void Upload(const void *data, int size);
+
 private:
 	GPUStorageBuffer(const GPUStorageBuffer &) = delete;
 	GPUStorageBuffer &operator =(const GPUStorageBuffer &) = delete;

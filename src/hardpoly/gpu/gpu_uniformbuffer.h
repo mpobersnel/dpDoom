@@ -30,6 +30,8 @@ public:
 	GPUUniformBuffer(const void *data, int size);
 	~GPUUniformBuffer();
 
+	void Upload(const void *data, int size);
+
 private:
 	GPUUniformBuffer(const GPUUniformBuffer &) = delete;
 	GPUUniformBuffer &operator =(const GPUUniformBuffer &) = delete;

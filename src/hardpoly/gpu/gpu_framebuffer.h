@@ -29,7 +29,7 @@
 class GPUFrameBuffer
 {
 public:
-	GPUFrameBuffer(const std::vector<GPUTexturePtr> &color, const GPUTexturePtr &depthstencil);
+	GPUFrameBuffer(const std::vector<GPUTexture2DPtr> &color, const GPUTexture2DPtr &depthstencil);
 	~GPUFrameBuffer();
 
 private:

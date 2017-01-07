@@ -37,10 +37,17 @@ enum class GPUMipmapMode
 	Linear
 };
 
+enum class GPUWrapMode
+{
+	Repeat,
+	Mirror,
+	ClampToEdge
+};
+
 class GPUSampler
 {
 public:
-	GPUSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap);
+	GPUSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV);
 	~GPUSampler();
 
 private:

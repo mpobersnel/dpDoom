@@ -21,12 +21,40 @@
 */
 
 #include <stdlib.h>
+#include "r_utility.h"
 #include "gpu_framebuffer.h"
+#include "gl/system/gl_system.h"
 
-GPUFrameBuffer::GPUFrameBuffer(const std::vector<GPUTexturePtr> &color, const GPUTexturePtr &depthstencil)
+GPUFrameBuffer::GPUFrameBuffer(const std::vector<GPUTexture2DPtr> &color, const GPUTexture2DPtr &depthstencil)
 {
+	GLint oldHandle;
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldHandle);
+
+	glGenFramebuffers(1, (GLuint*)&mHandle);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, mHandle);
+
+	for (size_t i = 0; i < color.size(); i++)
+	{
+		const auto &texture = color[i];
+		if (texture->SampleCount() > 1)
+			glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, GL_TEXTURE_2D_MULTISAMPLE, texture->Handle(), 0);
+		else
+			glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, GL_TEXTURE_2D, texture->Handle(), 0);
+	}
+
+	if (depthstencil)
+		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, depthstencil->Handle(), 0);
+
+	GLenum result = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (result != GL_FRAMEBUFFER_COMPLETE)
+	{
+		I_FatalError("Framebuffer setup is not compatible with this graphics card or driver");
+	}
+
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, oldHandle);
 }
 
 GPUFrameBuffer::~GPUFrameBuffer()
 {
+	glDeleteFramebuffers(1, (GLuint*)&mHandle);
 }

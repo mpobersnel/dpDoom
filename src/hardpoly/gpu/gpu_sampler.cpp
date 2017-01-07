@@ -22,14 +22,51 @@
 
 #include <stdlib.h>
 #include "gpu_sampler.h"
+#include "gl/system/gl_system.h"
 
-GPUSampler::GPUSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap)
+GPUSampler::GPUSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV)
 {
 	mMinfilter = minfilter;
 	mMagfilter = magfilter;
 	mMipmap = mipmap;
+
+	glGenSamplers(1, (GLuint*)&mHandle);
+
+	switch (mipmap)
+	{
+	default:
+	case GPUMipmapMode::None:
+		glSamplerParameteri(mHandle, GL_TEXTURE_MIN_FILTER, minfilter == GPUSampleMode::Linear ? GL_LINEAR : GL_NEAREST);
+		glSamplerParameteri(mHandle, GL_TEXTURE_MAG_FILTER, magfilter == GPUSampleMode::Linear ? GL_LINEAR : GL_NEAREST);
+		break;
+	case GPUMipmapMode::Nearest:
+		glSamplerParameteri(mHandle, GL_TEXTURE_MIN_FILTER, minfilter == GPUSampleMode::Linear ? GL_NEAREST_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST);
+		glSamplerParameteri(mHandle, GL_TEXTURE_MAG_FILTER, magfilter == GPUSampleMode::Linear ? GL_NEAREST_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST);
+		break;
+	case GPUMipmapMode::Linear:
+		glSamplerParameteri(mHandle, GL_TEXTURE_MIN_FILTER, minfilter == GPUSampleMode::Linear ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_NEAREST);
+		glSamplerParameteri(mHandle, GL_TEXTURE_MAG_FILTER, magfilter == GPUSampleMode::Linear ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_NEAREST);
+		break;
+	}
+
+	switch (wrapU)
+	{
+	default:
+	case GPUWrapMode::Repeat: glSamplerParameteri(mHandle, GL_TEXTURE_WRAP_S, GL_REPEAT); break;
+	case GPUWrapMode::Mirror: glSamplerParameteri(mHandle, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT); break;
+	case GPUWrapMode::ClampToEdge: glSamplerParameteri(mHandle, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); break;
+	}
+
+	switch (wrapV)
+	{
+	default:
+	case GPUWrapMode::Repeat: glSamplerParameteri(mHandle, GL_TEXTURE_WRAP_T, GL_REPEAT); break;
+	case GPUWrapMode::Mirror: glSamplerParameteri(mHandle, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT); break;
+	case GPUWrapMode::ClampToEdge: glSamplerParameteri(mHandle, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); break;
+	}
 }
 
 GPUSampler::~GPUSampler()
 {
+	glDeleteSamplers(1, (GLuint*)&mHandle);
 }

@@ -22,11 +22,22 @@
 
 #include <stdlib.h>
 #include "gpu_vertexbuffer.h"
+#include "gl/system/gl_system.h"
 
 GPUVertexBuffer::GPUVertexBuffer(const void *data, int size)
 {
+	glGenBuffers(1, (GLuint*)&mHandle);
+
+	GLint oldHandle;
+	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_ARRAY_BUFFER, mHandle);
+	glBufferData(GL_ARRAY_BUFFER, size, data, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ARRAY_BUFFER, oldHandle);
 }
 
 GPUVertexBuffer::~GPUVertexBuffer()
 {
+	glDeleteBuffers(1, (GLuint*)&mHandle);
 }
