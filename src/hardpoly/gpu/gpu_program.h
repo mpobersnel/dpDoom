@@ -29,8 +29,7 @@
 enum class GPUShaderType
 {
 	Vertex,
-	Fragment,
-	Compute
+	Fragment
 };
 
 class GPUProgram
