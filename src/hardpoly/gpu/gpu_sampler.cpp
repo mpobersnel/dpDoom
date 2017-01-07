@@ -29,6 +29,8 @@ GPUSampler::GPUSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipm
 	mMinfilter = minfilter;
 	mMagfilter = magfilter;
 	mMipmap = mipmap;
+	mWrapU = wrapU;
+	mWrapV = wrapV;
 
 	glGenSamplers(1, (GLuint*)&mHandle);
 

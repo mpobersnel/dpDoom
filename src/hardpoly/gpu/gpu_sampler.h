@@ -58,6 +58,8 @@ private:
 	GPUSampleMode mMinfilter = GPUSampleMode::Nearest;
 	GPUSampleMode mMagfilter = GPUSampleMode::Nearest;
 	GPUMipmapMode mMipmap = GPUMipmapMode::None;
+	GPUWrapMode mWrapU = GPUWrapMode::Repeat;
+	GPUWrapMode mWrapV = GPUWrapMode::Repeat;
 };
 
 typedef std::shared_ptr<GPUSampler> GPUSamplerPtr;
