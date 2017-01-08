@@ -85,8 +85,7 @@ private:
 
 	static int FromDrawMode(GPUDrawMode mode);
 
-	int mHandle = 0;
-	GPUIndexFormat mIndexFormat;
+	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
 };
 
 typedef std::shared_ptr<GPUContext> GPUContextPtr;
