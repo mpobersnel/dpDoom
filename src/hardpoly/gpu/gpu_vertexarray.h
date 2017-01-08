@@ -23,20 +23,50 @@
 #pragma once
 
 #include <memory>
+#include <vector>
+#include <cstddef>
+#include "gpu_vertexbuffer.h"
 
-class GPUVertexBuffer
+enum class GPUVertexAttributeType
+{
+	Int8,
+	Uint8,
+	Int16,
+	Uint16,
+	Int32,
+	Uint32,
+	HalfFloat,
+	Float
+};
+
+class GPUVertexAttributeDesc
 {
 public:
-	GPUVertexBuffer(const void *data, int size);
-	~GPUVertexBuffer();
+	GPUVertexAttributeDesc(int index, int size, GPUVertexAttributeType type, bool normalized, int stride, std::size_t offset, GPUVertexBufferPtr buffer)
+		: Index(index), Size(size), Type(type), Normalized(normalized), Stride(stride), Offset(offset), Buffer(buffer) { }
 
-	int Handle() const { return mHandle; }
+	int Index;
+	int Size;
+	GPUVertexAttributeType Type;
+	bool Normalized;
+	int Stride;
+	std::size_t Offset;
+	GPUVertexBufferPtr Buffer;
+};
+
+class GPUVertexArray
+{
+public:
+	GPUVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes);
+	~GPUVertexArray();
 
 private:
-	GPUVertexBuffer(const GPUVertexBuffer &) = delete;
-	GPUVertexBuffer &operator =(const GPUVertexBuffer &) = delete;
+	GPUVertexArray(const GPUVertexArray &) = delete;
+	GPUVertexArray &operator =(const GPUVertexArray &) = delete;
+
+	static int FromType(GPUVertexAttributeType type);
 
 	int mHandle = 0;
 };
 
-typedef std::shared_ptr<GPUVertexBuffer> GPUVertexBufferPtr;
+typedef std::shared_ptr<GPUVertexArray> GPUVertexArrayPtr;
