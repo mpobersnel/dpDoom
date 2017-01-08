@@ -38,6 +38,8 @@ public:
 	GPUProgram();
 	~GPUProgram();
 
+	int Handle() const { return mHandle; }
+
 	void SetDefine(const std::string &name);
 	void SetDefine(const std::string &name, int value);
 	void SetDefine(const std::string &name, float value);

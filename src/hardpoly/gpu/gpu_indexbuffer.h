@@ -30,6 +30,8 @@ public:
 	GPUIndexBuffer(const void *data, int size);
 	~GPUIndexBuffer();
 
+	int Handle() const { return mHandle; }
+
 private:
 	GPUIndexBuffer(const GPUIndexBuffer &) = delete;
 	GPUIndexBuffer &operator =(const GPUIndexBuffer &) = delete;

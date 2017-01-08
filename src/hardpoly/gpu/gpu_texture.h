@@ -38,6 +38,7 @@ class GPUTexture
 {
 public:
 	virtual ~GPUTexture() { }
+	virtual int Handle() const = 0;
 };
 
 class GPUTexture2D : public GPUTexture
@@ -48,7 +49,7 @@ public:
 
 	void Upload(int x, int y, int width, int height, int level, const void *pixels);
 
-	int Handle() const { return mHandle; }
+	int Handle() const override { return mHandle; }
 	int SampleCount() const { return mSampleCount; }
 
 private:

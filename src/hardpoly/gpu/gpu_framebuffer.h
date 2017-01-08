@@ -32,6 +32,8 @@ public:
 	GPUFrameBuffer(const std::vector<GPUTexture2DPtr> &color, const GPUTexture2DPtr &depthstencil);
 	~GPUFrameBuffer();
 
+	int Handle() const { return mHandle; }
+
 private:
 	GPUFrameBuffer(const GPUFrameBuffer &) = delete;
 	GPUFrameBuffer &operator =(const GPUFrameBuffer &) = delete;

@@ -50,6 +50,8 @@ public:
 	GPUSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV);
 	~GPUSampler();
 
+	int Handle() const { return mHandle; }
+
 private:
 	GPUSampler(const GPUSampler &) = delete;
 	GPUSampler &operator =(const GPUSampler &) = delete;

@@ -60,6 +60,8 @@ public:
 	GPUVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes);
 	~GPUVertexArray();
 
+	int Handle() const { return mHandle; }
+
 private:
 	GPUVertexArray(const GPUVertexArray &) = delete;
 	GPUVertexArray &operator =(const GPUVertexArray &) = delete;

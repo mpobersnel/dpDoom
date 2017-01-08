@@ -887,6 +887,7 @@ set( FASTMATH_PCH_SOURCES
 	polyrenderer/math/tri_matrix.cpp
 	polyrenderer/math/poly_intersection.cpp
 	hardpoly/hardpolyrenderer.cpp
+	hardpoly/gpu/gpu_context.cpp
 	hardpoly/gpu/gpu_framebuffer.cpp
 	hardpoly/gpu/gpu_indexbuffer.cpp
 	hardpoly/gpu/gpu_program.cpp

@@ -32,6 +32,8 @@ public:
 
 	void Upload(const void *data, int size);
 
+	int Handle() const { return mHandle; }
+
 private:
 	GPUUniformBuffer(const GPUUniformBuffer &) = delete;
 	GPUUniformBuffer &operator =(const GPUUniformBuffer &) = delete;
