@@ -137,3 +137,24 @@ int GPUContext::FromDrawMode(GPUDrawMode mode)
 	case GPUDrawMode::Triangles: return GL_TRIANGLES;
 	}
 }
+
+void GPUContext::ClearColorBuffer(int index, float r, float g, float b, float a)
+{
+	GLfloat value[4] = { r, g, b, a };
+	glClearBufferfv(GL_COLOR, GL_DRAW_BUFFER0 + index, value);
+}
+
+void GPUContext::ClearDepthBuffer(float depth)
+{
+	glClearBufferfv(GL_DEPTH, 0, &depth);
+}
+
+void GPUContext::ClearStencilBuffer(int stencil)
+{
+	glClearBufferiv(GL_STENCIL, 0, &stencil);
+}
+
+void GPUContext::ClearDepthStencilBuffer(float depth, int stencil)
+{
+	glClearBufferfi(GL_DEPTH_STENCIL, 0, depth, stencil);
+}

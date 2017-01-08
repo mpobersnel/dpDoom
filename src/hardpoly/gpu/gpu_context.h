@@ -74,6 +74,11 @@ public:
 	void DrawInstanced(GPUDrawMode mode, int vertexStart, int vertexCount, int instanceCount);
 	void DrawIndexedInstanced(GPUDrawMode mode, int indexStart, int indexCount, int instanceCount);
 
+	void ClearColorBuffer(int index, float r, float g, float b, float a);
+	void ClearDepthBuffer(float depth);
+	void ClearStencilBuffer(int stencil);
+	void ClearDepthStencilBuffer(float depth, int stencil);
+
 private:
 	GPUContext(const GPUContext &) = delete;
 	GPUContext &operator =(const GPUContext &) = delete;
