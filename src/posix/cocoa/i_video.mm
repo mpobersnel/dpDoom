@@ -49,6 +49,7 @@
 #include "m_png.h"
 #include "r_renderer.h"
 #include "swrenderer/r_swrenderer.h"
+#include "hardpoly/hardpolyrenderer.h"
 #include "st_console.h"
 #include "stats.h"
 #include "textures.h"
@@ -149,6 +150,9 @@ CUSTOM_CVAR(Int, vid_renderer, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINIT
 				break;
 			case 1:
 				Printf("Switching to OpenGL renderer...\n");
+				break;
+			case 2:
+				Printf("Switching to hardpoly renderer...\n");
 				break;
 			default:
 				Printf("Unknown renderer (%d). Falling back to software renderer...\n",
@@ -1325,9 +1329,13 @@ void I_CreateRenderer()
 	{
 		extern FRenderer* gl_CreateInterface();
 
-		Renderer = 1 == s_currentRenderer
-			? gl_CreateInterface()
-			: new FSoftwareRenderer;
+		switch (s_currentRenderer)
+		{
+		default:
+		case 0: Renderer = new FSoftwareRenderer; break;
+		case 1: Renderer = gl_CreateInterface(); break;
+		case 2: Renderer = new HardpolyRenderer; break;
+		}
 		atterm(I_DeleteRenderer);
 	}
 }

@@ -50,6 +50,7 @@
 #include "sdlglvideo.h"
 #include "r_renderer.h"
 #include "swrenderer/r_swrenderer.h"
+#include "hardpoly/hardpolyrenderer.h"
 
 EXTERN_CVAR (Bool, ticker)
 EXTERN_CVAR (Bool, fullscreen)
@@ -144,6 +145,7 @@ void I_CreateRenderer()
 	if (Renderer == NULL)
 	{
 		if (currentrenderer==1) Renderer = gl_CreateInterface();
+		else if (currentrenderer==2) Renderer = new HardpolyRenderer();
 		else Renderer = new FSoftwareRenderer;
 		atterm(I_DeleteRenderer);
 	}

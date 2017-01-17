@@ -136,7 +136,7 @@ void GPUProgram::Link(const std::string &name)
 	glGetProgramiv(mHandle, GL_LINK_STATUS, &status);
 	if (status == GL_FALSE)
 	{
-		I_FatalError("Link Shader '%s':\n%s\n", name, GetProgramInfoLog().c_str());
+		I_FatalError("Link Shader '%s':\n%s\n", name.c_str(), GetProgramInfoLog().c_str());
 	}
 }
 
