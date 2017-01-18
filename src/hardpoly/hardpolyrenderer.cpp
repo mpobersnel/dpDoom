@@ -31,7 +31,7 @@
 #include "p_setup.h"
 #include "r_utility.h"
 #include "d_player.h"
-#include "swrenderer/scene/r_bsp.h"
+#include "swrenderer/scene/r_opaque_pass.h"
 #include "gl/system/gl_system.h"
 #include "gl/system/gl_swframebuffer.h"
 
@@ -125,14 +125,6 @@ void HardpolyRenderer::OnModeSet()
 {
 }
 
-void HardpolyRenderer::ErrorCleanup()
-{
-}
-
-void HardpolyRenderer::ClearBuffer(int color)
-{
-}
-
 void HardpolyRenderer::Init()
 {
 	gl_ParseDefs();
@@ -140,15 +132,7 @@ void HardpolyRenderer::Init()
 	mContext = std::make_shared<GPUContext>();
 }
 
-void HardpolyRenderer::SetWindow(int windowSize, int fullWidth, int fullHeight, int stHeight, float trueratio)
-{
-}
-
-void HardpolyRenderer::SetupFrame(player_t *player)
-{
-}
-
-void HardpolyRenderer::CopyStackedViewParameters()
+void HardpolyRenderer::SetClearColor(int color)
 {
 }
 
@@ -159,7 +143,7 @@ void HardpolyRenderer::RenderTextureView(FCanvasTexture *tex, AActor *viewpoint,
 
 sector_t *HardpolyRenderer::FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel)
 {
-	return swrenderer::RenderBSP::Instance()->FakeFlat(sec, tempsec, floorlightlevel, ceilinglightlevel, nullptr, 0, 0, 0, 0);
+	return swrenderer::RenderOpaquePass::Instance()->FakeFlat(sec, tempsec, floorlightlevel, ceilinglightlevel, nullptr, 0, 0, 0, 0);
 }
 
 void HardpolyRenderer::StateChanged(AActor *actor)
