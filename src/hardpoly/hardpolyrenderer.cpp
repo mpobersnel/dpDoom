@@ -32,6 +32,8 @@
 #include "r_utility.h"
 #include "d_player.h"
 #include "swrenderer/scene/r_bsp.h"
+#include "gl/system/gl_system.h"
+#include "gl/system/gl_swframebuffer.h"
 
 EXTERN_CVAR(Float, maxviewpitch)
 
@@ -61,7 +63,38 @@ void HardpolyRenderer::RenderView(player_t *player)
 {
 	R_SetupFrame(player->mo);
 
-	// R_RenderActorView (player->mo);
+	mContext->Begin();
+
+	int width = screen->GetWidth();
+	int height = screen->GetHeight();
+	if (!mSceneFB || mAlbedoBuffer->Width() != width || mAlbedoBuffer->Height() != height)
+	{
+		mSceneFB.reset();
+		mAlbedoBuffer.reset();
+		mDepthStencilBuffer.reset();
+		mNormalBuffer.reset();
+		
+		mAlbedoBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mNormalBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mDepthStencilBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
+		
+		std::vector<GPUTexture2DPtr> colorbuffers = { mAlbedoBuffer, mNormalBuffer };
+		mSceneFB = std::make_shared<GPUFrameBuffer>(colorbuffers, mDepthStencilBuffer);
+	}
+	
+	mContext->SetFrameBuffer(mSceneFB);
+	mContext->SetViewport(0, 0, width, height);
+
+	mContext->ClearColorBuffer(0, 0.5f, 0.5f, 0.2f, 1.0f);
+	mContext->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
+	mContext->ClearDepthStencilBuffer(1.0f, 0);
+
+	mContext->SetFrameBuffer(nullptr);
+
+	mContext->End();
+
+	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
+	swframebuffer->SetViewFB(mSceneFB->Handle());
 
 	FCanvasTextureInfo::UpdateAll();
 }
@@ -103,6 +136,8 @@ void HardpolyRenderer::ClearBuffer(int color)
 void HardpolyRenderer::Init()
 {
 	gl_ParseDefs();
+	
+	mContext = std::make_shared<GPUContext>();
 }
 
 void HardpolyRenderer::SetWindow(int windowSize, int fullWidth, int fullHeight, int stHeight, float trueratio)

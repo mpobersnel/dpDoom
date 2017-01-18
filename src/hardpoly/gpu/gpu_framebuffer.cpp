@@ -42,10 +42,12 @@ GPUFrameBuffer::GPUFrameBuffer(const std::vector<GPUTexture2DPtr> &color, const 
 			glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, GL_TEXTURE_2D, texture->Handle(), 0);
 	}
 
-	if (depthstencil)
+	if (depthstencil && depthstencil->SampleCount() > 1)
 		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, depthstencil->Handle(), 0);
+	else if (depthstencil)
+		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthstencil->Handle(), 0);
 
-	GLenum result = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	GLenum result = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
 	if (result != GL_FRAMEBUFFER_COMPLETE)
 	{
 		I_FatalError("Framebuffer setup is not compatible with this graphics card or driver");

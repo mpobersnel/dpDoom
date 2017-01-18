@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include "gpu_context.h"
 #include "gl/system/gl_system.h"
+#include "doomtype.h"
 
 GPUContext::GPUContext()
 {
@@ -32,12 +33,42 @@ GPUContext::~GPUContext()
 {
 }
 
+void GPUContext::Begin()
+{
+	ClearError();
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldDrawFramebufferBinding);
+	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &oldReadFramebufferBinding);
+}
+
+void GPUContext::End()
+{
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, oldDrawFramebufferBinding);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, oldReadFramebufferBinding);
+	CheckError();
+}
+
+void GPUContext::ClearError()
+{
+	while (glGetError() != GL_NO_ERROR);
+}
+
+void GPUContext::CheckError()
+{
+	if (glGetError() != GL_NO_ERROR)
+		Printf("OpenGL error detected\n");
+}
+
 void GPUContext::SetFrameBuffer(const GPUFrameBufferPtr &fb)
 {
 	if (fb)
 		glBindFramebuffer(GL_FRAMEBUFFER, fb->Handle());
 	else
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void GPUContext::SetViewport(int x, int y, int width, int height)
+{
+	glViewport(x, y, width, height);
 }
 
 void GPUContext::SetProgram(const GPUProgramPtr &program)
@@ -141,7 +172,7 @@ int GPUContext::FromDrawMode(GPUDrawMode mode)
 void GPUContext::ClearColorBuffer(int index, float r, float g, float b, float a)
 {
 	GLfloat value[4] = { r, g, b, a };
-	glClearBufferfv(GL_COLOR, GL_DRAW_BUFFER0 + index, value);
+	glClearBufferfv(GL_COLOR, index, value);
 }
 
 void GPUContext::ClearDepthBuffer(float depth)

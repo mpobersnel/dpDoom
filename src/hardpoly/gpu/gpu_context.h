@@ -56,8 +56,15 @@ class GPUContext
 public:
 	GPUContext();
 	~GPUContext();
+	
+	void Begin();
+	void End();
+	
+	void ClearError();
+	void CheckError();
 
 	void SetFrameBuffer(const GPUFrameBufferPtr &fb);
+	void SetViewport(int x, int y, int width, int height);
 
 	void SetProgram(const GPUProgramPtr &program);
 
@@ -86,6 +93,8 @@ private:
 	static int FromDrawMode(GPUDrawMode mode);
 
 	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
+	
+	int oldDrawFramebufferBinding = 0, oldReadFramebufferBinding = 0;
 };
 
 typedef std::shared_ptr<GPUContext> GPUContextPtr;

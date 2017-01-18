@@ -23,6 +23,7 @@
 #pragma once
 
 #include "r_renderer.h"
+#include "hardpoly/gpu/gpu_context.h"
 
 class HardpolyRenderer : public FRenderer
 {
@@ -50,4 +51,11 @@ public:
 	void StateChanged(AActor *actor) override;
 	void PreprocessLevel() override;
 	void CleanLevelData() override;
+	
+private:
+	GPUContextPtr mContext;
+	GPUTexture2DPtr mAlbedoBuffer;
+	GPUTexture2DPtr mDepthStencilBuffer;
+	GPUTexture2DPtr mNormalBuffer;
+	GPUFrameBufferPtr mSceneFB;
 };

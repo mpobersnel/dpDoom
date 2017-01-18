@@ -51,6 +51,8 @@ public:
 
 	int Handle() const override { return mHandle; }
 	int SampleCount() const { return mSampleCount; }
+	int Width() const { return mWidth; }
+	int Height() const { return mHeight; }
 
 private:
 	GPUTexture2D(const GPUTexture2D &) = delete;

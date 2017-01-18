@@ -1362,6 +1362,31 @@ void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 	else
 		glDisable(GL_LINE_SMOOTH);
 
+	if (ViewFBHandle != 0)
+	{
+		SetPaletteTexture(PaletteTexture, 256, BorderColor);
+		memset(Constant, 0, sizeof(Constant));
+		SetAlphaBlend(0);
+		EnableAlphaTest(false);
+		
+		if (copy3d)
+		{
+			GLint oldReadFramebufferBinding = 0;
+			glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &oldReadFramebufferBinding);
+		
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, ViewFBHandle);
+			glBlitFramebuffer(0, 0, Width, Height, 0, 0, Width, Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, oldReadFramebufferBinding);
+		}
+		
+		if (IsBgra())
+			SetPixelShader(Shaders[SHADER_NormalColor]);
+		else
+			SetPixelShader(Shaders[SHADER_NormalColorPal]);
+		
+		return;
+	}
+
 	SetTexture(0, FBTexture);
 	SetPaletteTexture(PaletteTexture, 256, BorderColor);
 	memset(Constant, 0, sizeof(Constant));
@@ -1405,6 +1430,11 @@ void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 		SetPixelShader(Shaders[SHADER_NormalColor]);
 	else
 		SetPixelShader(Shaders[SHADER_NormalColorPal]);
+}
+
+void OpenGLSWFrameBuffer::SetViewFB(int handle)
+{
+	ViewFBHandle = handle;
 }
 
 //==========================================================================
