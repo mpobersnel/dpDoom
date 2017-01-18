@@ -89,8 +89,87 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mContext->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
 	mContext->ClearDepthStencilBuffer(1.0f, 0);
 
-	mContext->SetFrameBuffer(nullptr);
+	if (!mFrameUniforms)
+		mFrameUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(FrameUniforms));
 
+	FrameUniforms frameUniforms;
+
+	for (int i = 0; i < 16; i++) frameUniforms.WorldToView[i] = 0.0f;
+	frameUniforms.WorldToView[0] = 0.5f;
+	frameUniforms.WorldToView[5] = 0.5f;
+	frameUniforms.WorldToView[10] = 1.0f;
+	frameUniforms.WorldToView[15] = 1.0f;
+
+	for (int i = 0; i < 16; i++) frameUniforms.ViewToProjection[i] = 0.0f;
+	frameUniforms.ViewToProjection[0] = 1.0f;
+	frameUniforms.ViewToProjection[5] = 1.0f;
+	frameUniforms.ViewToProjection[10] = 1.0f;
+	frameUniforms.ViewToProjection[15] = 1.0f;
+
+	mFrameUniforms->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
+
+	if (!mVertices)
+	{
+		std::vector<Vec4f> vertices;
+		vertices.push_back({ -1.0f, -1.0f, 1.0f, 1.0f });
+		vertices.push_back({  1.0f, -1.0f, 1.0f, 1.0f });
+		vertices.push_back({ -1.0f,  1.0f, 1.0f, 1.0f });
+		vertices.push_back({  1.0f,  1.0f, 1.0f, 1.0f });
+
+		mVertices = std::make_shared<GPUVertexBuffer>(vertices.data(), (int)(vertices.size() * sizeof(Vec4f)));
+	}
+
+	if (!mVertexArray)
+	{
+		std::vector<GPUVertexAttributeDesc> attributes =
+		{
+			{ 0, 4, GPUVertexAttributeType::Float, false, 4 * sizeof(float), 0, mVertices }
+		};
+		mVertexArray = std::make_shared<GPUVertexArray>(attributes);
+	}
+
+	if (!mProgram)
+	{
+		mProgram = std::make_shared<GPUProgram>();
+
+		mProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
+				layout(std140) uniform FrameUniforms
+				{
+					mat4 WorldToView;
+					mat4 ViewToProjection;
+				};
+
+				in vec4 Position;
+
+				void main()
+				{
+					gl_Position = ViewToProjection * WorldToView * Position;
+				}
+			)");
+		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+				out vec4 FragAlbedo;
+				void main()
+				{
+					FragAlbedo = vec4(1.0, 1.0, 0.0, 1.0);
+				}
+			)");
+
+		mProgram->SetFragOutput("FragAlbedo", 0);
+		mProgram->SetFragOutput("FragNormal", 1);
+		mProgram->Link("program");
+	}
+
+	mContext->SetVertexArray(mVertexArray);
+	mContext->SetProgram(mProgram);
+	mContext->SetUniforms(0, mFrameUniforms);
+
+	mContext->Draw(GPUDrawMode::TriangleStrip, 0, 4);
+
+	mContext->SetUniforms(0, nullptr);
+	mContext->SetVertexArray(nullptr);
+	mContext->SetProgram(nullptr);
+
+	mContext->SetFrameBuffer(nullptr);
 	mContext->End();
 
 	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);

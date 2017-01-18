@@ -36,6 +36,7 @@ GPUVertexArray::GPUVertexArray(const std::vector<GPUVertexAttributeDesc> &attrib
 	for (const auto &attr : attributes)
 	{
 		glBindBuffer(GL_ARRAY_BUFFER, attr.Buffer->Handle());
+		glEnableVertexAttribArray(attr.Index);
 		glVertexAttribPointer(attr.Index, attr.Size, FromType(attr.Type), attr.Normalized ? GL_TRUE : GL_FALSE, attr.Stride, (const GLvoid *)attr.Offset);
 	}
 

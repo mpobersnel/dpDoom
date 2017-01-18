@@ -49,9 +49,26 @@ public:
 	void SetClearColor(int color) override;
 	
 private:
+	struct FrameUniforms
+	{
+		float WorldToView[4*4];
+		float ViewToProjection[4 * 4];
+	};
+
+	struct Vec4f
+	{
+		Vec4f() { }
+		Vec4f(float x, float y, float z, float w) : X(x), Y(y), Z(z), W(w) { }
+		float X, Y, Z, W;
+	};
+
 	GPUContextPtr mContext;
 	GPUTexture2DPtr mAlbedoBuffer;
 	GPUTexture2DPtr mDepthStencilBuffer;
 	GPUTexture2DPtr mNormalBuffer;
 	GPUFrameBufferPtr mSceneFB;
+	GPUUniformBufferPtr mFrameUniforms;
+	GPUVertexBufferPtr mVertices;
+	GPUVertexArrayPtr mVertexArray;
+	GPUProgramPtr mProgram;
 };
