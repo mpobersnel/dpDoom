@@ -32,6 +32,7 @@
 #include "poly_decal.h"
 #include "polyrenderer/poly_renderer.h"
 #include "r_sky.h"
+#include "swrenderer/scene/r_light.h"
 
 EXTERN_CVAR(Bool, r_drawmirrors)
 
@@ -246,6 +247,7 @@ void RenderPolyWall::Render(const TriMatrix &worldToClip, const Vec4f &clipPlane
 	}
 
 	PolyDrawArgs args;
+	args.uniforms.globvis = (float)swrenderer::r_WallVisibility;
 	args.uniforms.light = (uint32_t)(GetLightLevel() / 255.0f * 256.0f);
 	args.uniforms.flags = 0;
 	args.uniforms.subsectorDepth = SubsectorDepth;

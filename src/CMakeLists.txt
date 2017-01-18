@@ -609,7 +609,7 @@ endif()
 # Libraries ZDoom needs
 
 message( STATUS "Fluid synth libs: ${FLUIDSYNTH_LIBRARIES}" )
-set( ZDOOM_LIBS ${ZDOOM_LIBS} "${ZLIB_LIBRARIES}" "${JPEG_LIBRARIES}" "${BZIP2_LIBRARIES}" "${GME_LIBRARIES}" )
+set( ZDOOM_LIBS ${ZDOOM_LIBS} "${ZLIB_LIBRARIES}" "${JPEG_LIBRARIES}" "${BZIP2_LIBRARIES}" "${GME_LIBRARIES}" "${CMAKE_DL_LIBS}" )
 include_directories( "${ZLIB_INCLUDE_DIR}" "${BZIP2_INCLUDE_DIR}" "${LZMA_INCLUDE_DIR}" "${JPEG_INCLUDE_DIR}" "${GME_INCLUDE_DIR}" )
 
 if( SNDFILE_FOUND )
@@ -625,8 +625,6 @@ if( NOT DYN_FLUIDSYNTH )
 		set( ZDOOM_LIBS ${ZDOOM_LIBS} "${FLUIDSYNTH_LIBRARIES}" )
 		include_directories( "${FLUIDSYNTH_INCLUDE_DIR}" )
 	endif()
-else()
-	set( ZDOOM_LIBS ${ZDOOM_LIBS} ${CMAKE_DL_LIBS} )
 endif()
 
 # Start defining source files for ZDoom
@@ -840,7 +838,6 @@ set( NOT_COMPILED_SOURCE_FILES
 
 set( FASTMATH_PCH_SOURCES
 	swrenderer/r_swrenderer.cpp
-	swrenderer/r_main.cpp
 	swrenderer/r_memory.cpp
 	swrenderer/drawers/r_draw.cpp
 	swrenderer/drawers/r_draw_pal.cpp
@@ -848,9 +845,12 @@ set( FASTMATH_PCH_SOURCES
 	swrenderer/drawers/r_drawers.cpp
 	swrenderer/drawers/r_thread.cpp
 	swrenderer/scene/r_3dfloors.cpp
-	swrenderer/scene/r_bsp.cpp
-	swrenderer/scene/r_things.cpp
+	swrenderer/scene/r_light.cpp
+	swrenderer/scene/r_opaque_pass.cpp
 	swrenderer/scene/r_portal.cpp
+	swrenderer/scene/r_scene.cpp
+	swrenderer/scene/r_translucent_pass.cpp
+	swrenderer/scene/r_viewport.cpp
 	swrenderer/line/r_line.cpp
 	swrenderer/line/r_walldraw.cpp
 	swrenderer/line/r_wallsetup.cpp
@@ -859,13 +859,17 @@ set( FASTMATH_PCH_SOURCES
 	swrenderer/segments/r_drawsegment.cpp
 	swrenderer/segments/r_portalsegment.cpp
 	swrenderer/things/r_visiblesprite.cpp
+	swrenderer/things/r_visiblespritelist.cpp
 	swrenderer/things/r_voxel.cpp
 	swrenderer/things/r_particle.cpp
 	swrenderer/things/r_playersprite.cpp
+	swrenderer/things/r_sprite.cpp
 	swrenderer/things/r_wallsprite.cpp
 	swrenderer/things/r_decal.cpp
 	swrenderer/plane/r_visibleplane.cpp
+	swrenderer/plane/r_visibleplanelist.cpp
 	swrenderer/plane/r_skyplane.cpp
+	swrenderer/plane/r_planerenderer.cpp
 	swrenderer/plane/r_flatplane.cpp
 	swrenderer/plane/r_slopeplane.cpp
 	polyrenderer/poly_renderer.cpp
@@ -1180,7 +1184,6 @@ set (PCH_SOURCES
 	p_udmf.cpp
 	p_usdf.cpp
 	p_user.cpp
-	p_writemap.cpp
 	p_xlat.cpp
 	parsecontext.cpp
 	po_man.cpp
@@ -1208,28 +1211,17 @@ set (PCH_SOURCES
 	g_inventory/a_ammo.cpp
 	g_inventory/a_armor.cpp
 	g_inventory/a_artifacts.cpp
-	g_inventory/a_health.cpp
 	g_inventory/a_keys.cpp
 	g_inventory/a_pickups.cpp
-	g_inventory/a_puzzleitems.cpp
 	g_inventory/a_weaponpiece.cpp
 	g_inventory/a_weapons.cpp
 	g_strife/strife_sbar.cpp
 	g_shared/a_action.cpp
-	g_shared/a_bridge.cpp
 	g_shared/a_decals.cpp
-	g_shared/a_fastprojectile.cpp
 	g_shared/a_flashfader.cpp
-	g_shared/a_fountain.cpp
 	g_shared/a_lightning.cpp
 	g_shared/a_morph.cpp
-	g_shared/a_movingcamera.cpp
 	g_shared/a_quake.cpp
-	g_shared/a_randomspawner.cpp
-	g_shared/a_sectoraction.cpp
-	g_shared/a_skies.cpp
-	g_shared/a_soundenvironment.cpp
-	g_shared/a_soundsequence.cpp
 	g_shared/a_specialspot.cpp
 	g_shared/hudmessages.cpp
 	g_shared/sbarinfo.cpp
@@ -1284,6 +1276,7 @@ set (PCH_SOURCES
 	scripting/thingdef_data.cpp
 	scripting/thingdef_properties.cpp
 	scripting/codegeneration/codegen.cpp
+	scripting/codegeneration/dynarrays.cpp
 	scripting/decorate/olddecorations.cpp
 	scripting/decorate/thingdef_exp.cpp
 	scripting/decorate/thingdef_parse.cpp

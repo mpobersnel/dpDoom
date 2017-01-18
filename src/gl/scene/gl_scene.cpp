@@ -43,6 +43,7 @@
 #include "p_local.h"
 #include "gl/gl_functions.h"
 #include "serializer.h"
+#include "g_levellocals.h"
 
 #include "gl/dynlights/gl_lightbuffer.h"
 #include "gl/system/gl_interface.h"
@@ -766,16 +767,18 @@ void FGLRenderer::SetFixedColormap (player_t *player)
 		}
 		else if (cplayer->fixedlightlevel != -1)
 		{
+			auto torchtype = PClass::FindActor(NAME_PowerTorch);
+			auto litetype = PClass::FindActor(NAME_PowerLightAmp);
 			for(AInventory * in = cplayer->mo->Inventory; in; in = in->Inventory)
 			{
 				PalEntry color = in->GetBlend ();
 
 				// Need special handling for light amplifiers 
-				if (in->IsKindOf(RUNTIME_CLASS(APowerTorch)))
+				if (in->IsKindOf(torchtype))
 				{
 					gl_fixedcolormap = cplayer->fixedlightlevel + CM_TORCH;
 				}
-				else if (in->IsKindOf(RUNTIME_CLASS(APowerLightAmp)))
+				else if (in->IsKindOf(litetype))
 				{
 					gl_fixedcolormap = CM_LITE;
 				}
@@ -1012,7 +1015,7 @@ struct FGLInterface : public FRenderer
 	bool RequireGLNodes() override;
 
 	int GetMaxViewPitch(bool down) override;
-	void ClearBuffer(int color) override;
+	void SetClearColor(int color) override;
 	void Init() override;
 };
 
@@ -1262,7 +1265,7 @@ int FGLInterface::GetMaxViewPitch(bool down)
 //
 //===========================================================================
 
-void FGLInterface::ClearBuffer(int color)
+void FGLInterface::SetClearColor(int color)
 {
 	PalEntry pe = GPalette.BaseColors[color];
 	GLRenderer->mSceneClearColor[0] = pe.r / 255.f;

@@ -30,7 +30,13 @@
 #include "gl/data/gl_data.h"
 #include "d_net.h"
 #include "po_man.h"
+#include "st_stuff.h"
+#include "swrenderer/scene/r_scene.h"
+#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/scene/r_light.h"
+#include "swrenderer/drawers/r_draw_rgba.h"
 
+EXTERN_CVAR(Bool, r_shadercolormaps)
 EXTERN_CVAR(Int, screenblocks)
 void InitGLRMapinfoData();
 extern bool r_showviewer;
@@ -43,15 +49,45 @@ PolyRenderer *PolyRenderer::Instance()
 	return &scene;
 }
 
+void PolyRenderer::RenderView(player_t *player)
+{
+	using namespace swrenderer;
+
+	swrenderer::RenderTarget = screen;
+
+	bool saved_swtruecolor = r_swtruecolor;
+	r_swtruecolor = screen->IsBgra();
+
+	int width = SCREENWIDTH;
+	int height = SCREENHEIGHT;
+	int stHeight = ST_Y;
+	float trueratio;
+	ActiveRatio(width, height, &trueratio);
+	RenderViewport::Instance()->SetViewport(width, height, trueratio);
+
+	RenderActorView(player->mo, false);
+
+	// Apply special colormap if the target cannot do it
+	if (realfixedcolormap && r_swtruecolor && !(r_shadercolormaps && screen->Accel2D))
+	{
+		R_BeginDrawerCommands();
+		DrawerCommandQueue::QueueCommand<ApplySpecialColormapRGBACommand>(realfixedcolormap, screen);
+		R_EndDrawerCommands();
+	}
+
+	r_swtruecolor = saved_swtruecolor;
+}
+
 void PolyRenderer::RenderViewToCanvas(AActor *actor, DCanvas *canvas, int x, int y, int width, int height, bool dontmaplines)
 {
 	const bool savedviewactive = viewactive;
 	const bool savedoutputformat = swrenderer::r_swtruecolor;
 
 	viewwidth = width;
-	RenderTarget = canvas;
+	swrenderer::RenderTarget = canvas;
 	swrenderer::bRenderingToCanvas = true;
 	R_SetWindow(12, width, height, height, true);
+	swrenderer::RenderViewport::Instance()->SetViewport(width, height, WidescreenRatio);
 	viewwindowx = x;
 	viewwindowy = y;
 	viewactive = true;
@@ -63,9 +99,12 @@ void PolyRenderer::RenderViewToCanvas(AActor *actor, DCanvas *canvas, int x, int
 	
 	canvas->Unlock();
 
-	RenderTarget = screen;
+	swrenderer::RenderTarget = screen;
 	swrenderer::bRenderingToCanvas = false;
 	R_ExecuteSetViewSize();
+	float trueratio;
+	ActiveRatio(width, height, &trueratio);
+	swrenderer::RenderViewport::Instance()->SetViewport(width, height, WidescreenRatio);
 	viewactive = savedviewactive;
 	swrenderer::r_swtruecolor = savedoutputformat;
 }
@@ -79,7 +118,9 @@ void PolyRenderer::RenderActorView(AActor *actor, bool dontmaplines)
 	P_FindParticleSubsectors();
 	PO_LinkToSubsectors();
 	R_SetupFrame(actor);
-	
+	swrenderer::R_SetupColormap(actor);
+	swrenderer::RenderViewport::Instance()->SetupFreelook();
+
 	ActorRenderFlags savedflags = camera->renderflags;
 	// Never draw the player unless in chasecam mode
 	if (!r_showviewer)
@@ -114,8 +155,8 @@ void PolyRenderer::RenderRemainingPlayerSprites()
 void PolyRenderer::ClearBuffers()
 {
 	PolyVertexBuffer::Clear();
-	PolyStencilBuffer::Instance()->Clear(RenderTarget->GetWidth(), RenderTarget->GetHeight(), 0);
-	PolySubsectorGBuffer::Instance()->Resize(RenderTarget->GetPitch(), RenderTarget->GetHeight());
+	PolyStencilBuffer::Instance()->Clear(swrenderer::RenderTarget->GetWidth(), swrenderer::RenderTarget->GetHeight(), 0);
+	PolySubsectorGBuffer::Instance()->Resize(swrenderer::RenderTarget->GetPitch(), swrenderer::RenderTarget->GetHeight());
 	NextStencilValue = 0;
 	SeenLinePortals.clear();
 	SeenMirrors.clear();
@@ -123,6 +164,8 @@ void PolyRenderer::ClearBuffers()
 
 void PolyRenderer::SetSceneViewport()
 {
+	using namespace swrenderer;
+
 	if (RenderTarget == screen) // Rendering to screen
 	{
 		int height;

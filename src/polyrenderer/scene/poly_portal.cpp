@@ -25,9 +25,11 @@
 #include "doomdef.h"
 #include "p_maputl.h"
 #include "sbar.h"
+#include "g_levellocals.h"
 #include "r_data/r_translate.h"
 #include "poly_portal.h"
 #include "polyrenderer/poly_renderer.h"
+#include "swrenderer/scene/r_light.h"
 #include "gl/data/gl_data.h"
 
 extern bool r_showviewer;
@@ -95,7 +97,7 @@ void PolyDrawSectorPortal::SaveGlobals()
 	if (Portal->mType == PORTS_SKYVIEWPOINT)
 	{
 		// Don't let gun flashes brighten the sky box
-		ASkyViewpoint *sky = barrier_cast<ASkyViewpoint*>(Portal->mSkybox);
+		AActor *sky = Portal->mSkybox;
 		extralight = 0;
 		swrenderer::R_SetVisibility(sky->args[0] * 0.25f);
 		ViewPos = sky->InterpolatedPosition(r_TicFracF);
@@ -114,13 +116,13 @@ void PolyDrawSectorPortal::SaveGlobals()
 	R_SetViewAngle();
 
 	Portal->mFlags |= PORTSF_INSKYBOX;
-	if (Portal->mPartner > 0) sectorPortals[Portal->mPartner].mFlags |= PORTSF_INSKYBOX;
+	if (Portal->mPartner > 0) level.sectorPortals[Portal->mPartner].mFlags |= PORTSF_INSKYBOX;
 }
 
 void PolyDrawSectorPortal::RestoreGlobals()
 {
 	Portal->mFlags &= ~PORTSF_INSKYBOX;
-	if (Portal->mPartner > 0) sectorPortals[Portal->mPartner].mFlags &= ~PORTSF_INSKYBOX;
+	if (Portal->mPartner > 0) level.sectorPortals[Portal->mPartner].mFlags &= ~PORTSF_INSKYBOX;
 
 	camera = savedcamera;
 	viewsector = savedsector;

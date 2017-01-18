@@ -49,6 +49,10 @@
 #include "gstrings.h"
 #include "zstring.h"
 #include "d_event.h"
+#include "g_levellocals.h"
+#include "vm.h"
+#include "p_checkposition.h"
+#include "r_sky.h"
 
 static TArray<FPropertyInfo*> properties;
 static TArray<AFuncDesc> AFTable;
@@ -96,6 +100,7 @@ static FFlagDef InternalActorFlagDefs[]=
 	DEFINE_FLAG(MF6, INTRYMOVE, AActor, flags6),
 	DEFINE_FLAG(MF7, HANDLENODELAY, AActor, flags7),
 	DEFINE_FLAG(MF7, FLYCHEAT, AActor, flags7),
+	DEFINE_FLAG(FX, RESPAWNINVUL, AActor, effects),
 };
 
 
@@ -407,6 +412,7 @@ static FFlagDef InventoryFlagDefs[] =
 	DEFINE_FLAG(IF, ALWAYSRESPAWN, AInventory, ItemFlags),
 	DEFINE_FLAG(IF, TRANSFER, AInventory, ItemFlags),
 	DEFINE_FLAG(IF, NOTELEPORTFREEZE, AInventory, ItemFlags),
+	DEFINE_FLAG(IF, NOSCREENBLINK, AInventory, ItemFlags),
 
 	DEFINE_DUMMY_FLAG(FORCERESPAWNINSURVIVAL, false),
 
@@ -456,7 +462,7 @@ static FFlagDef PlayerPawnFlagDefs[] =
 static FFlagDef PowerSpeedFlagDefs[] =
 {
 	// PowerSpeed flags
-	DEFINE_FLAG(PSF, NOTRAIL, APowerSpeed, SpeedFlags),
+	DEFINE_DEPRECATED_FLAG(NOTRAIL),
 };
 
 static const struct FFlagList { const PClass * const *Type; FFlagDef *Defs; int NumDefs; int Use; } FlagLists[] =
@@ -467,7 +473,6 @@ static const struct FFlagList { const PClass * const *Type; FFlagDef *Defs; int 
 	{ &RUNTIME_CLASS_CASTLESS(AInventory), 	InventoryFlagDefs,	countof(InventoryFlagDefs), 3 },
 	{ &RUNTIME_CLASS_CASTLESS(AWeapon), 	WeaponFlagDefs,		countof(WeaponFlagDefs), 3 },
 	{ &RUNTIME_CLASS_CASTLESS(APlayerPawn),	PlayerPawnFlagDefs,	countof(PlayerPawnFlagDefs), 3 },
-	{ &RUNTIME_CLASS_CASTLESS(APowerSpeed),	PowerSpeedFlagDefs,	countof(PowerSpeedFlagDefs), 3 },
 };
 #define NUM_FLAG_LISTS (countof(FlagLists))
 
@@ -541,6 +546,12 @@ FFlagDef *FindFlag (const PClass *type, const char *part1, const char *part2, bo
 				}
 			}
 		}
+	}
+
+	// Handle that lone PowerSpeed flag - this should be more generalized but it's just this one flag and unlikely to become more so an explicit check will do.
+	if ((!stricmp(part1, "NOTRAIL") && !strict) || (!stricmp(part1, "POWERSPEED") && !stricmp(part2, "NOTRAIL")))
+	{
+		return &PowerSpeedFlagDefs[0];
 	}
 	return NULL;
 }
@@ -711,6 +722,41 @@ static int fieldcmp(const void * a, const void * b)
 void InitThingdef()
 {
 	// Create all global variables here because this cannot be done on the script side and really isn't worth adding support for.
+	// Also create all special fields here that cannot be declared by script syntax.
+
+	auto secplanestruct = NewNativeStruct("Secplane", nullptr);
+	secplanestruct->Size = sizeof(secplane_t);
+	secplanestruct->Align = alignof(secplane_t);
+
+	auto sectorstruct = NewNativeStruct("Sector", nullptr);
+	sectorstruct->Size = sizeof(sector_t);
+	sectorstruct->Align = alignof(sector_t);
+
+	auto linestruct = NewNativeStruct("Line", nullptr);
+	linestruct->Size = sizeof(line_t);
+	linestruct->Align = alignof(line_t);
+
+	auto sidestruct = NewNativeStruct("Side", nullptr);
+	sidestruct->Size = sizeof(side_t);
+	sidestruct->Align = alignof(side_t);
+
+	auto vertstruct = NewNativeStruct("Vertex", nullptr);
+	vertstruct->Size = sizeof(vertex_t);
+	vertstruct->Align = alignof(vertex_t);
+
+	auto sectorportalstruct = NewNativeStruct("SectorPortal", nullptr);
+	sectorportalstruct->Size = sizeof(FSectorPortal);
+	sectorportalstruct->Align = alignof(FSectorPortal);
+
+	// set up the lines array in the sector struct. This is a bit messy because the type system is not prepared to handle a pointer to an array of pointers to a native struct even remotely well...
+	// As a result, the size has to be set to something large and arbritrary because it can change between maps. This will need some serious improvement when things get cleaned up.
+	sectorstruct->AddNativeField("lines", NewPointer(NewResizableArray(NewPointer(linestruct, false)), false), myoffsetof(sector_t, Lines), VARF_Native);
+
+	sectorstruct->AddNativeField("ceilingplane", secplanestruct, myoffsetof(sector_t, ceilingplane), VARF_Native);
+	sectorstruct->AddNativeField("floorplane", secplanestruct, myoffsetof(sector_t, floorplane), VARF_Native);
+
+
+
 
 	// expose the global validcount variable.
 	PField *vcf = new PField("validcount", TypeSInt32, VARF_Native | VARF_Static, (intptr_t)&validcount);
@@ -725,11 +771,27 @@ void InitThingdef()
 	PField *levelf = new PField("level", lstruct, VARF_Native | VARF_Static, (intptr_t)&level);
 	GlobalSymbols.AddSymbol(levelf);
 
+	// Add the game data arrays to LevelLocals.
+	lstruct->AddNativeField("sectors", NewPointer(NewResizableArray(sectorstruct), false), myoffsetof(FLevelLocals, sectors), VARF_Native);
+	lstruct->AddNativeField("lines", NewPointer(NewResizableArray(linestruct), false), myoffsetof(FLevelLocals, lines), VARF_Native);
+	lstruct->AddNativeField("sides", NewPointer(NewResizableArray(sidestruct), false), myoffsetof(FLevelLocals, sides), VARF_Native);
+	lstruct->AddNativeField("vertexes", NewPointer(NewResizableArray(vertstruct), false), myoffsetof(FLevelLocals, vertexes), VARF_Native|VARF_ReadOnly);
+	lstruct->AddNativeField("sectorportals", NewPointer(NewResizableArray(sectorportalstruct), false), myoffsetof(FLevelLocals, sectorPortals), VARF_Native);
+
+
+	auto aact = NewPointer(NewResizableArray(NewClassPointer(RUNTIME_CLASS(AActor))), true);
+	PField *aacf = new PField("AllActorClasses", aact, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&PClassActor::AllActorClasses);
+	GlobalSymbols.AddSymbol(aacf);
+
 	// set up a variable for the DEH data
 	PStruct *dstruct = NewNativeStruct("DehInfo", nullptr);
 	PField *dehf = new PField("deh", dstruct, VARF_Native | VARF_Static, (intptr_t)&deh);
-
 	GlobalSymbols.AddSymbol(dehf);
+
+	// set up a variable for the global gameinfo data
+	PStruct *gistruct = NewNativeStruct("GameInfoStruct", nullptr);
+	PField *gi = new PField("gameinfo", gistruct, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&gameinfo);
+	GlobalSymbols.AddSymbol(gi);
 
 	// set up a variable for the global players array.
 	PStruct *pstruct = NewNativeStruct("PlayerInfo", nullptr);
@@ -739,16 +801,20 @@ void InitThingdef()
 	PField *playerf = new PField("players", parray, VARF_Native | VARF_Static, (intptr_t)&players);
 	GlobalSymbols.AddSymbol(playerf);
 
-	// set up the lines array in the sector struct. This is a bit messy because the type system is not prepared to handle a pointer to an array of pointers to a native struct even remotely well...
-	// As a result, the size has to be set to something large and arbritrary because it can change between maps. This will need some serious improvement when things get cleaned up.
-	pstruct = NewNativeStruct("Sector", nullptr);
-	pstruct->AddNativeField("lines", NewPointer(NewResizableArray(NewPointer(NewNativeStruct("line", nullptr), false)), false), myoffsetof(sector_t, Lines), VARF_Native);
+	pstruct->AddNativeField("weapons", NewNativeStruct("WeaponSlots", nullptr), myoffsetof(player_t, weapons), VARF_Native);
+
 
 	parray = NewArray(TypeBool, MAXPLAYERS);
 	playerf = new PField("playeringame", parray, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&playeringame);
 	GlobalSymbols.AddSymbol(playerf);
 
 	playerf = new PField("gameaction", TypeUInt8, VARF_Native | VARF_Static, (intptr_t)&gameaction);
+	GlobalSymbols.AddSymbol(playerf);
+
+	playerf = new PField("skyflatnum", TypeTextureID, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&skyflatnum);
+	GlobalSymbols.AddSymbol(playerf);
+
+	playerf = new PField("globalfreeze", TypeUInt8, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&bglobal.freeze);
 	GlobalSymbols.AddSymbol(playerf);
 
 	playerf = new PField("consoleplayer", TypeSInt32, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&consoleplayer);
@@ -760,9 +826,6 @@ void InitThingdef()
 	static AWeapon *wpnochg = WP_NOCHANGE;
 	playerf = new PField("WP_NOCHANGE", NewPointer(RUNTIME_CLASS(AWeapon), false), VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&wpnochg);
 	GlobalSymbols.AddSymbol(playerf);
-
-	// this needs to be done manually until it can be given a proper type.
-	RUNTIME_CLASS(AActor)->AddNativeField("DecalGenerator", NewPointer(TypeVoid), myoffsetof(AActor, DecalGenerator));
 
 	// synthesize a symbol for each flag from the flag name tables to avoid redundant declaration of them.
 	for (auto &fl : FlagLists)
@@ -824,6 +887,14 @@ void InitThingdef()
 		qsort(&AFTable[0], AFTable.Size(), sizeof(AFTable[0]), funccmp);
 	}
 
+	// Add the constructor and destructor to FCheckPosition.
+	auto fcp = NewStruct("FCheckPosition", nullptr);
+	fcp->mConstructor = *FindFunction(fcp, "_Constructor")->VMPointer;
+	fcp->mDestructor = *FindFunction(fcp, "_Destructor")->VMPointer;
+	fcp->Size = sizeof(FCheckPosition);
+	fcp->Align = alignof(FCheckPosition);
+
+
 	FieldTable.Clear();
 	if (FieldTable.Size() == 0)
 	{
@@ -857,7 +928,10 @@ DEFINE_ACTION_FUNCTION(FStringTable, Localize)
 {
 	PARAM_PROLOGUE;
 	PARAM_STRING(label);
-	ACTION_RETURN_STRING(GStrings(label));
+	PARAM_BOOL_DEF(prefixed);
+	if (!prefixed) ACTION_RETURN_STRING(GStrings(label));
+	if (label[0] != '$') ACTION_RETURN_STRING(label);
+	ACTION_RETURN_STRING(GStrings(&label[1]));
 }
 
 DEFINE_ACTION_FUNCTION(FString, Replace)
@@ -865,7 +939,7 @@ DEFINE_ACTION_FUNCTION(FString, Replace)
 	PARAM_SELF_STRUCT_PROLOGUE(FString);
 	PARAM_STRING(s1);
 	PARAM_STRING(s2);
-	self->Substitute(*s1, *s2);
+	self->Substitute(s1, s2);
 	return 0;
 }
 

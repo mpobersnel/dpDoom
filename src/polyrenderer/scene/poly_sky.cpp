@@ -27,6 +27,8 @@
 #include "poly_sky.h"
 #include "poly_portal.h"
 #include "r_sky.h" // for skyflatnum
+#include "g_levellocals.h"
+#include "swrenderer/scene/r_light.h"
 
 PolySkyDome::PolySkyDome()
 {
@@ -53,6 +55,7 @@ void PolySkyDome::Render(const TriMatrix &worldToClip)
 	int rc = mRows + 1;
 
 	PolyDrawArgs args;
+	args.uniforms.globvis = (float)swrenderer::r_WallVisibility;
 	args.uniforms.light = 256;
 	args.uniforms.flags = 0;
 	args.uniforms.subsectorDepth = RenderPolyScene::SkySubsectorDepth;

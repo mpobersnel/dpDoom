@@ -32,13 +32,14 @@ namespace swrenderer
 		uint8_t bFogBoundary;
 		uint8_t bFakeBoundary; // for fake walls
 		int shade;
+		bool foggy;
 
 		// Pointers to lists for sprite clipping, all three adjusted so [x1] is first value.
-		ptrdiff_t sprtopclip; // type short
-		ptrdiff_t sprbottomclip; // type short
-		ptrdiff_t maskedtexturecol; // type short
-		ptrdiff_t swall; // type float
-		ptrdiff_t bkup; // sprtopclip backup, for mid and fake textures
+		short *sprtopclip;
+		short *sprbottomclip;
+		fixed_t *maskedtexturecol;
+		float *swall;
+		short *bkup; // sprtopclip backup, for mid and fake textures
 		
 		FWallTmapVals tmapvals;
 		
@@ -59,6 +60,6 @@ namespace swrenderer
 	drawseg_t *R_AddDrawSegment();
 	void ClipMidtex(int x1, int x2);
 	void R_RenderMaskedSegRange(drawseg_t *ds, int x1, int x2);
-	void R_RenderFakeWall(drawseg_t *ds, int x1, int x2, F3DFloor *rover, int wallshade);
+	void R_RenderFakeWall(drawseg_t *ds, int x1, int x2, F3DFloor *rover, int wallshade, FDynamicColormap *basecolormap);
 	void R_RenderFakeWallRange(drawseg_t *ds, int x1, int x2, int wallshade);
 }

@@ -84,10 +84,12 @@
 #include "r_utility.h"
 #include "p_spec.h"
 #include "serializer.h"
+#include "virtual.h"
 
 #include "gi.h"
 
 #include "g_hub.h"
+#include "g_levellocals.h"
 
 #include <string.h>
 
@@ -1312,7 +1314,13 @@ void G_FinishTravel ()
 		{
 			inv->ChangeStatNum (STAT_INVENTORY);
 			inv->LinkToWorld (nullptr);
-			inv->Travelled ();
+
+			IFVIRTUALPTR(inv, AInventory, Travelled)
+			{
+				VMValue params[1] = { inv };
+				VMFrameStack stack;
+				GlobalVMStack.Call(func, params, 1, nullptr, 0, nullptr);
+			}
 		}
 		if (ib_compatflags & BCOMPATF_RESETPLAYERSPEED)
 		{
@@ -1842,8 +1850,8 @@ void FLevelLocals::AddScroller (int secnum)
 	}
 	if (Scrolls.Size() == 0)
 	{
-		Scrolls.Resize(numsectors);
-		memset (&Scrolls[0], 0, sizeof(Scrolls[0])*numsectors);
+		Scrolls.Resize(sectors.Size());
+		memset(&Scrolls[0], 0, sizeof(Scrolls[0])*Scrolls.Size());
 	}
 }
 
@@ -1890,6 +1898,7 @@ DEFINE_FIELD_BIT(FLevelLocals, flags2, checkswitchrange, LEVEL2_CHECKSWITCHRANGE
 DEFINE_FIELD_BIT(FLevelLocals, flags2, polygrind, LEVEL2_POLYGRIND)
 DEFINE_FIELD_BIT(FLevelLocals, flags2, nomonsters, LEVEL2_NOMONSTERS)
 DEFINE_FIELD_BIT(FLevelLocals, flags2, frozen, LEVEL2_FROZEN)
+DEFINE_FIELD_BIT(FLevelLocals, flags2, infinite_flight, LEVEL2_INFINITE_FLIGHT)
 
 //==========================================================================
 //

@@ -13,16 +13,43 @@
 
 #pragma once
 
-#include "r_visibleplane.h"
+#include "r_planerenderer.h"
 
 namespace swrenderer
 {
-	void R_SetupPlaneSlope();
+	struct visplane_light;
 
-	void R_DrawNormalPlane(visplane_t *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked);
-	void R_MapPlane(int y, int x1, int x2);
-	void R_StepPlane();
+	class RenderFlatPlane : PlaneRenderer
+	{
+	public:
+		void Render(visplane_t *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *basecolormap);
 
-	void R_DrawColoredPlane(visplane_t *pl);
-	void R_MapColoredPlane(int y, int x1, int x2);
+		static void SetupSlope();
+
+	private:
+		void RenderLine(int y, int x1, int x2) override;
+		void StepColumn() override;
+
+		double planeheight;
+		bool plane_shade;
+		int planeshade;
+		double GlobVis;
+		FDynamicColormap *basecolormap;
+		fixed_t pviewx, pviewy;
+		fixed_t xscale, yscale;
+		double xstepscale, ystepscale;
+		double basexfrac, baseyfrac;
+		visplane_light *light_list;
+
+		static float yslope[MAXHEIGHT];
+	};
+
+	class RenderColoredPlane : PlaneRenderer
+	{
+	public:
+		void Render(visplane_t *pl);
+
+	private:
+		void RenderLine(int y, int x1, int x2) override;
+	};
 }

@@ -125,20 +125,7 @@ class WeaponPiece : Inventory native
 	}
 }
 
-class Ammo : Inventory native
+struct WeaponSlots native
 {
-	native int BackpackAmount;
-	native int BackpackMaxAmount;
-	
-	Default
-	{
-		+INVENTORY.KEEPDEPLETED
-		Inventory.PickupSound "misc/ammo_pkup";
-	}
+	native bool, int, int LocateWeapon(class<Weapon> weap);
 }
-
-class BackpackItem : Inventory native
-{
-	native bool bDepleted;
-}
-

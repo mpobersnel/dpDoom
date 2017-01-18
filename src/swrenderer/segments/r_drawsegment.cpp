@@ -28,17 +28,20 @@
 #include "po_man.h"
 #include "r_data/colormaps.h"
 #include "d_net.h"
-#include "swrenderer/r_main.h"
 #include "swrenderer/r_memory.h"
 #include "swrenderer/drawers/r_draw.h"
-#include "swrenderer/scene/r_things.h"
 #include "swrenderer/scene/r_3dfloors.h"
-#include "swrenderer/scene/r_bsp.h"
+#include "swrenderer/scene/r_opaque_pass.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/line/r_wallsetup.h"
 #include "swrenderer/line/r_walldraw.h"
 #include "swrenderer/line/r_fogboundary.h"
 #include "swrenderer/segments/r_drawsegment.h"
+#include "swrenderer/things/r_visiblesprite.h"
+#include "swrenderer/scene/r_light.h"
+#include "swrenderer/scene/r_viewport.h"
+
+EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor);
 
 namespace swrenderer
 {
@@ -140,12 +143,13 @@ namespace swrenderer
 
 		const sector_t *sec;
 
-		sprflipvert = false;
+		bool sprflipvert = false;
 
 		curline = ds->curline;
 
+		FDynamicColormap *patchstylecolormap = nullptr;
 		bool visible = R_SetPatchStyle(LegacyRenderStyles[curline->linedef->flags & ML_ADDTRANS ? STYLE_Add : STYLE_Translucent],
-			(float)MIN(curline->linedef->alpha, 1.), 0, 0);
+			(float)MIN(curline->linedef->alpha, 1.), 0, 0, patchstylecolormap);
 
 		if (!visible && !ds->bFogBoundary && !ds->bFakeBoundary)
 		{
@@ -164,9 +168,9 @@ namespace swrenderer
 		}
 
 		// killough 4/13/98: get correct lightlevel for 2s normal textures
-		sec = RenderBSP::Instance()->FakeFlat(frontsector, &tempsec, nullptr, nullptr, nullptr, 0, 0, 0, 0);
+		sec = RenderOpaquePass::Instance()->FakeFlat(frontsector, &tempsec, nullptr, nullptr, nullptr, 0, 0, 0, 0);
 
-		basecolormap = sec->ColorMap;	// [RH] Set basecolormap
+		FDynamicColormap *basecolormap = sec->ColorMap;	// [RH] Set basecolormap
 
 		int wallshade = ds->shade;
 		rw_lightstep = ds->lightstep;
@@ -186,21 +190,21 @@ namespace swrenderer
 				{
 					lightlist_t *lit = &frontsector->e->XFloor.lightlist[i];
 					basecolormap = lit->extra_colormap;
-					wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + r_actualextralight);
+					wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(ds->foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + R_ActualExtraLight(ds->foggy));
 					break;
 				}
 			}
 		}
 
-		mfloorclip = openings + ds->sprbottomclip - ds->x1;
-		mceilingclip = openings + ds->sprtopclip - ds->x1;
-
+		short *mfloorclip = ds->sprbottomclip - ds->x1;
+		short *mceilingclip = ds->sprtopclip - ds->x1;
+		double spryscale;
 
 		// [RH] Draw fog partition
 		if (ds->bFogBoundary)
 		{
-			R_DrawFogBoundary(x1, x2, mceilingclip, mfloorclip, wallshade, rw_light, rw_lightstep);
-			if (ds->maskedtexturecol == -1)
+			RenderFogBoundary::Render(x1, x2, mceilingclip, mfloorclip, wallshade, rw_light, rw_lightstep, basecolormap);
+			if (ds->maskedtexturecol == nullptr)
 			{
 				goto clearfog;
 			}
@@ -210,9 +214,9 @@ namespace swrenderer
 			goto clearfog;
 		}
 
-		MaskedSWall = (float *)(openings + ds->swall) - ds->x1;
+		MaskedSWall = ds->swall - ds->x1;
 		MaskedScaleY = ds->yscale;
-		maskedtexturecol = (fixed_t *)(openings + ds->maskedtexturecol) - ds->x1;
+		maskedtexturecol = ds->maskedtexturecol - ds->x1;
 		spryscale = ds->iscale + ds->iscalestep * (x1 - ds->x1);
 		rw_scalestep = ds->iscalestep;
 
@@ -228,13 +232,15 @@ namespace swrenderer
 		{
 			texheight = texheight / texheightscale;
 		}
+
+		double texturemid;
 		if (curline->linedef->flags & ML_DONTPEGBOTTOM)
 		{
-			dc_texturemid = MAX(frontsector->GetPlaneTexZ(sector_t::floor), backsector->GetPlaneTexZ(sector_t::floor)) + texheight;
+			texturemid = MAX(frontsector->GetPlaneTexZ(sector_t::floor), backsector->GetPlaneTexZ(sector_t::floor)) + texheight;
 		}
 		else
 		{
-			dc_texturemid = MIN(frontsector->GetPlaneTexZ(sector_t::ceiling), backsector->GetPlaneTexZ(sector_t::ceiling));
+			texturemid = MIN(frontsector->GetPlaneTexZ(sector_t::ceiling), backsector->GetPlaneTexZ(sector_t::ceiling));
 		}
 
 		rowoffset = curline->sidedef->GetTextureYOffset(side_t::mid);
@@ -253,21 +259,21 @@ namespace swrenderer
 			{
 				// rowoffset is added before the multiply so that the masked texture will
 				// still be positioned in world units rather than texels.
-				dc_texturemid += rowoffset - ViewPos.Z;
-				textop = dc_texturemid;
-				dc_texturemid *= MaskedScaleY;
+				texturemid += rowoffset - ViewPos.Z;
+				textop = texturemid;
+				texturemid *= MaskedScaleY;
 			}
 			else
 			{
 				// rowoffset is added outside the multiply so that it positions the texture
 				// by texels instead of world units.
-				textop = dc_texturemid + rowoffset / MaskedScaleY - ViewPos.Z;
-				dc_texturemid = (dc_texturemid - ViewPos.Z) * MaskedScaleY + rowoffset;
+				textop = texturemid + rowoffset / MaskedScaleY - ViewPos.Z;
+				texturemid = (texturemid - ViewPos.Z) * MaskedScaleY + rowoffset;
 			}
 			if (sprflipvert)
 			{
 				MaskedScaleY = -MaskedScaleY;
-				dc_texturemid -= tex->GetHeight() << FRACBITS;
+				texturemid -= tex->GetHeight() << FRACBITS;
 			}
 
 			// [RH] Don't bother drawing segs that are completely offscreen
@@ -342,21 +348,21 @@ namespace swrenderer
 			// draw the columns one at a time
 			if (visible)
 			{
-				using namespace drawerargs;
-				for (dc_x = x1; dc_x < x2; ++dc_x)
+				for (int x = x1; x < x2; ++x)
 				{
 					if (fixedcolormap == nullptr && fixedlightlev < 0)
 					{
 						R_SetColorMapLight(basecolormap, rw_light, wallshade);
 					}
 
-					dc_iscale = xs_Fix<16>::ToFix(MaskedSWall[dc_x] * MaskedScaleY);
+					fixed_t iscale = xs_Fix<16>::ToFix(MaskedSWall[x] * MaskedScaleY);
+					double sprtopscreen;
 					if (sprflipvert)
-						sprtopscreen = CenterY + dc_texturemid * spryscale;
+						sprtopscreen = CenterY + texturemid * spryscale;
 					else
-						sprtopscreen = CenterY - dc_texturemid * spryscale;
+						sprtopscreen = CenterY - texturemid * spryscale;
 
-					R_DrawMaskedColumn(tex, maskedtexturecol[dc_x]);
+					R_DrawMaskedColumn(x, iscale, tex, maskedtexturecol[x], spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip);
 
 					rw_light += rw_lightstep;
 					spryscale += rw_scalestep;
@@ -369,13 +375,13 @@ namespace swrenderer
 			{
 				// rowoffset is added before the multiply so that the masked texture will
 				// still be positioned in world units rather than texels.
-				dc_texturemid = (dc_texturemid - ViewPos.Z + rowoffset) * MaskedScaleY;
+				texturemid = (texturemid - ViewPos.Z + rowoffset) * MaskedScaleY;
 			}
 			else
 			{
 				// rowoffset is added outside the multiply so that it positions the texture
 				// by texels instead of world units.
-				dc_texturemid = (dc_texturemid - ViewPos.Z) * MaskedScaleY + rowoffset;
+				texturemid = (texturemid - ViewPos.Z) * MaskedScaleY + rowoffset;
 			}
 
 			WallC.sz1 = ds->sz1;
@@ -417,11 +423,10 @@ namespace swrenderer
 
 			rw_offset = 0;
 			rw_pic = tex;
-			R_DrawDrawSeg(frontsector, curline, WallC, rw_pic, ds, x1, x2, mceilingclip, mfloorclip, MaskedSWall, maskedtexturecol, ds->yscale, wallshade, rw_offset, rw_light, rw_lightstep);
+			R_DrawDrawSeg(frontsector, curline, WallC, rw_pic, ds, x1, x2, mceilingclip, mfloorclip, texturemid, MaskedSWall, maskedtexturecol, ds->yscale, wallshade, rw_offset, rw_light, rw_lightstep, ds->foggy, basecolormap);
 		}
 
 	clearfog:
-		R_FinishSetPatchStyle();
 		if (ds->bFakeBoundary & 3)
 		{
 			R_RenderFakeWallRange(ds, x1, x2, wallshade);
@@ -432,20 +437,20 @@ namespace swrenderer
 			{
 				if (!wrap)
 				{
-					assert(ds->bkup >= 0);
-					memcpy(openings + ds->sprtopclip, openings + ds->bkup, (ds->x2 - ds->x1) * 2);
+					assert(ds->bkup != nullptr);
+					memcpy(ds->sprtopclip, ds->bkup, (ds->x2 - ds->x1) * 2);
 				}
 			}
 			else
 			{
-				fillshort(openings + ds->sprtopclip - ds->x1 + x1, x2 - x1, viewheight);
+				fillshort(ds->sprtopclip - ds->x1 + x1, x2 - x1, viewheight);
 			}
 		}
 		return;
 	}
 
 	// kg3D - render one fake wall
-	void R_RenderFakeWall(drawseg_t *ds, int x1, int x2, F3DFloor *rover, int wallshade)
+	void R_RenderFakeWall(drawseg_t *ds, int x1, int x2, F3DFloor *rover, int wallshade, FDynamicColormap *basecolormap)
 	{
 		int i;
 		double xscale;
@@ -453,21 +458,19 @@ namespace swrenderer
 
 		fixed_t Alpha = Scale(rover->alpha, OPAQUE, 255);
 		bool visible = R_SetPatchStyle(LegacyRenderStyles[rover->flags & FF_ADDITIVETRANS ? STYLE_Add : STYLE_Translucent],
-			Alpha, 0, 0);
+			Alpha, 0, 0, basecolormap);
 
-		if (!visible) {
-			R_FinishSetPatchStyle();
+		if (!visible)
 			return;
-		}
 
 		rw_lightstep = ds->lightstep;
 		rw_light = ds->light + (x1 - ds->x1) * rw_lightstep;
 
-		mfloorclip = openings + ds->sprbottomclip - ds->x1;
-		mceilingclip = openings + ds->sprtopclip - ds->x1;
+		short *mfloorclip = ds->sprbottomclip - ds->x1;
+		short *mceilingclip = ds->sprtopclip - ds->x1;
 
-		spryscale = ds->iscale + ds->iscalestep * (x1 - ds->x1);
-		float *MaskedSWall = (float *)(openings + ds->swall) - ds->x1;
+		//double spryscale = ds->iscale + ds->iscalestep * (x1 - ds->x1);
+		float *MaskedSWall = ds->swall - ds->x1;
 
 		// find positioning
 		side_t *scaledside;
@@ -497,20 +500,20 @@ namespace swrenderer
 		{
 			rowoffset += rw_pic->GetHeight();
 		}
-		dc_texturemid = (planez - ViewPos.Z) * yscale;
+		double texturemid = (planez - ViewPos.Z) * yscale;
 		if (rw_pic->bWorldPanning)
 		{
 			// rowoffset is added before the multiply so that the masked texture will
 			// still be positioned in world units rather than texels.
 
-			dc_texturemid = dc_texturemid + rowoffset * yscale;
+			texturemid = texturemid + rowoffset * yscale;
 			rw_offset = xs_RoundToInt(rw_offset * xscale);
 		}
 		else
 		{
 			// rowoffset is added outside the multiply so that it positions the texture
 			// by texels instead of world units.
-			dc_texturemid += rowoffset;
+			texturemid += rowoffset;
 		}
 
 		if (fixedlightlev >= 0)
@@ -544,8 +547,7 @@ namespace swrenderer
 		}
 
 		PrepLWall(lwall, curline->sidedef->TexelLength*xscale, ds->sx1, ds->sx2, WallT);
-		R_DrawDrawSeg(frontsector, curline, WallC, rw_pic, ds, x1, x2, wallupper, walllower, MaskedSWall, lwall, yscale, wallshade, rw_offset, rw_light, rw_lightstep);
-		R_FinishSetPatchStyle();
+		R_DrawDrawSeg(frontsector, curline, WallC, rw_pic, ds, x1, x2, wallupper, walllower, texturemid, MaskedSWall, lwall, yscale, wallshade, rw_offset, rw_light, rw_lightstep, ds->foggy, basecolormap);
 	}
 
 	// kg3D - walls of fake floors
@@ -558,7 +560,6 @@ namespace swrenderer
 		double floorHeight;
 		double ceilingHeight;
 
-		sprflipvert = false;
 		curline = ds->curline;
 
 		frontsector = curline->frontsector;
@@ -732,7 +733,7 @@ namespace swrenderer
 					}
 				}
 				// correct colors now
-				basecolormap = frontsector->ColorMap;
+				FDynamicColormap *basecolormap = frontsector->ColorMap;
 				wallshade = ds->shade;
 				if (fixedlightlev < 0)
 				{
@@ -744,7 +745,7 @@ namespace swrenderer
 							{
 								lightlist_t *lit = &backsector->e->XFloor.lightlist[j];
 								basecolormap = lit->extra_colormap;
-								wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + r_actualextralight);
+								wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(ds->foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + R_ActualExtraLight(ds->foggy));
 								break;
 							}
 						}
@@ -757,7 +758,7 @@ namespace swrenderer
 							{
 								lightlist_t *lit = &frontsector->e->XFloor.lightlist[j];
 								basecolormap = lit->extra_colormap;
-								wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + r_actualextralight);
+								wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(ds->foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + R_ActualExtraLight(ds->foggy));
 								break;
 							}
 						}
@@ -765,7 +766,7 @@ namespace swrenderer
 				}
 				if (rw_pic != DONT_DRAW)
 				{
-					R_RenderFakeWall(ds, x1, x2, fover ? fover : rover, wallshade);
+					R_RenderFakeWall(ds, x1, x2, fover ? fover : rover, wallshade, basecolormap);
 				}
 				else rw_pic = nullptr;
 				break;
@@ -906,7 +907,7 @@ namespace swrenderer
 					}
 				}
 				// correct colors now
-				basecolormap = frontsector->ColorMap;
+				FDynamicColormap *basecolormap = frontsector->ColorMap;
 				wallshade = ds->shade;
 				if (fixedlightlev < 0)
 				{
@@ -918,7 +919,7 @@ namespace swrenderer
 							{
 								lightlist_t *lit = &backsector->e->XFloor.lightlist[j];
 								basecolormap = lit->extra_colormap;
-								wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + r_actualextralight);
+								wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(ds->foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + R_ActualExtraLight(ds->foggy));
 								break;
 							}
 						}
@@ -931,7 +932,7 @@ namespace swrenderer
 							{
 								lightlist_t *lit = &frontsector->e->XFloor.lightlist[j];
 								basecolormap = lit->extra_colormap;
-								wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + r_actualextralight);
+								wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(ds->foggy, *lit->p_lightlevel, lit->lightsource != nullptr) + R_ActualExtraLight(ds->foggy));
 								break;
 							}
 						}
@@ -940,7 +941,7 @@ namespace swrenderer
 
 				if (rw_pic != DONT_DRAW)
 				{
-					R_RenderFakeWall(ds, x1, x2, fover ? fover : rover, wallshade);
+					R_RenderFakeWall(ds, x1, x2, fover ? fover : rover, wallshade, basecolormap);
 				}
 				else
 				{

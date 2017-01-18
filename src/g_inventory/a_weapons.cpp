@@ -311,7 +311,7 @@ bool AWeapon::Use (bool pickup)
 	// weapon, if one exists.
 	if (SisterWeapon != NULL &&
 		SisterWeapon->WeaponFlags & WIF_POWERED_UP &&
-		Owner->FindInventory (RUNTIME_CLASS(APowerWeaponLevel2), true))
+		Owner->FindInventory (PClass::FindActor(NAME_PowerWeaponLevel2), true))
 	{
 		useweap = SisterWeapon;
 	}
@@ -329,7 +329,7 @@ bool AWeapon::Use (bool pickup)
 //
 //===========================================================================
 
-void AWeapon::Destroy()
+void AWeapon::OnDestroy()
 {
 	AWeapon *sister = SisterWeapon;
 
@@ -342,7 +342,7 @@ void AWeapon::Destroy()
 			sister->Destroy();
 		}
 	}
-	Super::Destroy();
+	Super::OnDestroy();
 }
 
 //===========================================================================
@@ -824,18 +824,6 @@ DEFINE_ACTION_FUNCTION(AWeapon, EndPowerup)
 	return 0;
 }
 
-void AWeapon::CallEndPowerup()
-{
-	IFVIRTUAL(AWeapon, EndPowerup)
-	{
-		// Without the type cast this picks the 'void *' assignment...
-		VMValue params[1] = { (DObject*)this };
-		GlobalVMStack.Call(func, params, 1, nullptr, 0, nullptr);
-	}
-	else EndPowerup();
-}
-
-
 //===========================================================================
 //
 // AWeapon :: GetUpState
@@ -1298,6 +1286,19 @@ bool FWeaponSlots::LocateWeapon (PClassWeapon *type, int *const slot, int *const
 		}
 	}
 	return false;
+}
+
+
+DEFINE_ACTION_FUNCTION(FWeaponSlots, LocateWeapon)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FWeaponSlots);
+	PARAM_CLASS(weap, AWeapon);
+	int slot = 0, index = 0;
+	bool retv = self->LocateWeapon(weap, &slot, &index);
+	if (numret >= 1) ret[0].SetInt(retv);
+	if (numret >= 2) ret[1].SetInt(slot);
+	if (numret >= 3) ret[2].SetInt(index);
+	return MIN(numret, 3);
 }
 
 //===========================================================================

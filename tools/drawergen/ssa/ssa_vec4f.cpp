@@ -81,9 +81,13 @@ SSAVec4f::SSAVec4f(llvm::Value *v)
 SSAVec4f::SSAVec4f(SSAVec4i i32)
 : v(0)
 {
+#ifdef ARM_TARGET
+	v = SSAScope::builder().CreateSIToFP(i32.v, llvm_type(), SSAScope::hint());
+#else
 	//llvm::VectorType *m128type = llvm::VectorType::get(llvm::Type::getFloatTy(*context), 4);
 	//return builder->CreateSIToFP(i32.v, m128type);
 	v = SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::x86_sse2_cvtdq2ps), i32.v, SSAScope::hint());
+#endif
 }
 
 llvm::Type *SSAVec4f::llvm_type()
@@ -109,71 +113,6 @@ SSAVec4f SSAVec4f::insert_element(SSAVec4f vec4f, SSAFloat value, int index)
 SSAVec4f SSAVec4f::bitcast(SSAVec4i i32)
 {
 	return SSAVec4i::from_llvm(SSAScope::builder().CreateBitCast(i32.v, llvm_type(), SSAScope::hint()));
-}
-
-SSAVec4f SSAVec4f::sqrt(SSAVec4f f)
-{
-	std::vector<llvm::Type *> params;
-	params.push_back(SSAVec4f::llvm_type());
-	return SSAFloat::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::sqrt, params), f.v, SSAScope::hint()));
-	//return SSAVec4f::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::x86_sse_sqrt_ps), f.v, SSAScope::hint()));
-}
-
-SSAVec4f SSAVec4f::rcp(SSAVec4f f)
-{
-	return SSAVec4f::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::x86_sse_rcp_ps), f.v, SSAScope::hint()));
-}
-
-SSAVec4f SSAVec4f::sin(SSAVec4f val)
-{
-	std::vector<llvm::Type *> params;
-	params.push_back(SSAVec4f::llvm_type());
-	return SSAFloat::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::sin, params), val.v, SSAScope::hint()));
-}
-
-SSAVec4f SSAVec4f::cos(SSAVec4f val)
-{
-	std::vector<llvm::Type *> params;
-	params.push_back(SSAVec4f::llvm_type());
-	return SSAFloat::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::cos, params), val.v, SSAScope::hint()));
-}
-
-SSAVec4f SSAVec4f::pow(SSAVec4f val, SSAVec4f power)
-{
-	std::vector<llvm::Type *> params;
-	params.push_back(SSAVec4f::llvm_type());
-	//params.push_back(SSAVec4f::llvm_type());
-	std::vector<llvm::Value*> args;
-	args.push_back(val.v);
-	args.push_back(power.v);
-	return SSAFloat::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::pow, params), args, SSAScope::hint()));
-}
-
-SSAVec4f SSAVec4f::exp(SSAVec4f val)
-{
-	std::vector<llvm::Type *> params;
-	params.push_back(SSAVec4f::llvm_type());
-	return SSAFloat::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::exp, params), val.v, SSAScope::hint()));
-}
-
-SSAVec4f SSAVec4f::log(SSAVec4f val)
-{
-	std::vector<llvm::Type *> params;
-	params.push_back(SSAVec4f::llvm_type());
-	return SSAFloat::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::log, params), val.v, SSAScope::hint()));
-}
-
-SSAVec4f SSAVec4f::fma(SSAVec4f a, SSAVec4f b, SSAVec4f c)
-{
-	std::vector<llvm::Type *> params;
-	params.push_back(SSAVec4f::llvm_type());
-	//params.push_back(SSAVec4f::llvm_type());
-	//params.push_back(SSAVec4f::llvm_type());
-	std::vector<llvm::Value*> args;
-	args.push_back(a.v);
-	args.push_back(b.v);
-	args.push_back(c.v);
-	return SSAFloat::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::fma, params), args, SSAScope::hint()));
 }
 
 void SSAVec4f::transpose(SSAVec4f &row0, SSAVec4f &row1, SSAVec4f &row2, SSAVec4f &row3)

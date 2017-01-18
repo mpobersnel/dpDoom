@@ -16,6 +16,8 @@
 #include "d_player.h"
 #include "a_armor.h"
 #include "r_data/sprites.h"
+#include "g_levellocals.h"
+#include "virtual.h"
 
 static FRandom pr_morphmonst ("MorphMonster");
 
@@ -57,9 +59,9 @@ bool P_MorphPlayer (player_t *activator, player_t *p, PClassPlayerPawn *spawntyp
 		if ((p->mo->GetClass() == spawntype)
 			&& (p->mo->PlayerFlags & PPF_CANSUPERMORPH)
 			&& (p->morphTics < (((duration) ? duration : MORPHTICS) - TICRATE))
-			&& (p->mo->FindInventory (RUNTIME_CLASS(APowerWeaponLevel2), true) == nullptr))
+			&& (p->mo->FindInventory (PClass::FindActor(NAME_PowerWeaponLevel2), true) == nullptr))
 		{ // Make a super chicken
-			p->mo->GiveInventoryType (RUNTIME_CLASS(APowerWeaponLevel2));
+			p->mo->GiveInventoryType (PClass::FindActor(NAME_PowerWeaponLevel2));
 		}
 		return false;
 	}
@@ -115,7 +117,7 @@ bool P_MorphPlayer (player_t *activator, player_t *p, PClassPlayerPawn *spawntyp
 	morphed->flags  |= actor->flags & (MF_SHADOW|MF_NOGRAVITY);
 	morphed->flags2 |= actor->flags2 & MF2_FLY;
 	morphed->flags3 |= actor->flags3 & MF3_GHOST;
-	AActor *eflash = Spawn(((enter_flash) ? enter_flash : RUNTIME_CLASS(ATeleportFog)), actor->PosPlusZ(TELEFOGHEIGHT), ALLOW_REPLACE);
+	AActor *eflash = Spawn(((enter_flash) ? enter_flash : PClass::FindActor("TeleportFog")), actor->PosPlusZ(TELEFOGHEIGHT), ALLOW_REPLACE);
 	actor->player = nullptr;
 	actor->alternative = morphed;
 	actor->flags &= ~(MF_SOLID|MF_SHOOTABLE);
@@ -127,7 +129,7 @@ bool P_MorphPlayer (player_t *activator, player_t *p, PClassPlayerPawn *spawntyp
 	p->MorphedPlayerClass = spawntype;
 
 	p->MorphStyle = style;
-	p->MorphExitFlash = (exit_flash) ? exit_flash : RUNTIME_CLASS(ATeleportFog);
+	p->MorphExitFlash = (exit_flash) ? exit_flash : PClass::FindActor("TeleportFog");
 	p->health = morphed->health;
 	p->mo = morphed;
 	p->Vel.X = p->Vel.Y = 0;
@@ -262,7 +264,7 @@ bool P_UndoPlayerMorph (player_t *activator, player_t *player, int unmorphflag, 
 	player->MorphStyle = 0;
 	player->MorphExitFlash = nullptr;
 	player->viewheight = mo->ViewHeight;
-	AInventory *level2 = mo->FindInventory (RUNTIME_CLASS(APowerWeaponLevel2), true);
+	AInventory *level2 = mo->FindInventory (PClass::FindActor(NAME_PowerWeaponLevel2), true);
 	if (level2 != nullptr)
 	{
 		level2->Destroy ();
@@ -415,7 +417,7 @@ bool P_MorphMonster (AActor *actor, PClassActor *spawntype, int duration, int st
 
 	morphed->UnmorphTime = level.time + ((duration) ? duration : MORPHTICS) + pr_morphmonst();
 	morphed->MorphStyle = style;
-	morphed->MorphExitFlash = (exit_flash) ? exit_flash : RUNTIME_CLASS(ATeleportFog);
+	morphed->MorphExitFlash = (exit_flash) ? exit_flash : PClass::FindActor("TeleportFog");
 	morphed->FlagsSave = actor->flags & ~MF_JUSTHIT;
 	morphed->special = actor->special;
 	memcpy (morphed->args, actor->args, sizeof(actor->args));
@@ -433,7 +435,7 @@ bool P_MorphMonster (AActor *actor, PClassActor *spawntype, int duration, int st
 	actor->flags &= ~(MF_SOLID|MF_SHOOTABLE);
 	actor->flags |= MF_UNMORPHED;
 	actor->renderflags |= RF_INVISIBLE;
-	AActor *eflash = Spawn(((enter_flash) ? enter_flash : RUNTIME_CLASS(ATeleportFog)), actor->PosPlusZ(TELEFOGHEIGHT), ALLOW_REPLACE);
+	AActor *eflash = Spawn(((enter_flash) ? enter_flash : PClass::FindActor("TeleportFog")), actor->PosPlusZ(TELEFOGHEIGHT), ALLOW_REPLACE);
 	if (eflash)
 		eflash->target = morphed;
 	return true;
@@ -592,11 +594,17 @@ bool P_MorphedDeath(AActor *actor, AActor **morphed, int *morphedstyle, int *mor
 
 void EndAllPowerupEffects(AInventory *item)
 {
+	auto ptype = PClass::FindActor(NAME_Powerup);
 	while (item != NULL)
 	{
-		if (item->IsKindOf(RUNTIME_CLASS(APowerup)))
+		if (item->IsKindOf(ptype))
 		{
-			static_cast<APowerup *>(item)->CallEndEffect();
+			IFVIRTUALPTRNAME(item, NAME_Powerup, EndEffect)
+			{
+				VMValue params[1] = { item };
+				VMFrameStack stack;
+				GlobalVMStack.Call(func, params, 1, nullptr, 0, nullptr);
+			}
 		}
 		item = item->Inventory;
 	}
@@ -612,11 +620,17 @@ void EndAllPowerupEffects(AInventory *item)
 
 void InitAllPowerupEffects(AInventory *item)
 {
+	auto ptype = PClass::FindActor(NAME_Powerup);
 	while (item != NULL)
 	{
-		if (item->IsKindOf(RUNTIME_CLASS(APowerup)))
+		if (item->IsKindOf(ptype))
 		{
-			static_cast<APowerup *>(item)->CallInitEffect();
+			IFVIRTUALPTRNAME(item, NAME_Powerup, EndEffect)
+			{
+				VMValue params[1] = { item };
+				VMFrameStack stack;
+				GlobalVMStack.Call(func, params, 1, nullptr, 0, nullptr);
+			}
 		}
 		item = item->Inventory;
 	}
@@ -689,13 +703,13 @@ void AMorphedMonster::Serialize(FSerializer &arc)
 		("flagsave", FlagsSave);
 }
 
-void AMorphedMonster::Destroy ()
+void AMorphedMonster::OnDestroy ()
 {
 	if (UnmorphedMe != NULL)
 	{
 		UnmorphedMe->Destroy ();
 	}
-	Super::Destroy ();
+	Super::OnDestroy();
 }
 
 void AMorphedMonster::Die (AActor *source, AActor *inflictor, int dmgflags)

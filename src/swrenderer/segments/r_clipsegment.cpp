@@ -18,16 +18,14 @@
 #include "i_system.h"
 #include "p_lnspec.h"
 #include "p_setup.h"
-#include "swrenderer/r_main.h"
 #include "swrenderer/drawers/r_draw.h"
-#include "swrenderer/scene/r_things.h"
 #include "swrenderer/scene/r_3dfloors.h"
 #include "a_sharedglobal.h"
 #include "g_level.h"
 #include "p_effect.h"
 #include "doomstat.h"
 #include "r_state.h"
-#include "swrenderer/scene/r_bsp.h"
+#include "swrenderer/scene/r_opaque_pass.h"
 #include "v_palette.h"
 #include "r_sky.h"
 #include "po_man.h"
@@ -36,18 +34,13 @@
 
 namespace swrenderer
 {
-	namespace
+	RenderClipSegment *RenderClipSegment::Instance()
 	{
-		struct cliprange_t
-		{
-			short first, last;
-		};
-
-		cliprange_t *newend; // newend is one past the last valid seg
-		cliprange_t solidsegs[MAXWIDTH / 2 + 2];
+		static RenderClipSegment instance;
+		return &instance;
 	}
 
-	void R_ClearClipSegs(short left, short right)
+	void RenderClipSegment::Clear(short left, short right)
 	{
 		solidsegs[0].first = -0x7fff;
 		solidsegs[0].last = left;
@@ -56,7 +49,7 @@ namespace swrenderer
 		newend = solidsegs+2;
 	}
 
-	bool R_CheckClipWallSegment(int first, int last)
+	bool RenderClipSegment::Check(int first, int last)
 	{
 		cliprange_t *start;
 
@@ -80,7 +73,7 @@ namespace swrenderer
 		return false;
 	}
 
-	bool R_IsWallSegmentVisible(int sx1, int sx2)
+	bool RenderClipSegment::IsVisible(int sx1, int sx2)
 	{
 		// Does not cross a pixel.
 		if (sx2 <= sx1)
@@ -99,7 +92,7 @@ namespace swrenderer
 		return true;
 	}
 
-	bool R_ClipWallSegment(int first, int last, bool solid, VisibleSegmentCallback callback)
+	bool RenderClipSegment::Clip(int first, int last, bool solid, VisibleSegmentCallback callback)
 	{
 		cliprange_t *next, *start;
 		int i, j;

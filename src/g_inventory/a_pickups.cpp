@@ -22,6 +22,7 @@
 #include "virtual.h"
 #include "a_ammo.h"
 #include "c_functions.h"
+#include "g_levellocals.h"
 
 EXTERN_CVAR(Bool, sv_unlimited_pickup)
 
@@ -369,31 +370,6 @@ void AInventory::CallDoEffect()
 
 //===========================================================================
 //
-// AInventory :: Travelled
-//
-// Called when an item in somebody's inventory is carried over to another
-// map, in case it needs to do special reinitialization.
-//
-//===========================================================================
-
-void AInventory::Travelled ()
-{
-}
-
-//===========================================================================
-//
-// AInventory :: OwnerDied
-//
-// Items receive this message when their owners die.
-//
-//===========================================================================
-
-void AInventory::OwnerDied ()
-{
-}
-
-//===========================================================================
-//
 // AInventory :: HandlePickup
 //
 // Returns true if the pickup was handled (or should not happen at all),
@@ -483,6 +459,12 @@ bool AInventory::GoAway ()
 		return false;
 	}
 	return true;
+}
+
+DEFINE_ACTION_FUNCTION(AInventory, GoAway)
+{
+	PARAM_SELF_PROLOGUE(AInventory);
+	ACTION_RETURN_BOOL(self->GoAway());
 }
 
 //===========================================================================
@@ -644,6 +626,8 @@ void AInventory::BecomeItem ()
 	RemoveFromHash ();
 	flags &= ~MF_SPECIAL;
 	ChangeStatNum(STAT_INVENTORY);
+	// stop all sounds this item is playing.
+	for(int i = 1;i<=7;i++) S_StopSound(this, i);
 	SetState (FindState("Held"));
 }
 
@@ -701,12 +685,17 @@ DEFINE_ACTION_FUNCTION(AInventory, BecomePickup)
 
 void AInventory::AbsorbDamage (int damage, FName damageType, int &newdamage)
 {
-	if (Inventory != NULL)
-	{
-		Inventory->AbsorbDamage (damage, damageType, newdamage);
-	}
 }
 
+DEFINE_ACTION_FUNCTION(AInventory, AbsorbDamage)
+{
+	PARAM_SELF_PROLOGUE(AInventory);
+	PARAM_INT(damage);
+	PARAM_NAME(type);
+	PARAM_POINTER(newdmg, int);
+	self->AbsorbDamage(damage, type, *newdmg);
+	return 0;
+}
 //===========================================================================
 //
 // AInventory :: ModifyDamage
@@ -780,24 +769,6 @@ bool AInventory::GetNoTeleportFreeze ()
 		self = self->Inventory;
 	}
 	return false;
-}
-
-//===========================================================================
-//
-// AInventory :: AlterWeaponSprite
-//
-// Allows inventory items to alter a player's weapon sprite just before it
-// is drawn.
-//
-//===========================================================================
-
-int AInventory::AlterWeaponSprite (visstyle_t *vis)
-{
-	if (Inventory != NULL)
-	{
-		return Inventory->AlterWeaponSprite (vis);
-	}
-	return 0;
 }
 
 //===========================================================================
@@ -1134,14 +1105,14 @@ bool AInventory::CallShouldStay()
 //
 //===========================================================================
 
-void AInventory::Destroy ()
+void AInventory::OnDestroy ()
 {
 	if (Owner != NULL)
 	{
 		Owner->RemoveInventory (this);
 	}
 	Inventory = NULL;
-	Super::Destroy ();
+	Super::OnDestroy();
 
 	// Although contrived it can theoretically happen that these variables still got a pointer to this item
 	if (SendItemUse == this) SendItemUse = NULL;
@@ -1283,6 +1254,14 @@ bool AInventory::DrawPowerup (int x, int y)
 	return false;
 }
 
+DEFINE_ACTION_FUNCTION(AInventory, DrawPowerup)
+{
+	PARAM_SELF_PROLOGUE(AInventory);
+	PARAM_INT(x);
+	PARAM_INT(y);
+	ACTION_RETURN_BOOL(self->DrawPowerup(x, y));
+}
+
 //===========================================================================
 //
 // AInventory :: DoRespawn
@@ -1357,7 +1336,7 @@ bool AInventory::TryPickup (AActor *&toucher)
 		}
 		// The item is placed in the inventory just long enough to be used.
 		toucher->AddInventory (this);
-		bool usegood = Use (true);
+		bool usegood = CallUse (true);
 		toucher->RemoveInventory (this);
 
 		if (usegood)
@@ -1394,7 +1373,7 @@ bool AInventory::TryPickup (AActor *&toucher)
 			copy->ItemFlags &= ~IF_CREATECOPYMOVED;
 		}
 		// Continue onwards with the rest
-		copy->AttachToOwner (newtoucher);
+		copy->CallAttachToOwner (newtoucher);
 		if (ItemFlags & IF_AUTOACTIVATE)
 		{
 			if (copy->CallUse (true))

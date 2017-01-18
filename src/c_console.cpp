@@ -67,6 +67,7 @@
 #include "d_player.h"
 #include "gstrings.h"
 #include "c_consolebuffer.h"
+#include "g_levellocals.h"
 
 #include "gi.h"
 
@@ -1327,6 +1328,12 @@ void C_HideConsole ()
 		ConBottom = 0;
 		HistPos = NULL;
 	}
+}
+
+DEFINE_ACTION_FUNCTION(_Console, HideConsole)
+{
+	C_HideConsole();
+	return 0;
 }
 
 static bool C_HandleKey (event_t *ev, FCommandBuffer &buffer)

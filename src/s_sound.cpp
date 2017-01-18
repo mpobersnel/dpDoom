@@ -53,6 +53,8 @@
 #include "serializer.h"
 #include "d_player.h"
 #include "r_state.h"
+#include "g_levellocals.h"
+#include "virtual.h"
 
 // MACROS ------------------------------------------------------------------
 
@@ -478,7 +480,20 @@ void S_PrecacheLevel ()
 		// Precache all sounds known to be used by the currently spawned actors.
 		while ( (actor = iterator.Next()) != NULL )
 		{
-			actor->MarkPrecacheSounds();
+			IFVIRTUALPTR(actor, AActor, MarkPrecacheSounds)
+			{
+				// Without the type cast this picks the 'void *' assignment...
+				VMValue params[1] = { actor };
+				GlobalVMStack.Call(func, params, 1, nullptr, 0, nullptr);
+			}
+			else
+			{
+				actor->MarkPrecacheSounds();
+			}
+		}
+		for (auto i : gameinfo.PrecachedSounds)
+		{
+			level.info->PrecacheSounds[i].MarkUsed();
 		}
 		// Precache all extra sounds requested by this map.
 		for (i = 0; i < level.info->PrecacheSounds.Size(); ++i)

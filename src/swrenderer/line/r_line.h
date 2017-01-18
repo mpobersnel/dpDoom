@@ -13,6 +13,15 @@
 
 #pragma once
 
+#include "vectors.h"
+
+struct seg_t;
+struct subsector_t;
+struct sector_t;
+struct side_t;
+struct line_t;
+struct FDynamicColormap;
+
 namespace swrenderer
 {
 	struct visplane_t;
@@ -40,7 +49,7 @@ namespace swrenderer
 	class SWRenderLine
 	{
 	public:
-		void Render(seg_t *line, subsector_t *subsector, sector_t *sector, sector_t *fakebacksector, visplane_t *floorplane, visplane_t *ceilingplane);
+		void Render(seg_t *line, subsector_t *subsector, sector_t *sector, sector_t *fakebacksector, visplane_t *floorplane, visplane_t *ceilingplane, bool foggy, FDynamicColormap *basecolormap);
 
 	private:
 		bool RenderWallSegment(int x1, int x2);
@@ -108,5 +117,8 @@ namespace swrenderer
 		FTexture *toptexture;
 		FTexture *bottomtexture;
 		FTexture *midtexture;
+
+		bool foggy;
+		FDynamicColormap *basecolormap;
 	};
 }

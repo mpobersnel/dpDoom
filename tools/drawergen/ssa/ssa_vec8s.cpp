@@ -62,8 +62,20 @@ SSAVec8s::SSAVec8s(llvm::Value *v)
 SSAVec8s::SSAVec8s(SSAVec4i i0, SSAVec4i i1)
 : v(0)
 {
+#ifdef ARM_TARGET
+	/*
+	llvm::Value *int16x4_i0 = SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::arm_neon_vqmovns), i0.v, SSAScope::hint());
+	llvm::Value *int16x4_i1 = SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::arm_neon_vqmovns), i1.v, SSAScope::hint());
+	v = shuffle(from_llvm(int16x4_i0), from_llvm(int16x4_i1), 0, 1, 2, 3, 4, 5, 6, 7).v;
+	*/
+	// To do: add some clamping here
+	llvm::Value *int16x4_i0 = SSAScope::builder().CreateTrunc(i0.v, llvm::VectorType::get(llvm::Type::getInt16Ty(SSAScope::context()), 4));
+	llvm::Value *int16x4_i1 = SSAScope::builder().CreateTrunc(i1.v, llvm::VectorType::get(llvm::Type::getInt16Ty(SSAScope::context()), 4));
+	v = shuffle(from_llvm(int16x4_i0), from_llvm(int16x4_i1), 0, 1, 2, 3, 4, 5, 6, 7).v;
+#else
 	llvm::Value *values[2] = { i0.v, i1.v };
 	v = SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::x86_sse2_packssdw_128), values, SSAScope::hint());
+#endif
 }
 
 llvm::Type *SSAVec8s::llvm_type()
@@ -104,26 +116,6 @@ SSAVec8s SSAVec8s::extendhi(SSAVec16ub a)
 SSAVec8s SSAVec8s::extendlo(SSAVec16ub a)
 {
 	return SSAVec8s::bitcast(SSAVec16ub::shuffle(a, SSAVec16ub((unsigned char)0), 0, 16+0, 1, 16+1, 2, 16+2, 3, 16+3, 4, 16+4, 5, 16+5, 6, 16+6, 7, 16+7)); // _mm_unpacklo_epi8
-}
-
-/*
-SSAVec8s SSAVec8s::min_sse2(SSAVec8s a, SSAVec8s b)
-{
-	llvm::Value *values[2] = { a.v, b.v };
-	return SSAVec8s::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::x86_sse2_pmins_w), values, SSAScope::hint()));
-}
-
-SSAVec8s SSAVec8s::max_sse2(SSAVec8s a, SSAVec8s b)
-{
-	llvm::Value *values[2] = { a.v, b.v };
-	return SSAVec8s::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::x86_sse2_pmaxs_w), values, SSAScope::hint()));
-}
-*/
-
-SSAVec8s SSAVec8s::mulhi(SSAVec8s a, SSAVec8s b)
-{
-	llvm::Value *values[2] = { a.v, b.v };
-	return SSAVec8s::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::x86_sse2_pmulh_w), values, SSAScope::hint()));
 }
 
 SSAVec8s operator+(const SSAVec8s &a, const SSAVec8s &b)
@@ -188,9 +180,7 @@ SSAVec8s operator/(const SSAVec8s &a, short b)
 
 SSAVec8s operator<<(const SSAVec8s &a, int bits)
 {
-	//return SSAScope::builder().CreateShl(a.v, bits);
-	llvm::Value *values[2] = { a.v, llvm::ConstantInt::get(SSAScope::context(), llvm::APInt(32, (uint64_t)bits)) };
-	return SSAVec8s::from_llvm(SSAScope::builder().CreateCall(SSAScope::intrinsic(llvm::Intrinsic::x86_sse2_pslli_d), values, SSAScope::hint()));
+	return SSAVec8s::from_llvm(SSAScope::builder().CreateShl(a.v, bits, SSAScope::hint()));
 }
 
 SSAVec8s operator>>(const SSAVec8s &a, int bits)

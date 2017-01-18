@@ -28,7 +28,6 @@
 #include <functional>
 #include "doomdata.h"
 #include "r_utility.h"
-#include "swrenderer/r_main.h"
 #include "scene/poly_portal.h"
 #include "scene/poly_playersprite.h"
 #include "scene/poly_sky.h"
@@ -39,8 +38,8 @@ class DCanvas;
 class PolyRenderer
 {
 public:
+	void RenderView(player_t *player);
 	void RenderViewToCanvas(AActor *actor, DCanvas *canvas, int x, int y, int width, int height, bool dontmaplines);
-	void RenderActorView(AActor *actor, bool dontmaplines);
 	void RenderRemainingPlayerSprites();
 
 	static PolyRenderer *Instance();
@@ -53,6 +52,7 @@ public:
 	bool DontMapLines = false;
 
 private:
+	void RenderActorView(AActor *actor, bool dontmaplines);
 	void ClearBuffers();
 	void SetSceneViewport();
 	void SetupPerspectiveMatrix();

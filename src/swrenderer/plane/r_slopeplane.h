@@ -13,10 +13,24 @@
 
 #pragma once
 
-#include "r_visibleplane.h"
+#include "r_planerenderer.h"
 
 namespace swrenderer
 {
-	void R_DrawTiltedPlane(visplane_t *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked);
-	void R_MapTiltedPlane(int y, int x1, int x2);
+	class RenderSlopePlane : PlaneRenderer
+	{
+	public:
+		void Render(visplane_t *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *basecolormap);
+
+	private:
+		void RenderLine(int y, int x1, int x2) override;
+
+		FVector3 plane_sz, plane_su, plane_sv;
+		float planelightfloat;
+		bool plane_shade;
+		int planeshade;
+		fixed_t pviewx, pviewy;
+		fixed_t xscale, yscale;
+		FDynamicColormap *basecolormap;
+	};
 }

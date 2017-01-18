@@ -29,6 +29,7 @@
 #include "poly_portal.h"
 #include "polyrenderer/poly_renderer.h"
 #include "r_sky.h"
+#include "swrenderer/scene/r_light.h"
 
 EXTERN_CVAR(Int, r_3dfloors)
 
@@ -99,13 +100,14 @@ void RenderPolyPlane::Render3DFloor(const TriMatrix &worldToClip, const Vec4f &c
 	if (swrenderer::fixedlightlev < 0 && sub->sector->e->XFloor.lightlist.Size())
 	{
 		lightlist_t *light = P_GetPlaneLight(sub->sector, &sub->sector->ceilingplane, false);
-		swrenderer::basecolormap = light->extra_colormap;
+		//basecolormap = light->extra_colormap;
 		lightlevel = *light->p_lightlevel;
 	}
 
 	UVTransform xform(ceiling ? fakeFloor->top.model->planes[sector_t::ceiling].xform : fakeFloor->top.model->planes[sector_t::floor].xform, tex);
 
 	PolyDrawArgs args;
+	args.uniforms.globvis = (float)swrenderer::r_TiltVisibility * 48.0f;
 	args.uniforms.light = (uint32_t)(lightlevel / 255.0f * 256.0f);
 	if (swrenderer::fixedlightlev >= 0 || swrenderer::fixedcolormap)
 		args.uniforms.light = 256;
@@ -299,6 +301,7 @@ void RenderPolyPlane::Render(const TriMatrix &worldToClip, const Vec4f &clipPlan
 	UVTransform transform(ceiling ? frontsector->planes[sector_t::ceiling].xform : frontsector->planes[sector_t::floor].xform, tex);
 
 	PolyDrawArgs args;
+	args.uniforms.globvis = (float)swrenderer::r_TiltVisibility * 48.0f;
 	args.uniforms.light = (uint32_t)(frontsector->lightlevel / 255.0f * 256.0f);
 	if (swrenderer::fixedlightlev >= 0 || swrenderer::fixedcolormap)
 		args.uniforms.light = 256;

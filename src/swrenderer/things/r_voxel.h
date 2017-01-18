@@ -1,5 +1,6 @@
 /*
 **  Voxel rendering
+**  Copyright (c) 1998-2016 Randy Heit
 **  Copyright (c) 2016 Magnus Norddahl
 **
 **  This software is provided 'as-is', without any express or implied
@@ -23,14 +24,72 @@
 #pragma once
 
 struct kvxslab_t;
+struct FVoxelMipLevel;
+struct FVoxel;
 
 namespace swrenderer
 {
-	struct vissprite_t;
+	// [RH] A c-buffer. Used for keeping track of offscreen voxel spans.
+	struct FCoverageBuffer
+	{
+		struct Span
+		{
+			Span *NextSpan;
+			short Start, Stop;
+		};
 
-	void R_DrawVisVoxel(vissprite_t *sprite, int minZ, int maxZ, short *cliptop, short *clipbottom);
-	void R_FillBox(DVector3 origin, double extentX, double extentY, int color, short *cliptop, short *clipbottom, bool viewspace, bool pixelstretch);
-	kvxslab_t *R_GetSlabStart(const FVoxelMipLevel &mip, int x, int y);
-	kvxslab_t *R_GetSlabEnd(const FVoxelMipLevel &mip, int x, int y);
-	kvxslab_t *R_NextSlab(kvxslab_t *slab);
+		FCoverageBuffer(int size);
+		~FCoverageBuffer();
+
+		void Clear();
+		void InsertSpan(int listnum, int start, int stop);
+		Span *AllocSpan();
+
+		FMemArena SpanArena;
+		Span **Spans;	// [0..NumLists-1] span lists
+		Span *FreeSpans;
+		unsigned int NumLists;
+	};
+
+	class RenderVoxel : public VisibleSprite
+	{
+	public:
+		static void Project(AActor *thing, DVector3 pos, FVoxelDef *voxel, const DVector2 &spriteScale, int renderflags, WaterFakeSide fakeside, F3DFloor *fakefloor, F3DFloor *fakeceiling, sector_t *current_sector, int spriteshade, bool foggy, FDynamicColormap *basecolormap);
+
+		static void Deinit();
+
+	protected:
+		bool IsVoxel() const override { return true; }
+		void Render(short *cliptop, short *clipbottom, int minZ, int maxZ) override;
+
+	private:
+		struct posang
+		{
+			FVector3 vpos; // view origin
+			FAngle vang; // view angle
+		};
+
+		posang pa;
+		DAngle Angle;
+		fixed_t xscale;
+		FVoxel *voxel;
+
+		uint32_t Translation;
+		uint32_t FillColor;
+
+		enum { DVF_OFFSCREEN = 1, DVF_SPANSONLY = 2, DVF_MIRRORED = 4 };
+
+		static void FillBox(DVector3 origin, double extentX, double extentY, int color, short *cliptop, short *clipbottom, bool viewspace, bool pixelstretch);
+
+		static kvxslab_t *GetSlabStart(const FVoxelMipLevel &mip, int x, int y);
+		static kvxslab_t *GetSlabEnd(const FVoxelMipLevel &mip, int x, int y);
+		static kvxslab_t *NextSlab(kvxslab_t *slab);
+
+		static void CheckOffscreenBuffer(int width, int height, bool spansonly);
+
+		static FCoverageBuffer *OffscreenCoverageBuffer;
+		static int OffscreenBufferWidth;
+		static int OffscreenBufferHeight;
+		static uint8_t *OffscreenColorBuffer;
+	};
 }

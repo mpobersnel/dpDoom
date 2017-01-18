@@ -45,8 +45,8 @@
 #ifndef NO_SWRENDER
 #include "swrenderer/drawers/r_draw.h"
 #include "swrenderer/drawers/r_draw_rgba.h"
-#include "swrenderer/r_main.h"
-#include "swrenderer/scene/r_things.h"
+#include "swrenderer/scene/r_light.h"
+#include "swrenderer/scene/r_viewport.h"
 #endif
 #include "r_data/r_translate.h"
 #include "doomstat.h"
@@ -62,6 +62,7 @@
 #include "d_net.h"
 #include "colormatcher.h"
 #include "r_data/colormaps.h"
+#include "g_levellocals.h"
 
 CUSTOM_CVAR(Int, uiscale, 2, CVAR_ARCHIVE | CVAR_NOINITCALL)
 {
@@ -128,6 +129,16 @@ void DCanvas::DrawTexture (FTexture *img, double x, double y, int tags_first, ..
 	DrawTextureParms(img, parms);
 }
 
+DEFINE_ACTION_FUNCTION(_Screen, DrawHUDTexture)
+{
+	PARAM_PROLOGUE;
+	PARAM_INT(texid);
+	PARAM_FLOAT(x);
+	PARAM_FLOAT(y);
+	screen->DrawTexture(TexMan(FSetTextureID(texid)), x, y, DTA_HUDRules, HUD_Normal, TAG_END);
+	return 0;
+}
+
 void DCanvas::DrawTextureParms(FTexture *img, DrawParms &parms)
 {
 #ifndef NO_SWRENDER
@@ -188,10 +199,11 @@ void DCanvas::DrawTextureParms(FTexture *img, DrawParms &parms)
 
 	fixedcolormap = dc_fcolormap;
 	bool visible;
+	FDynamicColormap *basecolormap = nullptr;
 	if (r_swtruecolor)
-		visible = R_SetPatchStyle(parms.style, parms.Alpha, -1, parms.fillcolor);
+		visible = R_SetPatchStyle(parms.style, parms.Alpha, -1, parms.fillcolor, basecolormap);
 	else
-		visible = R_SetPatchStyle(parms.style, parms.Alpha, 0, parms.fillcolor);
+		visible = R_SetPatchStyle(parms.style, parms.Alpha, 0, parms.fillcolor, basecolormap);
 
 	BYTE *destorgsave = dc_destorg;
 	int destheightsave = dc_destheight;
@@ -212,23 +224,24 @@ void DCanvas::DrawTextureParms(FTexture *img, DrawParms &parms)
 
 		// There is not enough precision in the drawing routines to keep the full
 		// precision for y0. :(
+		double sprtopscreen;
 		modf(y0, &sprtopscreen);
 
 		double yscale = parms.destheight / img->GetHeight();
 		double iyscale = 1 / yscale;
 
-		spryscale = yscale;
+		double spryscale = yscale;
 		assert(spryscale > 0);
 
-		sprflipvert = false;
-		//dc_iscale = FLOAT2FIXED(iyscale);
-		//dc_texturemid = (-y0) * iyscale;
-		//dc_iscale = 0xffffffffu / (unsigned)spryscale;
-		dc_iscale = FLOAT2FIXED(1 / spryscale);
-		dc_texturemid = (CenterY - 1 - sprtopscreen) * dc_iscale / 65536;
+		bool sprflipvert = false;
+		fixed_t iscale = FLOAT2FIXED(1 / spryscale);
+		//dc_texturemid = (CenterY - 1 - sprtopscreen) * iscale / 65536;
 		fixed_t frac = 0;
 		double xiscale = img->GetWidth() / parms.destwidth;
 		double x2 = x0 + parms.destwidth;
+
+		short *mfloorclip;
+		short *mceilingclip;
 
 		if (bottomclipper[0] != parms.dclip)
 		{
@@ -272,20 +285,19 @@ void DCanvas::DrawTextureParms(FTexture *img, DrawParms &parms)
 			x2 = parms.rclip;
 		}
 
-		dc_x = int(x0);
+		int x = int(x0);
 		int x2_i = int(x2);
 		fixed_t xiscale_i = FLOAT2FIXED(xiscale);
 
-		while (dc_x < x2_i)
+		while (x < x2_i)
 		{
-			R_DrawMaskedColumn(img, frac, !parms.masked);
-			dc_x++;
+			R_DrawMaskedColumn(x, iscale, img, frac, spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip, !parms.masked);
+			x++;
 			frac += xiscale_i;
 		}
 
 		CenterY = centeryback;
 	}
-	R_FinishSetPatchStyle ();
 
 	dc_destorg = destorgsave;
 	dc_destheight = destheightsave;

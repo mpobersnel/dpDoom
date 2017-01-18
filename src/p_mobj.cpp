@@ -71,7 +71,8 @@
 #include "virtual.h"
 #include "a_armor.h"
 #include "a_ammo.h"
-#include "a_health.h"
+#include "g_levellocals.h"
+#include "a_morph.h"
 
 // MACROS ------------------------------------------------------------------
 
@@ -313,6 +314,7 @@ DEFINE_FIELD(AActor, MissileState)
 DEFINE_FIELD(AActor, ConversationRoot)
 DEFINE_FIELD(AActor, Conversation)
 DEFINE_FIELD(AActor, DecalGenerator)
+DEFINE_FIELD(AActor, fountaincolor)
 
 DEFINE_FIELD(PClassActor, Obituary)
 DEFINE_FIELD(PClassActor, HitObituary)
@@ -365,6 +367,7 @@ void AActor::Serialize(FSerializer &arc)
 		A("lastlookpn", LastLookPlayerNumber)
 		("lastlookactor", LastLookActor)
 		A("effects", effects)
+		A("fountaincolor", fountaincolor)
 		A("alpha", Alpha)
 		A("fillcolor", fillcolor)
 		A("sector", Sector)
@@ -819,11 +822,13 @@ bool AActor::GiveInventory(PClassInventory *type, int amount, bool givecheat)
 	return result;
 }
 
-DEFINE_ACTION_FUNCTION(AActor, Inventory)
+DEFINE_ACTION_FUNCTION(AActor, GiveInventory)
 {
 	PARAM_SELF_PROLOGUE(AActor);
-	PARAM_OBJECT_NOT_NULL(item, AInventory);
-	ACTION_RETURN_BOOL(self->UseInventory(item));
+	PARAM_CLASS(type, AInventory);
+	PARAM_INT(amount);
+	PARAM_BOOL_DEF(givecheat);
+	ACTION_RETURN_BOOL(self->GiveInventory(type, amount, givecheat));
 }
 
 
@@ -915,6 +920,16 @@ bool AActor::TakeInventory(PClassActor *itemclass, int amount, bool fromdecorate
 	return result;
 }
 
+DEFINE_ACTION_FUNCTION(AActor, TakeInventory)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	PARAM_OBJECT_NOT_NULL(item, AInventory);
+	PARAM_INT(amount);
+	PARAM_BOOL_DEF(fromdecorate);
+	PARAM_BOOL_DEF(notakeinfinite);
+	self->RemoveInventory(item);
+	return 0;
+}
 
 //============================================================================
 //
@@ -1133,7 +1148,7 @@ DEFINE_ACTION_FUNCTION(AActor, GiveInventoryType)
 //
 //============================================================================
 
-bool AActor::GiveAmmo (PClassAmmo *type, int amount)
+bool AActor::GiveAmmo (PClassInventory *type, int amount)
 {
 	if (type != NULL)
 	{
@@ -1196,18 +1211,7 @@ void AActor::ClearInventory()
 		AInventory *inv = *invp;
 		if (!(inv->ItemFlags & IF_UNDROPPABLE))
 		{
-			// For the sake of undroppable weapons, never remove ammo once
-			// it has been acquired; just set its amount to 0.
-			if (inv->IsKindOf(RUNTIME_CLASS(AAmmo)))
-			{
-				AAmmo *ammo = static_cast<AAmmo*>(inv);
-				ammo->Amount = 0;
-				invp = &inv->Inventory;
-			}
-			else
-			{
-				inv->Destroy ();
-			}
+			inv->DepleteOrDestroy();
 		}
 		else if (inv->GetClass() == RUNTIME_CLASS(AHexenArmor))
 		{
@@ -1306,6 +1310,122 @@ void AActor::ObtainInventory (AActor *other)
 		item->Owner = this;
 		item = item->Inventory;
 	}
+}
+
+DEFINE_ACTION_FUNCTION(AActor, ObtainInventory)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	PARAM_OBJECT(other, AActor);
+	self->ObtainInventory(other);
+	return 0;
+}
+
+//---------------------------------------------------------------------------
+//
+// FUNC P_GiveBody
+//
+// Returns false if the body isn't needed at all.
+//
+//---------------------------------------------------------------------------
+
+bool P_GiveBody(AActor *actor, int num, int max)
+{
+	if (actor->health <= 0 || (actor->player != NULL && actor->player->playerstate == PST_DEAD))
+	{ // Do not heal dead things.
+		return false;
+	}
+
+	player_t *player = actor->player;
+
+	num = clamp(num, -65536, 65536);	// prevent overflows for bad values
+	if (player != NULL)
+	{
+		// Max is 0 by default, preserving default behavior for P_GiveBody()
+		// calls while supporting health pickups.
+		if (max <= 0)
+		{
+			max = static_cast<APlayerPawn*>(actor)->GetMaxHealth() + player->mo->stamina;
+			// [MH] First step in predictable generic morph effects
+			if (player->morphTics)
+			{
+				if (player->MorphStyle & MORPH_FULLHEALTH)
+				{
+					if (!(player->MorphStyle & MORPH_ADDSTAMINA))
+					{
+						max -= player->mo->stamina;
+					}
+				}
+				else // old health behaviour
+				{
+					max = MAXMORPHHEALTH;
+					if (player->MorphStyle & MORPH_ADDSTAMINA)
+					{
+						max += player->mo->stamina;
+					}
+				}
+			}
+		}
+		// [RH] For Strife: A negative body sets you up with a percentage
+		// of your full health.
+		if (num < 0)
+		{
+			num = max * -num / 100;
+			if (player->health < num)
+			{
+				player->health = num;
+				actor->health = num;
+				return true;
+			}
+		}
+		else if (num > 0)
+		{
+			if (player->health < max)
+			{
+				num = int(num * G_SkillProperty(SKILLP_HealthFactor));
+				if (num < 1) num = 1;
+				player->health += num;
+				if (player->health > max)
+				{
+					player->health = max;
+				}
+				actor->health = player->health;
+				return true;
+			}
+		}
+	}
+	else
+	{
+		// Parameter value for max is ignored on monsters, preserving original
+		// behaviour of health as well as on existing calls to P_GiveBody().
+		max = actor->SpawnHealth();
+		if (num < 0)
+		{
+			num = max * -num / 100;
+			if (actor->health < num)
+			{
+				actor->health = num;
+				return true;
+			}
+		}
+		else if (actor->health < max)
+		{
+			actor->health += num;
+			if (actor->health > max)
+			{
+				actor->health = max;
+			}
+			return true;
+		}
+	}
+	return false;
+}
+
+DEFINE_ACTION_FUNCTION(AActor, GiveBody)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	PARAM_INT(num);
+	PARAM_INT_DEF(max);
+	ACTION_RETURN_BOOL(P_GiveBody(self, num, max));
 }
 
 //============================================================================
@@ -1769,7 +1889,7 @@ void P_ExplodeMissile (AActor *mo, line_t *line, AActor *target)
 		}
 	}
 
-	// play the sound before changing the state, so that AActor::Destroy can call S_RelinkSounds on it and the death state can override it.
+	// play the sound before changing the state, so that AActor::OnDestroy can call S_RelinkSounds on it and the death state can override it.
 	if (mo->DeathSound)
 	{
 		S_Sound (mo, CHAN_VOICE, mo->DeathSound, 1,
@@ -2809,7 +2929,7 @@ void P_ZMovement (AActor *mo, double oldfloorz)
 			mo->Sector->SecActTarget != NULL &&
 			mo->Sector->floorplane.ZatPoint(mo) == mo->floorz)
 		{ // [RH] Let the sector do something to the actor
-			mo->Sector->SecActTarget->TriggerAction (mo, SECSPAC_HitFloor);
+			mo->Sector->TriggerSectorActions (mo, SECSPAC_HitFloor);
 		}
 		P_CheckFor3DFloorHit(mo, mo->floorz);
 		// [RH] Need to recheck this because the sector action might have
@@ -2912,7 +3032,7 @@ void P_ZMovement (AActor *mo, double oldfloorz)
 			mo->Sector->SecActTarget != NULL &&
 			mo->Sector->ceilingplane.ZatPoint(mo) == mo->ceilingz)
 		{ // [RH] Let the sector do something to the actor
-			mo->Sector->SecActTarget->TriggerAction (mo, SECSPAC_HitCeiling);
+			mo->Sector->TriggerSectorActions (mo, SECSPAC_HitCeiling);
 		}
 		P_CheckFor3DCeilingHit(mo, mo->ceilingz);
 		// [RH] Need to recheck this because the sector action might have
@@ -2980,7 +3100,7 @@ void P_CheckFakeFloorTriggers (AActor *mo, double oldz, bool oldz_has_viewheight
 
 		if (oldz > waterz && mo->Z() <= waterz)
 		{ // Feet hit fake floor
-			sec->SecActTarget->TriggerAction (mo, SECSPAC_HitFakeFloor);
+			sec->TriggerSectorActions (mo, SECSPAC_HitFakeFloor);
 		}
 
 		newz = mo->Z() + viewheight;
@@ -2991,11 +3111,11 @@ void P_CheckFakeFloorTriggers (AActor *mo, double oldz, bool oldz_has_viewheight
 
 		if (oldz <= waterz && newz > waterz)
 		{ // View went above fake floor
-			sec->SecActTarget->TriggerAction (mo, SECSPAC_EyesSurface);
+			sec->TriggerSectorActions (mo, SECSPAC_EyesSurface);
 		}
 		else if (oldz > waterz && newz <= waterz)
 		{ // View went below fake floor
-			sec->SecActTarget->TriggerAction (mo, SECSPAC_EyesDive);
+			sec->TriggerSectorActions (mo, SECSPAC_EyesDive);
 		}
 
 		if (!(hs->MoreFlags & SECF_FAKEFLOORONLY))
@@ -3003,11 +3123,11 @@ void P_CheckFakeFloorTriggers (AActor *mo, double oldz, bool oldz_has_viewheight
 			waterz = hs->ceilingplane.ZatPoint(mo);
 			if (oldz <= waterz && newz > waterz)
 			{ // View went above fake ceiling
-				sec->SecActTarget->TriggerAction (mo, SECSPAC_EyesAboveC);
+				sec->TriggerSectorActions (mo, SECSPAC_EyesAboveC);
 			}
 			else if (oldz > waterz && newz <= waterz)
 			{ // View went below fake ceiling
-				sec->SecActTarget->TriggerAction (mo, SECSPAC_EyesBelowC);
+				sec->TriggerSectorActions (mo, SECSPAC_EyesBelowC);
 			}
 		}
 	}
@@ -3507,6 +3627,39 @@ bool AActor::AdjustReflectionAngle (AActor *thing, DAngle &angle)
 	return false;
 }
 
+int AActor::AbsorbDamage(int damage, FName dmgtype)
+{
+	for (AInventory *item = Inventory; item != nullptr; item = item->Inventory)
+	{
+		IFVIRTUALPTR(item, AInventory, AbsorbDamage)
+		{
+			VMValue params[4] = { item, damage, dmgtype.GetIndex(), &damage };
+			GlobalVMStack.Call(func, params, 4, nullptr, 0, nullptr);
+		}
+		else item->AbsorbDamage(damage, dmgtype, damage);
+	}
+	return damage;
+}
+
+void AActor::AlterWeaponSprite(visstyle_t *vis)
+{
+	int changed = 0;
+	TArray<AInventory *> items;
+	// This needs to go backwards through the items but the list has no backlinks.
+	for (AInventory *item = Inventory; item != nullptr; item = item->Inventory)
+	{
+		items.Push(item);
+	}
+	for(int i=items.Size()-1;i>=0;i--)
+	{
+		IFVIRTUALPTR(items[i], AInventory, AlterWeaponSprite)
+		{
+			VMValue params[3] = { items[i], vis, &changed };
+			GlobalVMStack.Call(func, params, 3, nullptr, 0, nullptr);
+		}
+	}
+}
+
 void AActor::PlayActiveSound ()
 {
 	if (ActiveSound && !S_IsActorPlayingSomething (this, CHAN_VOICE, -1))
@@ -3961,9 +4114,9 @@ void AActor::Tick ()
 				sector_t *sec = node->m_sector;
 				DVector2 scrollv;
 
-				if (level.Scrolls.Size() > unsigned(sec-sectors))
+				if (level.Scrolls.Size() > unsigned(sec->Index()))
 				{
-					scrollv = level.Scrolls[sec - sectors];
+					scrollv = level.Scrolls[sec->Index()];
 				}
 				else
 				{
@@ -4332,6 +4485,12 @@ bool AActor::CheckNoDelay()
 	return true;
 }
 
+DEFINE_ACTION_FUNCTION(AActor, CheckNoDelay)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	ACTION_RETURN_BOOL(self->CheckNoDelay());
+}
+
 //==========================================================================
 //
 // AActor :: CheckSectorTransition
@@ -4346,7 +4505,7 @@ void AActor::CheckSectorTransition(sector_t *oldsec)
 	{
 		if (oldsec->SecActTarget != NULL)
 		{
-			oldsec->SecActTarget->TriggerAction(this, SECSPAC_Exit);
+			oldsec->TriggerSectorActions(this, SECSPAC_Exit);
 		}
 		if (Sector->SecActTarget != NULL)
 		{
@@ -4363,7 +4522,7 @@ void AActor::CheckSectorTransition(sector_t *oldsec)
 			{
 				act |= SECSPAC_HitFakeFloor;
 			}
-			Sector->SecActTarget->TriggerAction(this, act);
+			Sector->TriggerSectorActions(this, act);
 		}
 		if (Z() == floorz)
 		{
@@ -4485,6 +4644,12 @@ bool AActor::UpdateWaterLevel (bool dosplash)
 	return false;	// we did the splash ourselves
 }
 
+DEFINE_ACTION_FUNCTION(AActor, UpdateWaterLevel)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	PARAM_BOOL_DEF(splash);
+	ACTION_RETURN_BOOL(self->UpdateWaterLevel(splash));
+}
 
 //==========================================================================
 //
@@ -4757,6 +4922,13 @@ void AActor::HandleSpawnFlags ()
 	}
 }
 
+DEFINE_ACTION_FUNCTION(AActor, HandleSpawnFlags)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	self->HandleSpawnFlags();
+	return 0;
+}
+
 void AActor::BeginPlay ()
 {
 	// If the actor is spawned with the dormant flag set, clear it, and use
@@ -4808,6 +4980,13 @@ void AActor::MarkPrecacheSounds() const
 	BounceSound.MarkUsed();
 	WallBounceSound.MarkUsed();
 	CrushPainSound.MarkUsed();
+}
+
+DEFINE_ACTION_FUNCTION(AActor, MarkPrecacheSounds)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	self->MarkPrecacheSounds();
+	return 0;
 }
 
 bool AActor::isFast()
@@ -4919,7 +5098,7 @@ void AActor::CallDeactivate(AActor *activator)
 //
 //===========================================================================
 
-void AActor::Destroy ()
+void AActor::OnDestroy ()
 {
 	ClearRenderSectorList();
 	ClearRenderLineList();
@@ -4937,7 +5116,7 @@ void AActor::Destroy ()
 	// Transform any playing sound into positioned, non-actor sounds.
 	S_RelinkSound (this, NULL);
 
-	Super::Destroy ();
+	Super::OnDestroy();
 }
 
 //===========================================================================
@@ -5202,15 +5381,13 @@ APlayerPawn *P_SpawnPlayer (FPlayerStart *mthing, int playernum, int flags)
 		oldactor->DestroyAllInventory();
 	}
 	// [BC] Handle temporary invulnerability when respawned
-	if ((state == PST_REBORN || state == PST_ENTER) &&
-		(dmflags2 & DF2_YES_RESPAWN_INVUL) &&
-		(multiplayer || alwaysapplydmflags))
+	if (state == PST_REBORN || state == PST_ENTER)
 	{
-		APowerup *invul = static_cast<APowerup*>(p->mo->GiveInventoryType (RUNTIME_CLASS(APowerInvulnerable)));
-		invul->EffectTics = 3*TICRATE;
-		invul->BlendColor = 0;			// don't mess with the view
-		invul->ItemFlags |= IF_UNDROPPABLE;	// Don't drop this
-		p->mo->effects |= FX_RESPAWNINVUL;	// [RH] special effect
+		IFVIRTUALPTR(p->mo, APlayerPawn, OnRespawn)
+		{
+			VMValue param = p->mo;
+			GlobalVMStack.Call(func, &param, 1, nullptr, 0);
+		}
 	}
 
 	if (StatusBar != NULL && (playernum == consoleplayer || StatusBar->GetPlayer() == playernum))
@@ -5251,9 +5428,9 @@ APlayerPawn *P_SpawnPlayer (FPlayerStart *mthing, int playernum, int flags)
 			{
 				if (th->LastHeard == oldactor) th->LastHeard = NULL;
 			}
-			for(int i = 0; i < numsectors; i++)
+			for(auto &sec : level.sectors)
 			{
-				if (sectors[i].SoundTarget == oldactor) sectors[i].SoundTarget = NULL;
+				if (sec.SoundTarget == oldactor) sec.SoundTarget = nullptr;
 			}
 
 			DObject::StaticPointerSubstitution (oldactor, p->mo);
@@ -5517,9 +5694,10 @@ AActor *P_SpawnMapThing (FMapThing *mthing, int position)
 	// [RH] Other things that shouldn't be spawned depending on dmflags
 	if (deathmatch || alwaysapplydmflags)
 	{
+		// Fixme: This needs to be done differently, it's quite broken.
 		if (dmflags & DF_NO_HEALTH)
 		{
-			if (i->IsDescendantOf (RUNTIME_CLASS(AHealth)))
+			if (i->IsDescendantOf (PClass::FindActor(NAME_Health)))
 				return NULL;
 			if (i->TypeName == NAME_Berserk)
 				return NULL;
@@ -7539,6 +7717,22 @@ DEFINE_ACTION_FUNCTION(AActor, A_RestoreSpecialPosition)
 	return 0;
 }
 
+double AActor::GetBobOffset(double ticfrac) const
+{
+	if (!(flags2 & MF2_FLOATBOB))
+	{
+		return 0;
+	}
+	return BobSin(FloatBobPhase + level.maptime + ticfrac);
+}
+
+DEFINE_ACTION_FUNCTION(AActor, GetBobOffset)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	PARAM_FLOAT_DEF(frac);
+	ACTION_RETURN_FLOAT(self->GetBobOffset(frac));
+}
+
 
 
 
@@ -7639,13 +7833,6 @@ DEFINE_ACTION_FUNCTION(AActor, GetDefaultByType)
 	ACTION_RETURN_OBJECT(cls == nullptr? nullptr : GetDefaultByType(cls));
 }
 
-DEFINE_ACTION_FUNCTION(AActor, GetBobOffset)
-{
-	PARAM_SELF_PROLOGUE(AActor);
-	PARAM_FLOAT_DEF(frac);
-	ACTION_RETURN_FLOAT(self->GetBobOffset(frac));
-}
-
 // This combines all 3 variations of the internal function
 DEFINE_ACTION_FUNCTION(AActor, VelFromAngle)
 {
@@ -7730,6 +7917,13 @@ DEFINE_ACTION_FUNCTION(AActor, RotateVector)
 	ACTION_RETURN_VEC2(DVector2(x, y).Rotated(angle));
 }
 
+DEFINE_ACTION_FUNCTION(AActor, Normalize180)
+{
+	PARAM_PROLOGUE;
+	PARAM_ANGLE(angle);
+	ACTION_RETURN_FLOAT(angle.Normalized180().Degrees);
+}
+
 DEFINE_ACTION_FUNCTION(AActor, DistanceBySpeed)
 {
 	PARAM_SELF_PROLOGUE(AActor);
@@ -7811,6 +8005,13 @@ DEFINE_ACTION_FUNCTION(AActor, Vec3Offset)
 	ACTION_RETURN_VEC3(self->Vec3Offset(x, y, z, absolute));
 }
 
+DEFINE_ACTION_FUNCTION(AActor, PosRelative)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	PARAM_POINTER(sec, sector_t);
+	ACTION_RETURN_VEC3(self->PosRelative(sec));
+}
+
 DEFINE_ACTION_FUNCTION(AActor, RestoreDamage)
 {
 	PARAM_SELF_PROLOGUE(AActor);
@@ -7851,6 +8052,19 @@ DEFINE_ACTION_FUNCTION(AActor, CountsAsKill)
 	ACTION_RETURN_FLOAT(self->CountsAsKill());
 }
 
+DEFINE_ACTION_FUNCTION(AActor, IsZeroDamage)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	ACTION_RETURN_BOOL(self->IsZeroDamage());
+}
+
+DEFINE_ACTION_FUNCTION(AActor, ClearInterpolation)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	self->ClearInterpolation();
+	return 0;
+}
+
 DEFINE_ACTION_FUNCTION(AActor, ApplyDamageFactors)
 {
 	PARAM_PROLOGUE;
@@ -7869,6 +8083,7 @@ DEFINE_ACTION_FUNCTION(AActor, ApplyDamageFactors)
 		ACTION_RETURN_INT(defdamage);
 	}
 }
+
 
 //----------------------------------------------------------------------------
 //

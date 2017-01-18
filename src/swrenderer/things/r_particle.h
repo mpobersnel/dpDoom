@@ -14,11 +14,29 @@
 #pragma once
 
 #include "r_visiblesprite.h"
-#include "swrenderer/scene/r_bsp.h"
+#include "swrenderer/scene/r_opaque_pass.h"
+
+struct particle_t;
 
 namespace swrenderer
 {
-	void R_ProjectParticle(particle_t *, const sector_t *sector, int shade, WaterFakeSide fakeside);
-	void R_DrawParticle(vissprite_t *);
-	void R_DrawMaskedSegsBehindParticle(const vissprite_t *vis);
+	class RenderParticle : public VisibleSprite
+	{
+	public:
+		static void Project(particle_t *, const sector_t *sector, int shade, WaterFakeSide fakeside, bool foggy);
+
+	protected:
+		bool IsParticle() const override { return true; }
+		void Render(short *cliptop, short *clipbottom, int minZ, int maxZ) override;
+
+	private:
+		void DrawMaskedSegsBehindParticle();
+
+		fixed_t xscale;
+		fixed_t	startfrac; // horizontal position of x1
+		int y1, y2;
+
+		uint32_t Translation;
+		uint32_t FillColor;
+	};
 }

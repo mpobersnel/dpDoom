@@ -57,6 +57,7 @@
 #include "r_utility.h"
 #include "d_player.h"
 #include "p_local.h"
+#include "g_levellocals.h"
 #include "p_maputl.h"
 #include "math/cmath.h"
 
@@ -99,8 +100,6 @@ CUSTOM_CVAR(Float, r_quakeintensity, 1.0f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 	if (self < 0.f) self = 0.f;
 	else if (self > 1.f) self = 1.f;
 }
-
-DCanvas			*RenderTarget;		// [RH] canvas to render to
 
 int 			viewwindowx;
 int 			viewwindowy;
@@ -201,8 +200,6 @@ void R_SetViewSize (int blocks)
 
 void R_SetWindow (int windowSize, int fullWidth, int fullHeight, int stHeight, bool renderingToCanvas)
 {
-	float trueratio;
-
 	if (windowSize >= 11)
 	{
 		viewwidth = fullWidth;
@@ -224,11 +221,10 @@ void R_SetWindow (int windowSize, int fullWidth, int fullHeight, int stHeight, b
 	if (renderingToCanvas)
 	{
 		WidescreenRatio = fullWidth / (float)fullHeight;
-		trueratio = WidescreenRatio;
 	}
 	else
 	{
-		WidescreenRatio = ActiveRatio(fullWidth, fullHeight, &trueratio);
+		WidescreenRatio = ActiveRatio(fullWidth, fullHeight);
 	}
 
 	DrawFSHUD = (windowSize == 11);
@@ -258,7 +254,6 @@ void R_SetWindow (int windowSize, int fullWidth, int fullHeight, int stHeight, b
 		if (fov > 170.) fov = 170.;
 	}
 	FocalTangent = tan(fov.Radians() / 2);
-	Renderer->SetWindow(windowSize, fullWidth, fullHeight, stHeight, trueratio);
 }
 
 //==========================================================================
@@ -910,12 +905,9 @@ void R_SetupFrame (AActor *actor)
 		}
 	}
 
-	Renderer->CopyStackedViewParameters();
-	Renderer->SetupFrame(player);
-
 	validcount++;
 
-	if (RenderTarget == screen && r_clearbuffer != 0)
+	if (r_clearbuffer != 0)
 	{
 		int color;
 		int hom = r_clearbuffer;
@@ -940,7 +932,7 @@ void R_SetupFrame (AActor *actor)
 		{
 			color = pr_hom();
 		}
-		Renderer->ClearBuffer(color);
+		Renderer->SetClearColor(color);
 	}
 }
 

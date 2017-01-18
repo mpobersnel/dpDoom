@@ -18,8 +18,8 @@
 #include "i_system.h"
 #include "p_lnspec.h"
 #include "p_setup.h"
-#include "swrenderer/r_main.h"
 #include "swrenderer/drawers/r_draw.h"
+#include "swrenderer/plane/r_visibleplane.h"
 #include "a_sharedglobal.h"
 #include "g_level.h"
 #include "p_effect.h"
@@ -33,41 +33,42 @@
 
 namespace swrenderer
 {
-	short *openings;
-
-	namespace
+	void *RenderMemory::AllocBytes(int size)
 	{
-		size_t maxopenings;
-		ptrdiff_t lastopening;
-	}
-
-	ptrdiff_t R_NewOpening(ptrdiff_t len)
-	{
-		ptrdiff_t res = lastopening;
-		len = (len + 1) & ~1;	// only return DWORD aligned addresses because some code stores fixed_t's and floats in openings... 
-		lastopening += len;
-		if ((size_t)lastopening > maxopenings)
+		size = (size + 15) / 16 * 16; // 16-byte align
+		
+		if (UsedBlocks.empty() || UsedBlocks.back()->Position + size > BlockSize)
 		{
-			do
-				maxopenings = maxopenings ? maxopenings * 2 : 16384;
-			while ((size_t)lastopening > maxopenings);
-			openings = (short *)M_Realloc(openings, maxopenings * sizeof(*openings));
-			DPrintf(DMSG_NOTIFY, "MaxOpenings increased to %zu\n", maxopenings);
+			if (!FreeBlocks.empty())
+			{
+				auto block = std::move(FreeBlocks.back());
+				block->Position = 0;
+				FreeBlocks.pop_back();
+				UsedBlocks.push_back(std::move(block));
+			}
+			else
+			{
+				UsedBlocks.push_back(std::make_unique<MemoryBlock>());
+			}
 		}
-		return res;
-	}
+		
+		auto &block = UsedBlocks.back();
+		void *data = block->Data + block->Position;
+		block->Position += size;
 
-	void R_FreeOpenings()
-	{
-		lastopening = 0;
+		return data;
 	}
-
-	void R_DeinitOpenings()
+	
+	void RenderMemory::Clear()
 	{
-		if (openings != nullptr)
+		while (!UsedBlocks.empty())
 		{
-			M_Free(openings);
-			openings = nullptr;
+			auto block = std::move(UsedBlocks.back());
+			UsedBlocks.pop_back();
+			FreeBlocks.push_back(std::move(block));
 		}
 	}
+	
+	std::vector<std::unique_ptr<RenderMemory::MemoryBlock>> RenderMemory::UsedBlocks;
+	std::vector<std::unique_ptr<RenderMemory::MemoryBlock>> RenderMemory::FreeBlocks;
 }

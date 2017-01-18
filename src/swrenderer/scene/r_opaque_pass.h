@@ -19,6 +19,8 @@
 #include "swrenderer/line/r_line.h"
 #include "swrenderer/scene/r_3dfloors.h"
 
+struct FVoxelDef;
+
 namespace swrenderer
 {
 	struct visplane_t;
@@ -35,10 +37,21 @@ namespace swrenderer
 		AboveCeiling
 	};
 
-	class RenderBSP
+	struct ThingSprite
+	{
+		DVector3 pos;
+		int spritenum;
+		FTexture *tex;
+		FVoxelDef *voxel;
+		FTextureID picnum;
+		DVector2 spriteScale;
+		int renderflags;
+	};
+
+	class RenderOpaquePass
 	{
 	public:
-		static RenderBSP *Instance();
+		static RenderOpaquePass *Instance();
 
 		void ClearClip();
 		void RenderScene();
@@ -55,7 +68,12 @@ namespace swrenderer
 
 		bool CheckBBox(float *bspcoord);
 		void AddPolyobjs(subsector_t *sub);
-		void FakeDrawLoop(subsector_t *sub, visplane_t *floorplane, visplane_t *ceilingplane);
+		void FakeDrawLoop(subsector_t *sub, visplane_t *floorplane, visplane_t *ceilingplane, bool foggy, FDynamicColormap *basecolormap);
+
+		void AddSprites(sector_t *sec, int lightlevel, WaterFakeSide fakeside, bool foggy, FDynamicColormap *basecolormap);
+
+		static bool IsPotentiallyVisible(AActor *thing);
+		static bool GetThingSprite(AActor *thing, ThingSprite &sprite);
 
 		subsector_t *InSubsector = nullptr;
 		sector_t *frontsector = nullptr;

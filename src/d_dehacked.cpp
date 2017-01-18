@@ -76,7 +76,6 @@
 #include "vmbuilder.h"
 #include "a_armor.h"
 #include "a_ammo.h"
-#include "a_health.h"
 
 // [SO] Just the way Randy said to do it :)
 // [RH] Made this CVAR_SERVERINFO
@@ -147,7 +146,7 @@ struct StyleName
 
 static TArray<StyleName> StyleNames;
 
-static TArray<PClassAmmo *> AmmoNames;
+static TArray<PClassActor *> AmmoNames;
 static TArray<PClassActor *> WeaponNames;
 
 // DeHackEd trickery to support MBF-style parameters
@@ -220,6 +219,7 @@ DEFINE_FIELD_X(DehInfo, DehInfo, ExplosionStyle)
 DEFINE_FIELD_X(DehInfo, DehInfo, ExplosionAlpha)
 DEFINE_FIELD_X(DehInfo, DehInfo, NoAutofreeze)
 DEFINE_FIELD_X(DehInfo, DehInfo, BFGCells)
+DEFINE_FIELD_X(DehInfo, DehInfo, BlueAC)
 
 // Doom identified pickup items by their sprites. ZDoom prefers to use their
 // class type to identify them instead. To support the traditional Doom
@@ -1535,7 +1535,7 @@ static int PatchSprite (int sprNum)
 
 static int PatchAmmo (int ammoNum)
 {
-	PClassAmmo *ammoType = NULL;
+	PClassActor *ammoType = NULL;
 	AAmmo *defaultAmmo = NULL;
 	int result;
 	int oldclip;
@@ -1670,7 +1670,7 @@ static int PatchWeapon (int weapNum)
 				{
 					val = 5;
 				}
-				info->AmmoType1 = AmmoNames[val];
+				info->AmmoType1 = (PClassInventory*)AmmoNames[val];
 				if (info->AmmoType1 != NULL)
 				{
 					info->AmmoGive1 = ((AAmmo*)GetDefaultByType (info->AmmoType1))->Amount * 2;
@@ -1971,21 +1971,21 @@ static int PatchMisc (int dummy)
 		barmor->MaxSaveAmount = deh.MaxArmor;
 	}
 
-	AHealth *health;
-	health = static_cast<AHealth *> (GetDefaultByName ("HealthBonus"));
+	AInventory *health;
+	health = static_cast<AInventory *> (GetDefaultByName ("HealthBonus"));
 	if (health!=NULL) 
 	{
 		health->MaxAmount = 2 * deh.MaxHealth;
 	}
 
-	health = static_cast<AHealth *> (GetDefaultByName ("Soulsphere"));
+	health = static_cast<AInventory *> (GetDefaultByName ("Soulsphere"));
 	if (health!=NULL)
 	{
 		health->Amount = deh.SoulsphereHealth;
 		health->MaxAmount = deh.MaxSoulsphere;
 	}
 
-	health = static_cast<AHealth *> (GetDefaultByName ("MegasphereHealth"));
+	health = static_cast<AInventory *> (GetDefaultByName ("MegasphereHealth"));
 	if (health!=NULL)
 	{
 		health->Amount = health->MaxAmount = deh.MegasphereHealth;
@@ -2929,8 +2929,8 @@ static bool LoadDehSupp ()
 					}
 					else
 					{
-						PClassAmmo *cls = dyn_cast<PClassAmmo>(PClass::FindClass(sc.String));
-						if (cls == NULL)
+						auto cls = PClass::FindActor(sc.String);
+						if (cls == NULL || !cls->IsDescendantOf(RUNTIME_CLASS(AAmmo)))
 						{
 							sc.ScriptError("Unknown ammo type '%s'", sc.String);
 						}
@@ -3199,14 +3199,14 @@ void ADehackedPickup::DoPickupSpecial (AActor *toucher)
 	RealPickup = nullptr;
 }
 
-void ADehackedPickup::Destroy ()
+void ADehackedPickup::OnDestroy ()
 {
 	if (RealPickup != nullptr)
 	{
 		RealPickup->Destroy ();
 		RealPickup = nullptr;
 	}
-	Super::Destroy ();
+	Super::OnDestroy();
 }
 
 PClassActor *ADehackedPickup::DetermineType ()

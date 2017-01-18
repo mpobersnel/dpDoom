@@ -18,8 +18,6 @@
 #include "w_wad.h"
 #include "doomdef.h"
 #include "doomstat.h"
-#include "swrenderer/r_main.h"
-#include "swrenderer/scene/r_things.h"
 #include "r_sky.h"
 #include "stats.h"
 #include "v_video.h"
@@ -28,7 +26,7 @@
 #include "cmdlib.h"
 #include "d_net.h"
 #include "g_level.h"
-#include "swrenderer/scene/r_bsp.h"
+#include "swrenderer/scene/r_opaque_pass.h"
 #include "r_flatplane.h"
 #include "swrenderer/scene/r_3dfloors.h"
 #include "v_palette.h"
@@ -38,24 +36,15 @@
 #include "swrenderer/segments/r_clipsegment.h"
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/scene/r_portal.h"
+#include "swrenderer/scene/r_scene.h"
+#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/scene/r_light.h"
+#include "swrenderer/plane/r_visibleplane.h"
 #include "swrenderer/r_memory.h"
 
 namespace swrenderer
 {
-	namespace
-	{
-		double planeheight;
-		bool plane_shade;
-		int planeshade;
-		fixed_t pviewx, pviewy;
-		float yslope[MAXHEIGHT];
-		fixed_t xscale, yscale;
-		double xstepscale, ystepscale;
-		double basexfrac, baseyfrac;
-		visplane_light *ds_light_list;
-	}
-
-	void R_DrawNormalPlane(visplane_t *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked)
+	void RenderFlatPlane::Render(visplane_t *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *colormap)
 	{
 		using namespace drawerargs;
 
@@ -116,6 +105,7 @@ namespace swrenderer
 
 		planeheight = fabs(pl->height.Zat0() - ViewPos.Z);
 
+		basecolormap = colormap;
 		GlobVis = r_FloorVisibility / planeheight;
 		ds_light = 0;
 		if (fixedlightlev >= 0)
@@ -190,18 +180,12 @@ namespace swrenderer
 			}
 		}
 
-		ds_light_list = pl->lights;
+		light_list = pl->lights;
 
-		R_MapVisPlane(pl, R_MapPlane, R_StepPlane);
+		RenderLines(pl);
 	}
 
-	void R_StepPlane()
-	{
-		basexfrac -= xstepscale;
-		baseyfrac -= ystepscale;
-	}
-
-	void R_MapPlane(int y, int x1, int x2)
+	void RenderFlatPlane::RenderLine(int y, int x1, int x2)
 	{
 		using namespace drawerargs;
 
@@ -276,7 +260,7 @@ namespace swrenderer
 			// Setup lights for row
 			dc_num_lights = 0;
 			dc_lights = lightbuffer + nextlightindex;
-			visplane_light *cur_node = ds_light_list;
+			visplane_light *cur_node = light_list;
 			while (cur_node && nextlightindex < 64 * 1024)
 			{
 				double lightX = cur_node->lightsource->X() - ViewPos.X;
@@ -327,17 +311,13 @@ namespace swrenderer
 		(R_Drawers()->*spanfunc)();
 	}
 
-	void R_DrawColoredPlane(visplane_t *pl)
+	void RenderFlatPlane::StepColumn()
 	{
-		R_MapVisPlane(pl, R_MapColoredPlane, nullptr);
+		basexfrac -= xstepscale;
+		baseyfrac -= ystepscale;
 	}
 
-	void R_MapColoredPlane(int y, int x1, int x2)
-	{
-		R_Drawers()->DrawColoredSpan(y, x1, x2);
-	}
-
-	void R_SetupPlaneSlope()
+	void RenderFlatPlane::SetupSlope()
 	{
 		int e, i;
 
@@ -377,5 +357,19 @@ namespace swrenderer
 				den += 1;
 			} while (++i < e);
 		}
+	}
+
+	float RenderFlatPlane::yslope[MAXHEIGHT];
+
+	/////////////////////////////////////////////////////////////////////////
+
+	void RenderColoredPlane::Render(visplane_t *pl)
+	{
+		RenderLines(pl);
+	}
+
+	void RenderColoredPlane::RenderLine(int y, int x1, int x2)
+	{
+		R_Drawers()->DrawColoredSpan(y, x1, x2);
 	}
 }

@@ -18,8 +18,6 @@
 #include "w_wad.h"
 #include "doomdef.h"
 #include "doomstat.h"
-#include "swrenderer/r_main.h"
-#include "swrenderer/scene/r_things.h"
 #include "r_sky.h"
 #include "stats.h"
 #include "v_video.h"
@@ -28,7 +26,7 @@
 #include "cmdlib.h"
 #include "d_net.h"
 #include "g_level.h"
-#include "swrenderer/scene/r_bsp.h"
+#include "swrenderer/scene/r_opaque_pass.h"
 #include "r_slopeplane.h"
 #include "swrenderer/scene/r_3dfloors.h"
 #include "v_palette.h"
@@ -38,7 +36,11 @@
 #include "swrenderer/segments/r_clipsegment.h"
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/scene/r_portal.h"
+#include "swrenderer/scene/r_scene.h"
+#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/scene/r_light.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/plane/r_visibleplane.h"
 
 #ifdef _MSC_VER
 #pragma warning(disable:4244)
@@ -46,17 +48,7 @@
 
 namespace swrenderer
 {
-	namespace
-	{
-		FVector3 plane_sz, plane_su, plane_sv;
-		float planelightfloat;
-		bool plane_shade;
-		int planeshade;
-		fixed_t pviewx, pviewy;
-		fixed_t xscale, yscale;
-	}
-
-	void R_DrawTiltedPlane(visplane_t *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked)
+	void RenderSlopePlane::Render(visplane_t *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *colormap)
 	{
 		using namespace drawerargs;
 
@@ -156,6 +148,8 @@ namespace swrenderer
 		if (pl->height.fC() > 0)
 			planelightfloat = -planelightfloat;
 
+		basecolormap = colormap;
+
 		if (fixedlightlev >= 0)
 		{
 			R_SetDSColorMapLight(basecolormap, 0, FIXEDLIGHT2SHADE(fixedlightlev));
@@ -183,11 +177,11 @@ namespace swrenderer
 			plane_su[2] = plane_su[1] = plane_su[0] = 0;
 		}
 
-		R_MapVisPlane(pl, R_MapTiltedPlane, nullptr);
+		RenderLines(pl);
 	}
 
-	void R_MapTiltedPlane(int y, int x1, int x2)
+	void RenderSlopePlane::RenderLine(int y, int x1, int x2)
 	{
-		R_Drawers()->DrawTiltedSpan(y, x1, x2, plane_sz, plane_su, plane_sv, plane_shade, planeshade, planelightfloat, pviewx, pviewy);
+		R_Drawers()->DrawTiltedSpan(y, x1, x2, plane_sz, plane_su, plane_sv, plane_shade, planeshade, planelightfloat, pviewx, pviewy, basecolormap);
 	}
 }

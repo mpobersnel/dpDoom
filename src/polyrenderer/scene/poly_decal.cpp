@@ -28,6 +28,8 @@
 #include "poly_decal.h"
 #include "polyrenderer/poly_renderer.h"
 #include "a_sharedglobal.h"
+#include "swrenderer/scene/r_scene.h"
+#include "swrenderer/scene/r_light.h"
 
 void RenderPolyDecal::RenderWallDecals(const TriMatrix &worldToClip, const Vec4f &clipPlane, const seg_t *line, uint32_t subsectorDepth, uint32_t stencilValue)
 {
@@ -135,6 +137,7 @@ void RenderPolyDecal::Render(const TriMatrix &worldToClip, const Vec4f &clipPlan
 	args.uniforms.flags = 0;
 	args.SetColormap(front->ColorMap);
 	args.SetTexture(tex, decal->Translation, true);
+	args.uniforms.globvis = (float)swrenderer::r_WallVisibility;
 	if (fullbrightSprite || swrenderer::fixedlightlev >= 0 || swrenderer::fixedcolormap)
 	{
 		args.uniforms.light = 256;

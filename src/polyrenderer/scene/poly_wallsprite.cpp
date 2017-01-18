@@ -27,6 +27,7 @@
 #include "r_data/r_translate.h"
 #include "poly_wallsprite.h"
 #include "polyrenderer/poly_renderer.h"
+#include "swrenderer/scene/r_light.h"
 
 void RenderPolyWallSprite::Render(const TriMatrix &worldToClip, const Vec4f &clipPlane, AActor *thing, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue)
 {
@@ -99,6 +100,7 @@ void RenderPolyWallSprite::Render(const TriMatrix &worldToClip, const Vec4f &cli
 	bool fullbrightSprite = ((thing->renderflags & RF_FULLBRIGHT) || (thing->flags5 & MF5_BRIGHT));
 
 	PolyDrawArgs args;
+	args.uniforms.globvis = (float)swrenderer::r_WallVisibility;
 	if (fullbrightSprite || swrenderer::fixedlightlev >= 0 || swrenderer::fixedcolormap)
 	{
 		args.uniforms.light = 256;

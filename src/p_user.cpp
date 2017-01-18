@@ -61,6 +61,7 @@
 #include "virtual.h"
 #include "a_armor.h"
 #include "a_ammo.h"
+#include "g_levellocals.h"
 
 static FRandom pr_skullpop ("SkullPop");
 
@@ -637,6 +638,14 @@ void player_t::SendPitchLimits() const
 	}
 }
 
+
+DEFINE_ACTION_FUNCTION(_PlayerInfo, GetUserName)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(player_t);
+	ACTION_RETURN_STRING(self->userinfo.GetName());
+}
+
+
 //===========================================================================
 //
 // APlayerPawn
@@ -941,13 +950,13 @@ bool APlayerPawn::UseInventory (AInventory *item)
 //
 //===========================================================================
 
-AWeapon *APlayerPawn::BestWeapon(PClassAmmo *ammotype)
+AWeapon *APlayerPawn::BestWeapon(PClassInventory *ammotype)
 {
 	AWeapon *bestMatch = NULL;
 	int bestOrder = INT_MAX;
 	AInventory *item;
 	AWeapon *weap;
-	bool tomed = NULL != FindInventory (RUNTIME_CLASS(APowerWeaponLevel2), true);
+	bool tomed = NULL != FindInventory (PClass::FindActor(NAME_PowerWeaponLevel2), true);
 
 	// Find the best weapon the player has.
 	for (item = Inventory; item != NULL; item = item->Inventory)
@@ -1003,7 +1012,7 @@ AWeapon *APlayerPawn::BestWeapon(PClassAmmo *ammotype)
 //
 //===========================================================================
 
-AWeapon *APlayerPawn::PickNewWeapon(PClassAmmo *ammotype)
+AWeapon *APlayerPawn::PickNewWeapon(PClassInventory *ammotype)
 {
 	AWeapon *best = BestWeapon (ammotype);
 
@@ -1031,7 +1040,7 @@ AWeapon *APlayerPawn::PickNewWeapon(PClassAmmo *ammotype)
 //
 //===========================================================================
 
-void APlayerPawn::CheckWeaponSwitch(PClassAmmo *ammotype)
+void APlayerPawn::CheckWeaponSwitch(PClassInventory *ammotype)
 {
 	if (!player->userinfo.GetNeverSwitch() &&
 		player->PendingWeapon == WP_NOCHANGE && 
@@ -1047,6 +1056,13 @@ void APlayerPawn::CheckWeaponSwitch(PClassAmmo *ammotype)
 	}
 }
 
+DEFINE_ACTION_FUNCTION(APlayerPawn, CheckWeaponSwitch)
+{
+	PARAM_SELF_PROLOGUE(APlayerPawn);
+	PARAM_OBJECT(ammotype, PClassInventory);
+	self->CheckWeaponSwitch(ammotype);
+	return 0;
+}
 //===========================================================================
 //
 // APlayerPawn :: GiveDeathmatchInventory
@@ -1150,7 +1166,7 @@ void APlayerPawn::FilterCoopRespawnInventory (APlayerPawn *oldplayer)
 			}
 			else if ((dmflags & DF_COOP_LOSE_POWERUPS) &&
 				defitem == NULL &&
-				item->IsKindOf(RUNTIME_CLASS(APowerupGiver)))
+				item->IsKindOf(PClass::FindActor(NAME_PowerupGiver)))
 			{
 				item->Destroy();
 			}
@@ -2061,7 +2077,7 @@ void P_MovePlayer (player_t *player)
 			msecnode_t *n = player->mo->touching_sectorlist;
 			while (n != NULL)
 			{
-				fprintf (debugfile, "%td ", n->m_sector-sectors);
+				fprintf (debugfile, "%d ", n->m_sector->sectornum);
 				n = n->m_tnext;
 			}
 			fprintf (debugfile, "]\n");

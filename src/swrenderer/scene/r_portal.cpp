@@ -43,14 +43,19 @@
 #include "p_setup.h"
 #include "version.h"
 #include "r_utility.h"
-#include "r_things.h"
 #include "r_3dfloors.h"
+#include "g_levellocals.h"
 #include "swrenderer/drawers/r_draw_rgba.h"
 #include "swrenderer/segments/r_clipsegment.h"
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/plane/r_visibleplane.h"
-#include "swrenderer/scene/r_bsp.h"
-#include "swrenderer/r_main.h"
+#include "swrenderer/plane/r_visibleplanelist.h"
+#include "swrenderer/things/r_visiblesprite.h"
+#include "swrenderer/scene/r_opaque_pass.h"
+#include "swrenderer/scene/r_translucent_pass.h"
+#include "swrenderer/scene/r_scene.h"
+#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/scene/r_light.h"
 #include "swrenderer/r_memory.h"
 
 CVAR(Int, r_portal_recursions, 4, CVAR_ARCHIVE)
@@ -87,7 +92,9 @@ namespace swrenderer
 	{
 		numskyboxes = 0;
 
-		if (visplanes[MAXVISPLANES] == nullptr)
+		VisiblePlaneList *planes = VisiblePlaneList::Instance();
+
+		if (planes->visplanes[VisiblePlaneList::MAXVISPLANES] == nullptr)
 			return;
 
 		Clip3DFloors::Instance()->EnterSkybox();
@@ -96,7 +103,6 @@ namespace swrenderer
 		int savedextralight = extralight;
 		DVector3 savedpos = ViewPos;
 		DAngle savedangle = ViewAngle;
-		ptrdiff_t savedvissprite_p = vissprite_p - vissprites;
 		ptrdiff_t savedds_p = ds_p - drawsegs;
 		size_t savedinteresting = FirstInterestingDrawseg;
 		double savedvisibility = R_GetVisibility();
@@ -106,19 +112,19 @@ namespace swrenderer
 		int i;
 		visplane_t *pl;
 
-		for (pl = visplanes[MAXVISPLANES]; pl != nullptr; pl = visplanes[MAXVISPLANES])
+		for (pl = planes->visplanes[VisiblePlaneList::MAXVISPLANES]; pl != nullptr; pl = planes->visplanes[VisiblePlaneList::MAXVISPLANES])
 		{
 			// Pop the visplane off the list now so that if this skybox adds more
 			// skyboxes to the list, they will be drawn instead of skipped (because
 			// new skyboxes go to the beginning of the list instead of the end).
-			visplanes[MAXVISPLANES] = pl->next;
+			planes->visplanes[VisiblePlaneList::MAXVISPLANES] = pl->next;
 			pl->next = nullptr;
 
 			if (pl->right < pl->left || !r_skyboxes || numskyboxes == MAX_SKYBOX_PLANES || pl->portal == nullptr)
 			{
-				R_DrawSinglePlane(pl, OPAQUE, false, false);
-				*freehead = pl;
-				freehead = &pl->next;
+				pl->Render(OPAQUE, false, false);
+				*planes->freehead = pl;
+				planes->freehead = &pl->next;
 				continue;
 			}
 
@@ -130,7 +136,7 @@ namespace swrenderer
 			case PORTS_SKYVIEWPOINT:
 			{
 				// Don't let gun flashes brighten the sky box
-				ASkyViewpoint *sky = barrier_cast<ASkyViewpoint*>(port->mSkybox);
+				AActor *sky = port->mSkybox;
 				extralight = 0;
 				R_SetVisibility(sky->args[0] * 0.25f);
 
@@ -157,28 +163,28 @@ namespace swrenderer
 				// not implemented yet
 
 			default:
-				R_DrawSinglePlane(pl, OPAQUE, false, false);
-				*freehead = pl;
-				freehead = &pl->next;
+				pl->Render(OPAQUE, false, false);
+				*planes->freehead = pl;
+				planes->freehead = &pl->next;
 				numskyboxes--;
 				continue;
 			}
 
 			port->mFlags |= PORTSF_INSKYBOX;
-			if (port->mPartner > 0) sectorPortals[port->mPartner].mFlags |= PORTSF_INSKYBOX;
+			if (port->mPartner > 0) level.sectorPortals[port->mPartner].mFlags |= PORTSF_INSKYBOX;
 			camera = nullptr;
 			viewsector = port->mDestination;
 			assert(viewsector != nullptr);
 			R_SetViewAngle();
 			validcount++;	// Make sure we see all sprites
 
-			R_ClearPlanes(false);
-			R_ClearClipSegs(pl->left, pl->right);
+			planes->Clear(false);
+			RenderClipSegment::Instance()->Clear(pl->left, pl->right);
 			WindowLeft = pl->left;
 			WindowRight = pl->right;
 
-			auto ceilingclip = RenderBSP::Instance()->ceilingclip;
-			auto floorclip = RenderBSP::Instance()->floorclip;
+			auto ceilingclip = RenderOpaquePass::Instance()->ceilingclip;
+			auto floorclip = RenderOpaquePass::Instance()->floorclip;
 			for (i = pl->left; i < pl->right; i++)
 			{
 				if (pl->top[i] == 0x7fff)
@@ -203,33 +209,33 @@ namespace swrenderer
 			draw_segment->x1 = pl->left;
 			draw_segment->x2 = pl->right;
 			draw_segment->silhouette = SIL_BOTH;
-			draw_segment->sprbottomclip = R_NewOpening(pl->right - pl->left);
-			draw_segment->sprtopclip = R_NewOpening(pl->right - pl->left);
-			draw_segment->maskedtexturecol = ds_p->swall = -1;
+			draw_segment->sprbottomclip = RenderMemory::AllocMemory<short>(pl->right - pl->left);
+			draw_segment->sprtopclip = RenderMemory::AllocMemory<short>(pl->right - pl->left);
+			draw_segment->maskedtexturecol = nullptr;
+			draw_segment->swall = nullptr;
 			draw_segment->bFogBoundary = false;
 			draw_segment->curline = nullptr;
 			draw_segment->fake = 0;
-			memcpy(openings + draw_segment->sprbottomclip, floorclip + pl->left, (pl->right - pl->left) * sizeof(short));
-			memcpy(openings + draw_segment->sprtopclip, ceilingclip + pl->left, (pl->right - pl->left) * sizeof(short));
+			draw_segment->foggy = false;
+			memcpy(draw_segment->sprbottomclip, floorclip + pl->left, (pl->right - pl->left) * sizeof(short));
+			memcpy(draw_segment->sprtopclip, ceilingclip + pl->left, (pl->right - pl->left) * sizeof(short));
 
-			firstvissprite = vissprite_p;
 			firstdrawseg = draw_segment;
 			FirstInterestingDrawseg = InterestingDrawsegs.Size();
 
 			interestingStack.Push(FirstInterestingDrawseg);
 			ptrdiff_t diffnum = firstdrawseg - drawsegs;
 			drawsegStack.Push(diffnum);
-			diffnum = firstvissprite - vissprites;
-			visspriteStack.Push(diffnum);
+			VisibleSpriteList::Instance()->PushPortal();
 			viewposStack.Push(ViewPos);
 			visplaneStack.Push(pl);
 
-			RenderBSP::Instance()->RenderScene();
+			RenderOpaquePass::Instance()->RenderScene();
 			Clip3DFloors::Instance()->ResetClip(); // reset clips (floor/ceiling)
-			R_DrawPlanes();
+			planes->Render();
 
 			port->mFlags &= ~PORTSF_INSKYBOX;
-			if (port->mPartner > 0) sectorPortals[port->mPartner].mFlags &= ~PORTSF_INSKYBOX;
+			if (port->mPartner > 0) level.sectorPortals[port->mPartner].mFlags &= ~PORTSF_INSKYBOX;
 		}
 
 		// Draw all the masked textures in a second pass, in the reverse order they
@@ -241,27 +247,24 @@ namespace swrenderer
 
 			drawsegStack.Pop(pd);
 			firstdrawseg = drawsegs + pd;
-			visspriteStack.Pop(pd);
-			firstvissprite = vissprites + pd;
 
 			// Masked textures and planes need the view coordinates restored for proper positioning.
 			viewposStack.Pop(ViewPos);
 
-			R_DrawMasked();
+			RenderTranslucentPass::Render();
 
 			ds_p = firstdrawseg;
-			vissprite_p = firstvissprite;
+
+			VisibleSpriteList::Instance()->PopPortal();
 
 			visplaneStack.Pop(pl);
 			if (pl->Alpha > 0 && pl->picnum != skyflatnum)
 			{
-				R_DrawSinglePlane(pl, pl->Alpha, pl->Additive, true);
+				pl->Render(pl->Alpha, pl->Additive, true);
 			}
-			*freehead = pl;
-			freehead = &pl->next;
+			*planes->freehead = pl;
+			planes->freehead = &pl->next;
 		}
-		firstvissprite = vissprites;
-		vissprite_p = vissprites + savedvissprite_p;
 		firstdrawseg = drawsegs;
 		ds_p = drawsegs + savedds_p;
 		InterestingDrawsegs.Resize((unsigned int)FirstInterestingDrawseg);
@@ -280,8 +283,8 @@ namespace swrenderer
 
 		if (Clip3DFloors::Instance()->fakeActive) return;
 
-		for (*freehead = visplanes[MAXVISPLANES], visplanes[MAXVISPLANES] = nullptr; *freehead; )
-			freehead = &(*freehead)->next;
+		for (*planes->freehead = planes->visplanes[VisiblePlaneList::MAXVISPLANES], planes->visplanes[VisiblePlaneList::MAXVISPLANES] = nullptr; *planes->freehead; )
+			planes->freehead = &(*planes->freehead)->next;
 	}
 
 	void RenderPortal::RenderLinePortals()
@@ -420,8 +423,8 @@ namespace swrenderer
 		PortalDrawseg* prevpds = CurrentPortal;
 		CurrentPortal = pds;
 
-		R_ClearPlanes(false);
-		R_ClearClipSegs(pds->x1, pds->x2);
+		VisiblePlaneList::Instance()->Clear(false);
+		RenderClipSegment::Instance()->Clear(pds->x1, pds->x2);
 
 		WindowLeft = pds->x1;
 		WindowRight = pds->x2;
@@ -440,17 +443,17 @@ namespace swrenderer
 		CurrentPortalInSkybox = false; // first portal in a skybox should set this variable to false for proper clipping in skyboxes.
 
 		// first pass, set clipping
-		auto ceilingclip = RenderBSP::Instance()->ceilingclip;
-		auto floorclip = RenderBSP::Instance()->floorclip;
+		auto ceilingclip = RenderOpaquePass::Instance()->ceilingclip;
+		auto floorclip = RenderOpaquePass::Instance()->floorclip;
 		memcpy(ceilingclip + pds->x1, &pds->ceilingclip[0], pds->len * sizeof(*ceilingclip));
 		memcpy(floorclip + pds->x1, &pds->floorclip[0], pds->len * sizeof(*floorclip));
 
-		RenderBSP::Instance()->RenderScene();
+		RenderOpaquePass::Instance()->RenderScene();
 		Clip3DFloors::Instance()->ResetClip(); // reset clips (floor/ceiling)
 		if (!savedvisibility && camera) camera->renderflags &= ~RF_INVISIBLE;
 
 		PlaneCycles.Clock();
-		R_DrawPlanes();
+		VisiblePlaneList::Instance()->Render();
 		RenderPlanePortals();
 		PlaneCycles.Unclock();
 
@@ -469,7 +472,7 @@ namespace swrenderer
 		NetUpdate();
 
 		MaskedCycles.Clock(); // [ZZ] count sprites in portals/mirrors along with normal ones.
-		R_DrawMasked();	  //      this is required since with portals there often will be cases when more than 80% of the view is inside a portal.
+		RenderTranslucentPass::Render();	  //      this is required since with portals there often will be cases when more than 80% of the view is inside a portal.
 		MaskedCycles.Unclock();
 
 		NetUpdate();

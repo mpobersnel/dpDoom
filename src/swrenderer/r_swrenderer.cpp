@@ -32,14 +32,17 @@
 **
 */
 
-
-#include "r_main.h"
+#include "swrenderer/scene/r_scene.h"
+#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/things/r_playersprite.h"
+#include "swrenderer/scene/r_scene.h"
+#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/scene/r_light.h"
 #include "v_palette.h"
 #include "v_video.h"
 #include "m_png.h"
 #include "r_swrenderer.h"
-#include "scene/r_bsp.h"
+#include "scene/r_opaque_pass.h"
 #include "scene/r_3dfloors.h"
 #include "scene/r_portal.h"
 #include "textures/textures.h"
@@ -51,6 +54,9 @@
 
 void gl_ParseDefs();
 void gl_InitData();
+void gl_SetActorLights(AActor *);
+void gl_PreprocessLevel();
+void gl_CleanLevelData();
 
 EXTERN_CVAR(Bool, r_shadercolormaps)
 EXTERN_CVAR(Float, maxviewpitch)	// [SP] CVAR from GZDoom
@@ -69,16 +75,6 @@ CUSTOM_CVAR(Bool, r_polyrenderer, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOI
 	}
 }
 
-namespace swrenderer
-{
-
-void R_SWRSetWindow(int windowSize, int fullWidth, int fullHeight, int stHeight, float trueratio);
-void R_SetupColormap(player_t *);
-void R_SetupFreelook();
-void R_InitRenderer();
-
-}
-
 using namespace swrenderer;
 
 FSoftwareRenderer::FSoftwareRenderer()
@@ -89,52 +85,36 @@ FSoftwareRenderer::~FSoftwareRenderer()
 {
 }
 
-//==========================================================================
-//
-// DCanvas :: Init
-//
-//==========================================================================
-
 void FSoftwareRenderer::Init()
 {
 	gl_ParseDefs();
 
 	r_swtruecolor = screen->IsBgra();
-	R_InitRenderer();
+	RenderScene::Instance()->Init();
 }
-
-//==========================================================================
-//
-// DCanvas :: UsesColormap
-//
-//==========================================================================
 
 bool FSoftwareRenderer::UsesColormap() const
 {
 	return true;
 }
 
-//===========================================================================
-//
-// Texture precaching
-//
-//===========================================================================
-
 void FSoftwareRenderer::PrecacheTexture(FTexture *tex, int cache)
 {
+	bool isbgra = screen->IsBgra();
+
 	if (tex != NULL)
 	{
 		if (cache & FTextureManager::HIT_Columnmode)
 		{
 			const FTexture::Span *spanp;
-			if (r_swtruecolor)
+			if (isbgra)
 				tex->GetColumnBgra(0, &spanp);
 			else
 				tex->GetColumn(0, &spanp);
 		}
 		else if (cache != 0)
 		{
-			if (r_swtruecolor)
+			if (isbgra)
 				tex->GetPixelsBgra();
 			else
 				tex->GetPixels ();
@@ -195,60 +175,15 @@ void FSoftwareRenderer::Precache(BYTE *texhitlist, TMap<PClassActor*, bool> &act
 	}
 }
 
-//===========================================================================
-//
-// Render the view 
-//
-//===========================================================================
-
 void FSoftwareRenderer::RenderView(player_t *player)
 {
 	if (r_polyrenderer)
-	{
-		bool saved_swtruecolor = r_swtruecolor;
-		r_swtruecolor = screen->IsBgra();
-		
-		PolyRenderer::Instance()->RenderActorView(player->mo, false);
-		FCanvasTextureInfo::UpdateAll();
-		
-		// Apply special colormap if the target cannot do it
-		if (realfixedcolormap && r_swtruecolor && !(r_shadercolormaps && screen->Accel2D))
-		{
-			R_BeginDrawerCommands();
-			DrawerCommandQueue::QueueCommand<ApplySpecialColormapRGBACommand>(realfixedcolormap, screen);
-			R_EndDrawerCommands();
-		}
-		
-		r_swtruecolor = saved_swtruecolor;
-		
-		return;
-	}
+		PolyRenderer::Instance()->RenderView(player);
+	else
+		RenderScene::Instance()->RenderView(player);
 
-	if (r_swtruecolor != screen->IsBgra())
-	{
-		r_swtruecolor = screen->IsBgra();
-		R_InitColumnDrawers();
-	}
-
-	R_BeginDrawerCommands();
-	R_RenderActorView (player->mo);
-	// [RH] Let cameras draw onto textures that were visible this frame.
-	FCanvasTextureInfo::UpdateAll ();
-
-	// Apply special colormap if the target cannot do it
-	if (realfixedcolormap && r_swtruecolor && !(r_shadercolormaps && screen->Accel2D))
-	{
-		DrawerCommandQueue::QueueCommand<ApplySpecialColormapRGBACommand>(realfixedcolormap, screen);
-	}
-
-	R_EndDrawerCommands();
+	FCanvasTextureInfo::UpdateAll();
 }
-
-//==========================================================================
-//
-//
-//
-//==========================================================================
 
 void FSoftwareRenderer::RemapVoxels()
 {
@@ -257,12 +192,6 @@ void FSoftwareRenderer::RemapVoxels()
 		Voxels[i]->Remap();
 	}
 }
-
-//===========================================================================
-//
-// Render the view to a savegame picture
-//
-//===========================================================================
 
 void FSoftwareRenderer::WriteSavePic (player_t *player, FileWriter *file, int width, int height)
 {
@@ -275,7 +204,7 @@ void FSoftwareRenderer::WriteSavePic (player_t *player, FileWriter *file, int wi
 	if (r_polyrenderer)
 		PolyRenderer::Instance()->RenderViewToCanvas(player->mo, pic, 0, 0, width, height, true);
 	else
-		R_RenderViewToCanvas (player->mo, pic, 0, 0, width, height);
+		RenderScene::Instance()->RenderViewToCanvas (player->mo, pic, 0, 0, width, height);
 	screen->GetFlashedPalette (palette);
 	M_CreatePNG (file, pic->GetBuffer(), palette, SS_PAL, width, height, pic->GetPitch());
 	pic->Unlock ();
@@ -284,17 +213,11 @@ void FSoftwareRenderer::WriteSavePic (player_t *player, FileWriter *file, int wi
 	delete pic;
 }
 
-//===========================================================================
-//
-// 
-//
-//===========================================================================
-
 void FSoftwareRenderer::DrawRemainingPlayerSprites()
 {
 	if (!r_polyrenderer)
 	{
-		R_DrawRemainingPlayerSprites();
+		RenderPlayerSprite::RenderRemainingPlayerSprites();
 	}
 	else
 	{
@@ -302,16 +225,10 @@ void FSoftwareRenderer::DrawRemainingPlayerSprites()
 	}
 }
 
-//===========================================================================
-//
-// Get max. view angle (renderer specific information so it goes here now)
-//
-//===========================================================================
-#define MAX_DN_ANGLE	56		// Max looking down angle
-#define MAX_UP_ANGLE	32		// Max looking up angle
-
 int FSoftwareRenderer::GetMaxViewPitch(bool down)
 {
+	const int MAX_DN_ANGLE = 56; // Max looking down angle
+	const int MAX_UP_ANGLE = 32; // Max looking up angle
 	return (r_polyrenderer) ? int(maxviewpitch) : (down ? MAX_DN_ANGLE : MAX_UP_ANGLE);
 }
 
@@ -320,90 +237,15 @@ bool FSoftwareRenderer::RequireGLNodes()
 	return true;
 }
 
-//==========================================================================
-//
-// OnModeSet
-//
-// Called from V_SetResolution()
-//
-//==========================================================================
-
 void FSoftwareRenderer::OnModeSet ()
 {
-	R_MultiresInit ();
-
-	RenderTarget = screen;
-	screen->Lock (true);
-	R_SetupBuffer ();
-	screen->Unlock ();
+	RenderScene::Instance()->ScreenResized();
 }
 
-//===========================================================================
-//
-// 
-//
-//===========================================================================
-
-void FSoftwareRenderer::ErrorCleanup ()
+void FSoftwareRenderer::SetClearColor(int color)
 {
-	Clip3DFloors::Instance()->Cleanup();
+	RenderScene::Instance()->SetClearColor(color);
 }
-
-//===========================================================================
-//
-// 
-//
-//===========================================================================
-
-void FSoftwareRenderer::ClearBuffer(int color)
-{
-	// [SP] For now, for truecolor, this just outputs black. We'll figure out how to get something more meaningful
-	// later when this actually matters more. This is just to clear HOMs for now.
-	if (!r_swtruecolor)
-		memset(RenderTarget->GetBuffer(), color, RenderTarget->GetPitch() * RenderTarget->GetHeight());
-	else
-		memset(RenderTarget->GetBuffer(), 0, RenderTarget->GetPitch() * RenderTarget->GetHeight() * 4);
-}
-
-//===========================================================================
-//
-// 
-//
-//===========================================================================
-
-void FSoftwareRenderer::SetWindow (int windowSize, int fullWidth, int fullHeight, int stHeight, float trueratio)
-{
-	R_SWRSetWindow(windowSize, fullWidth, fullHeight, stHeight, trueratio);
-}
-
-//===========================================================================
-//
-// 
-//
-//===========================================================================
-
-void FSoftwareRenderer::SetupFrame(player_t *player)
-{
-	R_SetupColormap(player);
-	R_SetupFreelook();
-}
-
-//==========================================================================
-//
-// R_CopyStackedViewParameters
-//
-//==========================================================================
-
-void FSoftwareRenderer::CopyStackedViewParameters() 
-{
-	RenderPortal::Instance()->CopyStackedViewParameters();
-}
-
-//==========================================================================
-//
-//
-//
-//==========================================================================
 
 void FSoftwareRenderer::RenderTextureView (FCanvasTexture *tex, AActor *viewpoint, int fov)
 {
@@ -417,10 +259,12 @@ void FSoftwareRenderer::RenderTextureView (FCanvasTexture *tex, AActor *viewpoin
 
 	DAngle savedfov = FieldOfView;
 	R_SetFOV ((double)fov);
+
 	if (r_polyrenderer)
 		PolyRenderer::Instance()->RenderViewToCanvas(viewpoint, Canvas, 0, 0, tex->GetWidth(), tex->GetHeight(), tex->bFirstUpdate);
 	else
-		R_RenderViewToCanvas (viewpoint, Canvas, 0, 0, tex->GetWidth(), tex->GetHeight(), tex->bFirstUpdate);
+		RenderScene::Instance()->RenderViewToCanvas(viewpoint, Canvas, 0, 0, tex->GetWidth(), tex->GetHeight(), tex->bFirstUpdate);
+
 	R_SetFOV (savedfov);
 
 	if (Canvas->IsBgra())
@@ -477,6 +321,20 @@ void FSoftwareRenderer::RenderTextureView (FCanvasTexture *tex, AActor *viewpoin
 
 sector_t *FSoftwareRenderer::FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel)
 {
-	return RenderBSP::Instance()->FakeFlat(sec, tempsec, floorlightlevel, ceilinglightlevel, nullptr, 0, 0, 0, 0);
+	return RenderOpaquePass::Instance()->FakeFlat(sec, tempsec, floorlightlevel, ceilinglightlevel, nullptr, 0, 0, 0, 0);
 }
 
+void FSoftwareRenderer::StateChanged(AActor *actor)
+{
+	gl_SetActorLights(actor);
+}
+
+void FSoftwareRenderer::PreprocessLevel()
+{
+	gl_PreprocessLevel();
+}
+
+void FSoftwareRenderer::CleanLevelData()
+{
+	gl_CleanLevelData();
+}

@@ -16,7 +16,6 @@
 #include <stddef.h>
 #include "r_defs.h"
 
-class ASkyViewpoint;
 class ADynamicLight;
 struct FLightNode;
 struct FDynamicColormap;
@@ -64,28 +63,8 @@ namespace swrenderer
 		unsigned short *bottom;			// [RH] bottom and top arrays are dynamically
 		unsigned short pad;				//		allocated immediately after the
 		unsigned short top[];			//		visplane.
+
+		void AddLights(FLightNode *node);
+		void Render(fixed_t alpha, bool additive, bool masked);
 	};
-
-	#define MAXVISPLANES 128    /* must be a power of 2 */
-	#define visplane_hash(picnum,lightlevel,height) ((unsigned)((picnum)*3+(lightlevel)+(FLOAT2FIXED((height).fD()))*7) & (MAXVISPLANES-1))
-
-	extern visplane_t *visplanes[MAXVISPLANES + 1];
-	extern visplane_t *freetail;
-	extern visplane_t **freehead;
-
-	void R_DeinitPlanes();
-	visplane_t *new_visplane(unsigned hash);
-
-	void R_PlaneInitData();
-	void R_ClearPlanes(bool fullclear);
-
-	void R_AddPlaneLights(visplane_t *plane, FLightNode *node);
-
-	visplane_t *R_FindPlane(const secplane_t &height, FTextureID picnum, int lightlevel, double Alpha, bool additive, const FTransform &xxform, int sky, FSectorPortal *portal);
-	visplane_t *R_CheckPlane(visplane_t *pl, int start, int stop);
-
-	int R_DrawPlanes();
-	void R_DrawHeightPlanes(double height);
-	void R_DrawSinglePlane(visplane_t *pl, fixed_t alpha, bool additive, bool masked);
-	void R_MapVisPlane(visplane_t *pl, void(*mapfunc)(int y, int x1, int x2), void(*stepfunc)());
 }

@@ -19,8 +19,6 @@ EXTERN_CVAR(Bool, r_dynlights);
 
 namespace swrenderer
 {
-	struct vissprite_t;
-
 	struct ShadeConstants
 	{
 		uint16_t light_alpha;
@@ -34,9 +32,6 @@ namespace swrenderer
 		uint16_t desaturate;
 		bool simple_shade;
 	};
-
-	extern double dc_texturemid;
-	extern FLightNode *dc_light_list;
 
 	namespace drawerargs
 	{
@@ -114,11 +109,18 @@ namespace swrenderer
 	extern uint8_t identitymap[256];
 	extern FDynamicColormap identitycolormap;
 
+	// Constant arrays used for psprite clipping and initializing clipping.
+	extern short zeroarray[MAXWIDTH];
+	extern short screenheightarray[MAXWIDTH];
+
 	// Spectre/Invisibility.
 	#define FUZZTABLE 50
 	extern int fuzzoffset[FUZZTABLE + 1];
 	extern int fuzzpos;
 	extern int fuzzviewheight;
+
+	#define PARTICLE_TEXTURE_SIZE 64
+	extern uint32_t particle_texture[PARTICLE_TEXTURE_SIZE * PARTICLE_TEXTURE_SIZE];
 
 	extern bool r_swtruecolor;
 
@@ -158,7 +160,7 @@ namespace swrenderer
 		virtual void DrawSpanAddClamp() = 0;
 		virtual void DrawSpanMaskedAddClamp() = 0;
 		virtual void FillSpan() = 0;
-		virtual void DrawTiltedSpan(int y, int x1, int x2, const FVector3 &plane_sz, const FVector3 &plane_su, const FVector3 &plane_sv, bool plane_shade, int planeshade, float planelightfloat, fixed_t pviewx, fixed_t pviewy) = 0;
+		virtual void DrawTiltedSpan(int y, int x1, int x2, const FVector3 &plane_sz, const FVector3 &plane_su, const FVector3 &plane_sv, bool plane_shade, int planeshade, float planelightfloat, fixed_t pviewx, fixed_t pviewy, FDynamicColormap *basecolormap) = 0;
 		virtual void DrawColoredSpan(int y, int x1, int x2) = 0;
 		virtual void DrawFogBoundaryLine(int y, int x1, int x2) = 0;
 	};
@@ -170,10 +172,10 @@ namespace swrenderer
 	void R_InitColumnDrawers();
 	void R_InitShadeMaps();
 	void R_InitFuzzTable(int fuzzoff);
+	void R_InitParticleTexture();
 
-	bool R_SetPatchStyle(FRenderStyle style, fixed_t alpha, int translation, uint32_t color);
-	bool R_SetPatchStyle(FRenderStyle style, float alpha, int translation, uint32_t color);
-	void R_FinishSetPatchStyle(); // Call this after finished drawing the current thing, in case its style was STYLE_Shade
+	bool R_SetPatchStyle(FRenderStyle style, fixed_t alpha, int translation, uint32_t color, FDynamicColormap *&basecolormap);
+	bool R_SetPatchStyle(FRenderStyle style, float alpha, int translation, uint32_t color, FDynamicColormap *&basecolormap);
 	DrawerFunc R_GetTransMaskDrawer();
 
 	void R_UpdateFuzzPos();
@@ -185,6 +187,9 @@ namespace swrenderer
 
 	void R_SetSpanTexture(FTexture *tex);
 	void R_SetSpanColormap(FDynamicColormap *colormap, int shade);
+
+	void R_DrawMaskedColumn(int x, fixed_t iscale, FTexture *texture, fixed_t column, double spryscale, double sprtopscreen, bool sprflipvert, const short *mfloorclip, const short *mceilingclip, bool unmasked = false);
+	void R_DrawMaskedColumnBgra(int x, fixed_t iscale, FTexture *tex, fixed_t column, double spryscale, double sprtopscreen, bool sprflipvert, const short *mfloorclip, const short *mceilingclip, bool unmasked);
 
 	extern DrawerFunc colfunc;
 	extern DrawerFunc basecolfunc;

@@ -51,7 +51,6 @@
 #include "doomerrors.h"
 #include "fragglescript/t_fs.h"
 #include "a_keys.h"
-#include "a_health.h"
 
 // MACROS ------------------------------------------------------------------
 
@@ -72,6 +71,7 @@ FTypeTable TypeTable;
 PSymbolTable GlobalSymbols;
 TArray<PClass *> PClass::AllClasses;
 bool PClass::bShutdown;
+bool PClass::bVMOperational;
 
 PErrorType *TypeError;
 PErrorType *TypeAuto;
@@ -94,6 +94,7 @@ PStruct *TypeVector3;
 PStruct *TypeColorStruct;
 PStruct *TypeStringStruct;
 PPointer *TypeNullPtr;
+PPointer *TypeVoidPtr;
 
 // PRIVATE DATA DEFINITIONS ------------------------------------------------
 
@@ -533,16 +534,9 @@ const char *PType::DescriptiveName() const
 //
 //==========================================================================
 
-void ReleaseGlobalSymbols()
-{
-	TypeTable.Clear();
-	GlobalSymbols.ReleaseSymbols();
-}
-
 void PType::StaticInit()
 {
 	// Add types to the global symbol table.
-	atterm(ReleaseGlobalSymbols);
 
 	// Set up TypeTable hash keys.
 	RUNTIME_CLASS(PErrorType)->TypeTableType = RUNTIME_CLASS(PErrorType);
@@ -593,6 +587,7 @@ void PType::StaticInit()
 	TypeTable.AddType(TypeSpriteID = new PSpriteID);
 	TypeTable.AddType(TypeTextureID = new PTextureID);
 
+	TypeVoidPtr = NewPointer(TypeVoid, false);
 	TypeColorStruct = NewStruct("@ColorStruct", nullptr);	//This name is intentionally obfuscated so that it cannot be used explicitly. The point of this type is to gain access to the single channels of a color value.
 	TypeStringStruct = NewNativeStruct(NAME_String, nullptr);
 #ifdef __BIG_ENDIAN__
@@ -1789,6 +1784,18 @@ PClassPointer::PClassPointer(PClass *restrict)
 
 //==========================================================================
 //
+// PClassPointer - isCompatible
+//
+//==========================================================================
+
+bool PClassPointer::isCompatible(PType *type)
+{
+	auto other = dyn_cast<PClassPointer>(type);
+	return (other != nullptr && other->ClassRestriction->IsDescendantOf(ClassRestriction));
+}
+
+//==========================================================================
+//
 // PClassPointer :: IsMatch
 //
 //==========================================================================
@@ -2613,6 +2620,27 @@ PField::PField(FName name, PType *type, DWORD flags, size_t offset, int bitvalue
 	else BitValue = -1;
 }
 
+/* PProperty *****************************************************************/
+
+IMPLEMENT_CLASS(PProperty, false, false)
+
+//==========================================================================
+//
+// PField - Default Constructor
+//
+//==========================================================================
+
+PProperty::PProperty()
+	: PSymbol(NAME_None)
+{
+}
+
+PProperty::PProperty(FName name, TArray<PField *> &fields)
+	: PSymbol(name)
+{
+	Variables = std::move(fields);
+}
+
 /* PPrototype *************************************************************/
 
 IMPLEMENT_CLASS(PPrototype, false, false)
@@ -2960,7 +2988,18 @@ void PClass::StaticShutdown ()
 	TArray<size_t *> uniqueFPs(64);
 	unsigned int i, j;
 
-	FS_Close();	// this must be done before the classes get deleted.
+
+	// Make a full garbage collection here so that all destroyed but uncollected higher level objects that still exist can be properly taken down.
+	GC::FullGC();
+
+	// From this point onward no scripts may be called anymore because the data needed by the VM is getting deleted now.
+	// This flags DObject::Destroy not to call any scripted OnDestroy methods anymore.
+	bVMOperational = false;
+
+	// Unless something went wrong, anything left here should be class and type objects only, which do not own any scripts.
+	TypeTable.Clear();
+	GlobalSymbols.ReleaseSymbols();
+
 	for (i = 0; i < PClass::AllClasses.Size(); ++i)
 	{
 		PClass *type = PClass::AllClasses[i];
@@ -2987,7 +3026,6 @@ void PClass::StaticShutdown ()
 	{
 		delete[] uniqueFPs[i];
 	}
-	TypeTable.Clear();
 	bShutdown = true;
 
 	AllClasses.Clear();
@@ -3000,7 +3038,7 @@ void PClass::StaticShutdown ()
 		auto cr = ((ClassReg *)*probe);
 		cr->MyClass = nullptr;
 	}
-
+	
 }
 
 //==========================================================================
@@ -3088,9 +3126,6 @@ PClass *ClassReg::RegisterClass()
 		&PClass::RegistrationInfo,
 		&PClassActor::RegistrationInfo,
 		&PClassInventory::RegistrationInfo,
-		&PClassAmmo::RegistrationInfo,
-		&PClassHealth::RegistrationInfo,
-		&PClassPuzzleItem::RegistrationInfo,
 		&PClassWeapon::RegistrationInfo,
 		&PClassPlayerPawn::RegistrationInfo,
 		&PClassType::RegistrationInfo,
@@ -3229,7 +3264,7 @@ DObject *PClass::CreateNew() const
 
 	ConstructNative (mem);
 	((DObject *)mem)->SetClass (const_cast<PClass *>(this));
-	InitializeSpecials(mem);
+	InitializeSpecials(mem, Defaults);
 	return (DObject *)mem;
 }
 
@@ -3241,7 +3276,7 @@ DObject *PClass::CreateNew() const
 //
 //==========================================================================
 
-void PClass::InitializeSpecials(void *addr) const
+void PClass::InitializeSpecials(void *addr, void *defaults) const
 {
 	// Once we reach a native class, we can stop going up the family tree,
 	// since native classes handle initialization natively.
@@ -3250,10 +3285,10 @@ void PClass::InitializeSpecials(void *addr) const
 		return;
 	}
 	assert(ParentClass != NULL);
-	ParentClass->InitializeSpecials(addr);
+	ParentClass->InitializeSpecials(addr, defaults);
 	for (auto tao : SpecialInits)
 	{
-		tao.first->InitializeValue((BYTE*)addr + tao.second, Defaults == nullptr? nullptr : Defaults + tao.second);
+		tao.first->InitializeValue((char*)addr + tao.second, defaults == nullptr? nullptr : ((char*)defaults) + tao.second);
 	}
 }
 
@@ -3310,6 +3345,20 @@ void PClass::InitializeDefaults()
 {
 	assert(Defaults == NULL);
 	Defaults = (BYTE *)M_Malloc(Size);
+
+	// run the constructor on the defaults to set the vtbl pointer which is needed to run class-aware functions on them.
+	// bSerialOverride prevents linking into the thinker chains.
+	auto s = DThinker::bSerialOverride;
+	DThinker::bSerialOverride = true;
+	ConstructNative(Defaults);
+	DThinker::bSerialOverride = s;
+	// We must unlink the defaults from the class list because it's just a static block of data to the engine.
+	DObject *optr = (DObject*)Defaults;
+	GC::Root = optr->ObjNext;
+	optr->ObjNext = nullptr;
+	optr->SetClass(this);
+
+
 	if (ParentClass->Defaults != NULL)
 	{
 		memcpy(Defaults, ParentClass->Defaults, ParentClass->Size);
@@ -3327,7 +3376,7 @@ void PClass::InitializeDefaults()
 	{
 		// Copy parent values from the parent defaults.
 		assert(ParentClass != NULL);
-		ParentClass->InitializeSpecials(Defaults);
+		ParentClass->InitializeSpecials(Defaults, ParentClass->Defaults);
 
 		for (const PField *field : Fields)
 		{
@@ -3916,6 +3965,13 @@ PSymbol *PSymbolTable::AddSymbol (PSymbol *sym)
 	}
 	Symbols.Insert(sym->SymbolName, sym);
 	return sym;
+}
+
+void PSymbolTable::RemoveSymbol(PSymbol *sym)
+{
+	auto mysym = Symbols.CheckKey(sym->SymbolName);
+	if (mysym == nullptr || *mysym != sym) return;
+	Symbols.Remove(sym->SymbolName);
 }
 
 PSymbol *PSymbolTable::ReplaceSymbol(PSymbol *newsym)

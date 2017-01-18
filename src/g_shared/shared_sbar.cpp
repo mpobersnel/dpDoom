@@ -55,6 +55,8 @@
 #include "gstrings.h"
 #include "r_utility.h"
 #include "cmdlib.h"
+#include "g_levellocals.h"
+#include "virtual.h"
 
 #include "../version.h"
 
@@ -257,7 +259,7 @@ DBaseStatusBar::DBaseStatusBar (int reltop, int hres, int vres)
 //
 //---------------------------------------------------------------------------
 
-void DBaseStatusBar::Destroy ()
+void DBaseStatusBar::OnDestroy ()
 {
 	for (size_t i = 0; i < countof(Messages); ++i)
 	{
@@ -270,7 +272,7 @@ void DBaseStatusBar::Destroy ()
 		}
 		Messages[i] = NULL;
 	}
-	Super::Destroy();
+	Super::OnDestroy();
 }
 
 //---------------------------------------------------------------------------
@@ -1528,13 +1530,22 @@ void DBaseStatusBar::DrawPowerups ()
 		+ (ST_IsLatencyVisible() ? yshift : 0);
 	for (item = CPlayer->mo->Inventory; item != NULL; item = item->Inventory)
 	{
-		if (item->DrawPowerup (x, y))
+		IFVIRTUALPTR(item, AInventory, DrawPowerup)
 		{
-			x -= POWERUPICONSIZE;
-			if (x < -POWERUPICONSIZE*5)
+			VMValue params[3] = { item, x, y };
+			VMReturn ret;
+			int retv;
+
+			ret.IntAt(&retv);
+			GlobalVMStack.Call(func, params, 3, &ret, 1);
+			if (retv)
 			{
-				x = -20;
-				y += POWERUPICONSIZE*2;
+				x -= POWERUPICONSIZE;
+				if (x < -POWERUPICONSIZE * 5)
+				{
+					x = -20;
+					y += POWERUPICONSIZE * 2;
+				}
 			}
 		}
 	}

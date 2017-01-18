@@ -32,40 +32,48 @@
 #include "p_lnspec.h"
 #include "p_setup.h"
 
-#include "swrenderer/r_main.h"
 #include "swrenderer/drawers/r_draw.h"
 #include "swrenderer/plane/r_visibleplane.h"
+#include "swrenderer/plane/r_visibleplanelist.h"
+#include "swrenderer/things/r_sprite.h"
+#include "swrenderer/things/r_wallsprite.h"
+#include "swrenderer/things/r_voxel.h"
 #include "swrenderer/things/r_particle.h"
 #include "swrenderer/segments/r_clipsegment.h"
 #include "swrenderer/line/r_wallsetup.h"
-#include "r_things.h"
+#include "swrenderer/scene/r_scene.h"
+#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/scene/r_light.h"
 #include "r_3dfloors.h"
 #include "r_portal.h"
 #include "a_sharedglobal.h"
 #include "g_level.h"
 #include "p_effect.h"
 #include "c_console.h"
+#include "p_maputl.h"
 
 // State.
 #include "doomstat.h"
 #include "r_state.h"
-#include "r_bsp.h"
+#include "r_opaque_pass.h"
 #include "v_palette.h"
 #include "r_sky.h"
 #include "po_man.h"
 #include "r_data/colormaps.h"
+#include "g_levellocals.h"
 
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor);
+EXTERN_CVAR(Bool, r_drawvoxels);
 
 namespace swrenderer
 {
-	RenderBSP *RenderBSP::Instance()
+	RenderOpaquePass *RenderOpaquePass::Instance()
 	{
-		static RenderBSP bsp;
-		return &bsp;
+		static RenderOpaquePass instance;
+		return &instance;
 	}
 
-	sector_t *RenderBSP::FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel, seg_t *backline, int backx1, int backx2, double frontcz1, double frontcz2)
+	sector_t *RenderOpaquePass::FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel, seg_t *backline, int backx1, int backx2, double frontcz1, double frontcz2)
 	{
 		// If player's view height is underneath fake floor, lower the
 		// drawn ceiling to be just under the floor height, and replace
@@ -75,12 +83,12 @@ namespace swrenderer
 		// Similar for ceiling, only reflected.
 
 		// [RH] allow per-plane lighting
-		if (floorlightlevel != NULL)
+		if (floorlightlevel != nullptr)
 		{
 			*floorlightlevel = sec->GetFloorLight();
 		}
 
-		if (ceilinglightlevel != NULL)
+		if (ceilinglightlevel != nullptr)
 		{
 			*ceilinglightlevel = sec->GetCeilingLight();
 		}
@@ -88,7 +96,7 @@ namespace swrenderer
 		FakeSide = WaterFakeSide::Center;
 
 		const sector_t *s = sec->GetHeightSec();
-		if (s != NULL)
+		if (s != nullptr)
 		{
 			sector_t *heightsec = viewsector->heightsec;
 			bool underwater = r_fakingunderwater ||
@@ -115,12 +123,12 @@ namespace swrenderer
 						{
 							tempsec->lightlevel = s->lightlevel;
 
-							if (floorlightlevel != NULL)
+							if (floorlightlevel != nullptr)
 							{
 								*floorlightlevel = s->GetFloorLight();
 							}
 
-							if (ceilinglightlevel != NULL)
+							if (ceilinglightlevel != nullptr)
 							{
 								*ceilinglightlevel = s->GetCeilingLight();
 							}
@@ -159,7 +167,7 @@ namespace swrenderer
 			// are underwater but not in a water sector themselves.
 			// Only works if you cannot see the top surface of any deep water
 			// sectors at the same time.
-			if (backline && !r_fakingunderwater && backline->frontsector->heightsec == NULL)
+			if (backline && !r_fakingunderwater && backline->frontsector->heightsec == nullptr)
 			{
 				if (frontcz1 <= s->floorplane.ZatPoint(backline->v1) &&
 					frontcz2 <= s->floorplane.ZatPoint(backline->v2))
@@ -214,12 +222,12 @@ namespace swrenderer
 				{
 					tempsec->lightlevel = s->lightlevel;
 
-					if (floorlightlevel != NULL)
+					if (floorlightlevel != nullptr)
 					{
 						*floorlightlevel = s->GetFloorLight();
 					}
 
-					if (ceilinglightlevel != NULL)
+					if (ceilinglightlevel != nullptr)
 					{
 						*ceilinglightlevel = s->GetCeilingLight();
 					}
@@ -251,12 +259,12 @@ namespace swrenderer
 				{
 					tempsec->lightlevel = s->lightlevel;
 
-					if (floorlightlevel != NULL)
+					if (floorlightlevel != nullptr)
 					{
 						*floorlightlevel = s->GetFloorLight();
 					}
 
-					if (ceilinglightlevel != NULL)
+					if (ceilinglightlevel != nullptr)
 					{
 						*ceilinglightlevel = s->GetCeilingLight();
 					}
@@ -272,7 +280,7 @@ namespace swrenderer
 
 	// Checks BSP node/subtree bounding box.
 	// Returns true if some part of the bbox might be visible.
-	bool RenderBSP::CheckBBox(float *bspcoord)
+	bool RenderOpaquePass::CheckBBox(float *bspcoord)
 	{
 		static const int checkcoord[12][4] =
 		{
@@ -370,12 +378,12 @@ namespace swrenderer
 		// Find the first clippost that touches the source post
 		//	(adjacent pixels are touching).
 
-		return R_IsWallSegmentVisible(sx1, sx2);
+		return RenderClipSegment::Instance()->IsVisible(sx1, sx2);
 	}
 
-	void RenderBSP::AddPolyobjs(subsector_t *sub)
+	void RenderOpaquePass::AddPolyobjs(subsector_t *sub)
 	{
-		if (sub->BSP == NULL || sub->BSP->bDirty)
+		if (sub->BSP == nullptr || sub->BSP->bDirty)
 		{
 			sub->BuildPolyBSP();
 		}
@@ -390,7 +398,7 @@ namespace swrenderer
 	}
 
 	// kg3D - add fake segs, never rendered
-	void RenderBSP::FakeDrawLoop(subsector_t *sub, visplane_t *floorplane, visplane_t *ceilingplane)
+	void RenderOpaquePass::FakeDrawLoop(subsector_t *sub, visplane_t *floorplane, visplane_t *ceilingplane, bool foggy, FDynamicColormap *basecolormap)
 	{
 		int 		 count;
 		seg_t*		 line;
@@ -402,13 +410,13 @@ namespace swrenderer
 		{
 			if ((line->sidedef) && !(line->sidedef->Flags & WALLF_POLYOBJ))
 			{
-				renderline.Render(line, InSubsector, frontsector, nullptr, floorplane, ceilingplane);
+				renderline.Render(line, InSubsector, frontsector, nullptr, floorplane, ceilingplane, foggy, basecolormap);
 			}
 			line++;
 		}
 	}
 
-	void RenderBSP::RenderSubsector(subsector_t *sub)
+	void RenderOpaquePass::RenderSubsector(subsector_t *sub)
 	{
 		// Determine floor/ceiling planes.
 		// Add sprites of things in sector.
@@ -429,8 +437,8 @@ namespace swrenderer
 		//secplane_t templane;
 		lightlist_t *light;
 
-		if (InSubsector != NULL)
-		{ // InSubsector is not NULL. This means we are rendering from a mini-BSP.
+		if (InSubsector != nullptr)
+		{ // InSubsector is not nullptr. This means we are rendering from a mini-BSP.
 			outersubsector = false;
 		}
 		else
@@ -444,14 +452,14 @@ namespace swrenderer
 			I_Error("RenderSubsector: ss %ti with numss = %i", sub - subsectors, numsubsectors);
 #endif
 
-		assert(sub->sector != NULL);
+		assert(sub->sector != nullptr);
 
 		if (sub->polys)
 		{ // Render the polyobjs in the subsector first
 			AddPolyobjs(sub);
 			if (outersubsector)
 			{
-				InSubsector = NULL;
+				InSubsector = nullptr;
 			}
 			return;
 		}
@@ -468,10 +476,10 @@ namespace swrenderer
 		cll = ceilinglightlevel;
 
 		// [RH] set foggy flag
-		foggy = level.fadeto || frontsector->ColorMap->Fade || (level.flags & LEVEL_HASFADETABLE);
-		r_actualextralight = foggy ? 0 : extralight << 4;
+		bool foggy = level.fadeto || frontsector->ColorMap->Fade || (level.flags & LEVEL_HASFADETABLE);
 
 		// kg3D - fake lights
+		FDynamicColormap *basecolormap;
 		if (fixedlightlev < 0 && frontsector->e && frontsector->e->XFloor.lightlist.Size())
 		{
 			light = P_GetPlaneLight(frontsector, &frontsector->ceilingplane, false);
@@ -492,22 +500,23 @@ namespace swrenderer
 
 		visplane_t *ceilingplane = frontsector->ceilingplane.PointOnSide(ViewPos) > 0 ||
 			frontsector->GetTexture(sector_t::ceiling) == skyflatnum ||
-			portal != NULL ||
+			portal != nullptr ||
 			(frontsector->heightsec &&
 				!(frontsector->heightsec->MoreFlags & SECF_IGNOREHEIGHTSEC) &&
 				frontsector->heightsec->GetTexture(sector_t::floor) == skyflatnum) ?
-			R_FindPlane(frontsector->ceilingplane,		// killough 3/8/98
+			VisiblePlaneList::Instance()->FindPlane(frontsector->ceilingplane,		// killough 3/8/98
 				frontsector->GetTexture(sector_t::ceiling),
-				ceilinglightlevel + r_actualextralight,				// killough 4/11/98
+				ceilinglightlevel + R_ActualExtraLight(foggy),				// killough 4/11/98
 				frontsector->GetAlpha(sector_t::ceiling),
 				!!(frontsector->GetFlags(sector_t::ceiling) & PLANEF_ADDITIVE),
 				frontsector->planes[sector_t::ceiling].xform,
 				frontsector->sky,
-				portal
-			) : NULL;
+				portal,
+				basecolormap
+			) : nullptr;
 
 		if (ceilingplane)
-			R_AddPlaneLights(ceilingplane, frontsector->lighthead);
+			ceilingplane->AddLights(frontsector->lighthead);
 
 		if (fixedlightlev < 0 && frontsector->e && frontsector->e->XFloor.lightlist.Size())
 		{
@@ -532,22 +541,23 @@ namespace swrenderer
 
 		visplane_t *floorplane = frontsector->floorplane.PointOnSide(ViewPos) > 0 || // killough 3/7/98
 			frontsector->GetTexture(sector_t::floor) == skyflatnum ||
-			portal != NULL ||
+			portal != nullptr ||
 			(frontsector->heightsec &&
 				!(frontsector->heightsec->MoreFlags & SECF_IGNOREHEIGHTSEC) &&
 				frontsector->heightsec->GetTexture(sector_t::ceiling) == skyflatnum) ?
-			R_FindPlane(frontsector->floorplane,
+			VisiblePlaneList::Instance()->FindPlane(frontsector->floorplane,
 				frontsector->GetTexture(sector_t::floor),
-				floorlightlevel + r_actualextralight,				// killough 3/16/98
+				floorlightlevel + R_ActualExtraLight(foggy),				// killough 3/16/98
 				frontsector->GetAlpha(sector_t::floor),
 				!!(frontsector->GetFlags(sector_t::floor) & PLANEF_ADDITIVE),
 				frontsector->planes[sector_t::floor].xform,
 				frontsector->sky,
-				portal
-			) : NULL;
+				portal,
+				basecolormap
+			) : nullptr;
 
 		if (floorplane)
-			R_AddPlaneLights(floorplane, frontsector->lighthead);
+			floorplane->AddLights(frontsector->lighthead);
 
 		// kg3D - fake planes rendering
 		if (r_3dfloors && frontsector->e && frontsector->e->XFloor.ffloors.Size())
@@ -600,20 +610,21 @@ namespace swrenderer
 						floorlightlevel = *light->p_lightlevel;
 					}
 
-					ceilingplane = NULL;
-					floorplane = R_FindPlane(frontsector->floorplane,
+					ceilingplane = nullptr;
+					floorplane = VisiblePlaneList::Instance()->FindPlane(frontsector->floorplane,
 						frontsector->GetTexture(sector_t::floor),
-						floorlightlevel + r_actualextralight,				// killough 3/16/98
+						floorlightlevel + R_ActualExtraLight(foggy),				// killough 3/16/98
 						frontsector->GetAlpha(sector_t::floor),
 						!!(clip3d->fakeFloor->flags & FF_ADDITIVETRANS),
 						frontsector->planes[position].xform,
 						frontsector->sky,
-						NULL);
+						nullptr,
+						basecolormap);
 
 					if (floorplane)
-						R_AddPlaneLights(floorplane, frontsector->lighthead);
+						floorplane->AddLights(frontsector->lighthead);
 
-					FakeDrawLoop(sub, floorplane, ceilingplane);
+					FakeDrawLoop(sub, floorplane, ceilingplane, foggy, basecolormap);
 					clip3d->fake3D = 0;
 					frontsector = sub->sector;
 				}
@@ -665,25 +676,26 @@ namespace swrenderer
 					}
 					tempsec.ceilingplane.ChangeHeight(1 / 65536.);
 
-					floorplane = NULL;
-					ceilingplane = R_FindPlane(frontsector->ceilingplane,		// killough 3/8/98
+					floorplane = nullptr;
+					ceilingplane = VisiblePlaneList::Instance()->FindPlane(frontsector->ceilingplane,		// killough 3/8/98
 						frontsector->GetTexture(sector_t::ceiling),
-						ceilinglightlevel + r_actualextralight,				// killough 4/11/98
+						ceilinglightlevel + R_ActualExtraLight(foggy),				// killough 4/11/98
 						frontsector->GetAlpha(sector_t::ceiling),
 						!!(clip3d->fakeFloor->flags & FF_ADDITIVETRANS),
 						frontsector->planes[position].xform,
 						frontsector->sky,
-						NULL);
+						nullptr,
+						basecolormap);
 
 					if (ceilingplane)
-						R_AddPlaneLights(ceilingplane, frontsector->lighthead);
+						ceilingplane->AddLights(frontsector->lighthead);
 
-					FakeDrawLoop(sub, floorplane, ceilingplane);
+					FakeDrawLoop(sub, floorplane, ceilingplane, foggy, basecolormap);
 					clip3d->fake3D = 0;
 					frontsector = sub->sector;
 				}
 			}
-			clip3d->fakeFloor = NULL;
+			clip3d->fakeFloor = nullptr;
 			floorplane = backupfp;
 			ceilingplane = backupcp;
 		}
@@ -697,15 +709,15 @@ namespace swrenderer
 		// lightlevels on floor & ceiling lightlevels in the surrounding area.
 		// [RH] Handle sprite lighting like Duke 3D: If the ceiling is a sky, sprites are lit by
 		// it, otherwise they are lit by the floor.
-		R_AddSprites(sub->sector, frontsector->GetTexture(sector_t::ceiling) == skyflatnum ? ceilinglightlevel : floorlightlevel, FakeSide);
+		AddSprites(sub->sector, frontsector->GetTexture(sector_t::ceiling) == skyflatnum ? ceilinglightlevel : floorlightlevel, FakeSide, foggy, basecolormap);
 
 		// [RH] Add particles
 		if ((unsigned int)(sub - subsectors) < (unsigned int)numsubsectors)
 		{ // Only do it for the main BSP.
-			int shade = LIGHT2SHADE((floorlightlevel + ceilinglightlevel) / 2 + r_actualextralight);
+			int shade = LIGHT2SHADE((floorlightlevel + ceilinglightlevel) / 2 + R_ActualExtraLight(foggy));
 			for (WORD i = ParticlesInSubsec[(unsigned int)(sub - subsectors)]; i != NO_PARTICLE; i = Particles[i].snext)
 			{
-				R_ProjectParticle(Particles + i, subsectors[sub - subsectors].sector, shade, FakeSide);
+				RenderParticle::Project(Particles + i, subsectors[sub - subsectors].sector, shade, FakeSide, foggy);
 			}
 		}
 
@@ -714,15 +726,15 @@ namespace swrenderer
 
 		while (count--)
 		{
-			if (!outersubsector || line->sidedef == NULL || !(line->sidedef->Flags & WALLF_POLYOBJ))
+			if (!outersubsector || line->sidedef == nullptr || !(line->sidedef->Flags & WALLF_POLYOBJ))
 			{
 				// kg3D - fake planes bounding calculation
 				if (r_3dfloors && line->backsector && frontsector->e && line->backsector->e->XFloor.ffloors.Size())
 				{
 					backupfp = floorplane;
 					backupcp = ceilingplane;
-					floorplane = NULL;
-					ceilingplane = NULL;
+					floorplane = nullptr;
+					ceilingplane = nullptr;
 					Clip3DFloors *clip3d = Clip3DFloors::Instance();
 					for (unsigned int i = 0; i < line->backsector->e->XFloor.ffloors.Size(); i++)
 					{
@@ -739,24 +751,24 @@ namespace swrenderer
 							clip3d->fakeFloor->validcount = validcount;
 							clip3d->NewClip();
 						}
-						renderline.Render(line, InSubsector, frontsector, &tempsec, floorplane, ceilingplane); // fake
+						renderline.Render(line, InSubsector, frontsector, &tempsec, floorplane, ceilingplane, foggy, basecolormap); // fake
 					}
-					clip3d->fakeFloor = NULL;
+					clip3d->fakeFloor = nullptr;
 					clip3d->fake3D = 0;
 					floorplane = backupfp;
 					ceilingplane = backupcp;
 				}
-				renderline.Render(line, InSubsector, frontsector, nullptr, floorplane, ceilingplane); // now real
+				renderline.Render(line, InSubsector, frontsector, nullptr, floorplane, ceilingplane, foggy, basecolormap); // now real
 			}
 			line++;
 		}
 		if (outersubsector)
 		{
-			InSubsector = NULL;
+			InSubsector = nullptr;
 		}
 	}
 
-	void RenderBSP::RenderScene()
+	void RenderOpaquePass::RenderScene()
 	{
 		InSubsector = nullptr;
 		RenderBSPNode(nodes + numnodes - 1);	// The head node is the last node output.
@@ -768,7 +780,7 @@ namespace swrenderer
 	// Just call with BSP root and -1.
 	// killough 5/2/98: reformatted, removed tail recursion
 
-	void RenderBSP::RenderBSPNode(void *node)
+	void RenderOpaquePass::RenderBSPNode(void *node)
 	{
 		if (numnodes == 0)
 		{
@@ -795,10 +807,234 @@ namespace swrenderer
 		RenderSubsector((subsector_t *)((BYTE *)node - 1));
 	}
 
-	void RenderBSP::ClearClip()
+	void RenderOpaquePass::ClearClip()
 	{
 		// clip ceiling to console bottom
 		fillshort(floorclip, viewwidth, viewheight);
 		fillshort(ceilingclip, viewwidth, !screen->Accel2D && ConBottom > viewwindowy && !bRenderingToCanvas ? (ConBottom - viewwindowy) : 0);
+	}
+
+	void RenderOpaquePass::AddSprites(sector_t *sec, int lightlevel, WaterFakeSide fakeside, bool foggy, FDynamicColormap *basecolormap)
+	{
+		// BSP is traversed by subsector.
+		// A sector might have been split into several
+		//	subsectors during BSP building.
+		// Thus we check whether it was already added.
+		if (sec->touching_renderthings == nullptr || sec->validcount == validcount)
+			return;
+
+		// Well, now it will be done.
+		sec->validcount = validcount;
+
+		int spriteshade = LIGHT2SHADE(lightlevel + R_ActualExtraLight(foggy));
+
+		// Handle all things in sector.
+		for (auto p = sec->touching_renderthings; p != nullptr; p = p->m_snext)
+		{
+			auto thing = p->m_thing;
+			if (thing->validcount == validcount) continue;
+			thing->validcount = validcount;
+
+			FIntCVar *cvar = thing->GetClass()->distancecheck;
+			if (cvar != nullptr && *cvar >= 0)
+			{
+				double dist = (thing->Pos() - ViewPos).LengthSquared();
+				double check = (double)**cvar;
+				if (dist >= check * check)
+				{
+					continue;
+				}
+			}
+
+			// find fake level
+			F3DFloor *fakeceiling = nullptr;
+			F3DFloor *fakefloor = nullptr;
+			for (auto rover : thing->Sector->e->XFloor.ffloors)
+			{
+				if (!(rover->flags & FF_EXISTS) || !(rover->flags & FF_RENDERPLANES)) continue;
+				if (!(rover->flags & FF_SOLID) || rover->alpha != 255) continue;
+				if (!fakefloor)
+				{
+					if (!rover->top.plane->isSlope())
+					{
+						if (rover->top.plane->ZatPoint(0., 0.) <= thing->Z()) fakefloor = rover;
+					}
+				}
+				if (!rover->bottom.plane->isSlope())
+				{
+					if (rover->bottom.plane->ZatPoint(0., 0.) >= thing->Top()) fakeceiling = rover;
+				}
+			}
+
+			if (IsPotentiallyVisible(thing))
+			{
+				ThingSprite sprite;
+				if (GetThingSprite(thing, sprite))
+				{
+					FDynamicColormap *thingColormap = basecolormap;
+					int thingShade = spriteshade;
+					if (sec->sectornum != thing->Sector->sectornum)	// compare sectornums to account for R_FakeFlat copies.
+					{
+						int lightlevel = thing->Sector->GetTexture(sector_t::ceiling) == skyflatnum ? thing->Sector->GetCeilingLight() : thing->Sector->GetFloorLight();
+						thingShade = LIGHT2SHADE(lightlevel + R_ActualExtraLight(foggy));
+						thingColormap = thing->Sector->ColorMap;
+					}
+
+					if ((sprite.renderflags & RF_SPRITETYPEMASK) == RF_WALLSPRITE)
+					{
+						RenderWallSprite::Project(thing, sprite.pos, sprite.picnum, sprite.spriteScale, sprite.renderflags, thingShade, foggy, thingColormap);
+					}
+					else if (sprite.voxel)
+					{
+						RenderVoxel::Project(thing, sprite.pos, sprite.voxel, sprite.spriteScale, sprite.renderflags, fakeside, fakefloor, fakeceiling, sec, thingShade, foggy, thingColormap);
+					}
+					else
+					{
+						RenderSprite::Project(thing, sprite.pos, sprite.tex, sprite.spriteScale, sprite.renderflags, fakeside, fakefloor, fakeceiling, sec, thingShade, foggy, thingColormap);
+					}
+				}
+			}
+		}
+	}
+
+	bool RenderOpaquePass::IsPotentiallyVisible(AActor *thing)
+	{
+		// Don't waste time projecting sprites that are definitely not visible.
+		if (thing == nullptr ||
+			(thing->renderflags & RF_INVISIBLE) ||
+			!thing->RenderStyle.IsVisible(thing->Alpha) ||
+			!thing->IsVisibleToPlayer() ||
+			!thing->IsInsideVisibleAngles())
+		{
+			return false;
+		}
+
+		// [ZZ] Or less definitely not visible (hue)
+		// [ZZ] 10.01.2016: don't try to clip stuff inside a skybox against the current portal.
+		RenderPortal *renderportal = RenderPortal::Instance();
+		if (!renderportal->CurrentPortalInSkybox && renderportal->CurrentPortal && !!P_PointOnLineSidePrecise(thing->Pos(), renderportal->CurrentPortal->dst))
+			return false;
+
+		return true;
+	}
+
+	bool RenderOpaquePass::GetThingSprite(AActor *thing, ThingSprite &sprite)
+	{
+		sprite.pos = thing->InterpolatedPosition(r_TicFracF);
+		sprite.pos.Z += thing->GetBobOffset(r_TicFracF);
+
+		sprite.spritenum = thing->sprite;
+		sprite.tex = nullptr;
+		sprite.voxel = nullptr;
+		sprite.spriteScale = thing->Scale;
+		sprite.renderflags = thing->renderflags;
+
+		if (thing->picnum.isValid())
+		{
+			sprite.picnum = thing->picnum;
+
+			sprite.tex = TexMan(sprite.picnum);
+			if (sprite.tex->UseType == FTexture::TEX_Null)
+			{
+				return false;
+			}
+
+			if (sprite.tex->Rotations != 0xFFFF)
+			{
+				// choose a different rotation based on player view
+				spriteframe_t *sprframe = &SpriteFrames[sprite.tex->Rotations];
+				DAngle ang = (sprite.pos - ViewPos).Angle();
+				angle_t rot;
+				if (sprframe->Texture[0] == sprframe->Texture[1])
+				{
+					if (thing->flags7 & MF7_SPRITEANGLE)
+						rot = (thing->SpriteAngle + 45.0 / 2 * 9).BAMs() >> 28;
+					else
+						rot = (ang - (thing->Angles.Yaw + thing->SpriteRotation) + 45.0 / 2 * 9).BAMs() >> 28;
+				}
+				else
+				{
+					if (thing->flags7 & MF7_SPRITEANGLE)
+						rot = (thing->SpriteAngle + (45.0 / 2 * 9 - 180.0 / 16)).BAMs() >> 28;
+					else
+						rot = (ang - (thing->Angles.Yaw + thing->SpriteRotation) + (45.0 / 2 * 9 - 180.0 / 16)).BAMs() >> 28;
+				}
+				sprite.picnum = sprframe->Texture[rot];
+				if (sprframe->Flip & (1 << rot))
+				{
+					sprite.renderflags ^= RF_XFLIP;
+				}
+				sprite.tex = TexMan[sprite.picnum];	// Do not animate the rotation
+			}
+		}
+		else
+		{
+			// decide which texture to use for the sprite
+			if ((unsigned)sprite.spritenum >= sprites.Size())
+			{
+				DPrintf(DMSG_ERROR, "R_ProjectSprite: invalid sprite number %u\n", sprite.spritenum);
+				return false;
+			}
+			spritedef_t *sprdef = &sprites[sprite.spritenum];
+			if (thing->frame >= sprdef->numframes)
+			{
+				// If there are no frames at all for this sprite, don't draw it.
+				return false;
+			}
+			else
+			{
+				//picnum = SpriteFrames[sprdef->spriteframes + thing->frame].Texture[0];
+				// choose a different rotation based on player view
+				spriteframe_t *sprframe = &SpriteFrames[sprdef->spriteframes + thing->frame];
+				DAngle ang = (sprite.pos - ViewPos).Angle();
+				angle_t rot;
+				if (sprframe->Texture[0] == sprframe->Texture[1])
+				{
+					if (thing->flags7 & MF7_SPRITEANGLE)
+						rot = (thing->SpriteAngle + 45.0 / 2 * 9).BAMs() >> 28;
+					else
+						rot = (ang - (thing->Angles.Yaw + thing->SpriteRotation) + 45.0 / 2 * 9).BAMs() >> 28;
+				}
+				else
+				{
+					if (thing->flags7 & MF7_SPRITEANGLE)
+						rot = (thing->SpriteAngle + (45.0 / 2 * 9 - 180.0 / 16)).BAMs() >> 28;
+					else
+						rot = (ang - (thing->Angles.Yaw + thing->SpriteRotation) + (45.0 / 2 * 9 - 180.0 / 16)).BAMs() >> 28;
+				}
+				sprite.picnum = sprframe->Texture[rot];
+				if (sprframe->Flip & (1 << rot))
+				{
+					sprite.renderflags ^= RF_XFLIP;
+				}
+				sprite.tex = TexMan[sprite.picnum];	// Do not animate the rotation
+				if (r_drawvoxels)
+				{
+					sprite.voxel = sprframe->Voxel;
+				}
+			}
+
+			if (sprite.voxel == nullptr && (sprite.tex == nullptr || sprite.tex->UseType == FTexture::TEX_Null))
+			{
+				return false;
+			}
+
+			if (sprite.spriteScale.Y < 0)
+			{
+				sprite.spriteScale.Y = -sprite.spriteScale.Y;
+				sprite.renderflags ^= RF_YFLIP;
+			}
+			if (thing->player != nullptr)
+			{
+				P_CheckPlayerSprite(thing, sprite.spritenum, sprite.spriteScale);
+			}
+			if (sprite.spriteScale.X < 0)
+			{
+				sprite.spriteScale.X = -sprite.spriteScale.X;
+				sprite.renderflags ^= RF_XFLIP;
+			}
+		}
+
+		return true;
 	}
 }

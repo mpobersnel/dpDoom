@@ -36,6 +36,7 @@
 #include "r_utility.h"
 #include "a_pickups.h"
 #include "d_player.h"
+#include "g_levellocals.h"
 
 #include "gl/system/gl_interface.h"
 #include "gl/system/gl_framebuffer.h"
@@ -895,7 +896,7 @@ void GLSprite::Process(AActor* thing, sector_t * sector, int thruportal)
 		Colormap=rendersector->ColorMap;
 		if (fullbright)
 		{
-			if (rendersector == &sectors[rendersector->sectornum] || in_area != area_below)	
+			if (rendersector == &level.sectors[rendersector->sectornum] || in_area != area_below)	
 				// under water areas keep their color for fullbright objects
 			{
 				// Only make the light white but keep everything else (fog, desaturation and Boom colormap.)

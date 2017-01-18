@@ -33,16 +33,22 @@
 **
 */
 
+#ifdef __arm__
+#define NO_SSE
+#endif
+
+#ifndef NO_SSE
 #include <xmmintrin.h>
+#endif
 #include "templates.h"
 #include "doomtype.h"
 #include "doomdef.h"
 #include "r_defs.h"
 #include "r_draw.h"
-#include "swrenderer/r_main.h"
-#include "swrenderer/scene/r_things.h"
 #include "v_video.h"
 #include "r_draw_pal.h"
+#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/scene/r_light.h"
 
 // [SP] r_blendmethod - false = rgb555 matching (ZDoom classic), true = rgb666 (refactored)
 CVAR(Bool, r_blendmethod, false, CVAR_GLOBALCONFIG | CVAR_ARCHIVE)
@@ -132,7 +138,11 @@ namespace swrenderer
 			float Lxy2 = lights[i].x; // L.x*L.x + L.y*L.y
 			float Lz = lights[i].z - viewpos_z;
 			float dist2 = Lxy2 + Lz * Lz;
+#ifdef NO_SSE
+			float rcp_dist = 1.0f / (dist2 * 0.01f);
+#else
 			float rcp_dist = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_load_ss(&dist2)));
+#endif
 			float dist = dist2 * rcp_dist;
 			float distance_attenuation = (256.0f - MIN(dist * lights[i].radius, 256.0f));
 
@@ -1742,7 +1752,11 @@ namespace swrenderer
 			float Lyz2 = lights[i].y; // L.y*L.y + L.z*L.z
 			float Lx = lights[i].x - viewpos_x;
 			float dist2 = Lyz2 + Lx * Lx;
+#ifdef NO_SSE
+			float rcp_dist = 1.0f / (dist2 * 0.01f);
+#else
 			float rcp_dist = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_load_ss(&dist2)));
+#endif
 			float dist = dist2 * rcp_dist;
 			float distance_attenuation = (256.0f - MIN(dist * lights[i].radius, 256.0f));
 
@@ -2466,7 +2480,7 @@ namespace swrenderer
 
 	/////////////////////////////////////////////////////////////////////////
 
-	DrawTiltedSpanPalCommand::DrawTiltedSpanPalCommand(int y, int x1, int x2, const FVector3 &plane_sz, const FVector3 &plane_su, const FVector3 &plane_sv, bool plane_shade, int planeshade, float planelightfloat, fixed_t pviewx, fixed_t pviewy)
+	DrawTiltedSpanPalCommand::DrawTiltedSpanPalCommand(int y, int x1, int x2, const FVector3 &plane_sz, const FVector3 &plane_su, const FVector3 &plane_sv, bool plane_shade, int planeshade, float planelightfloat, fixed_t pviewx, fixed_t pviewy, FDynamicColormap *basecolormap)
 		: y(y), x1(x1), x2(x2), plane_sz(plane_sz), plane_su(plane_su), plane_sv(plane_sv), plane_shade(plane_shade), planeshade(planeshade), planelightfloat(planelightfloat), pviewx(pviewx), pviewy(pviewy)
 	{
 		using namespace drawerargs;
@@ -2621,7 +2635,7 @@ namespace swrenderer
 		const uint8_t **tiltlighting = thread->tiltlighting;
 
 		double lstep;
-		uint8_t *lightfiller;
+		uint8_t *lightfiller = nullptr;
 		int i = 0;
 
 		if (width == 0 || lval == lend)
@@ -2754,29 +2768,6 @@ namespace swrenderer
 	
 	/////////////////////////////////////////////////////////////////////////////
 
-	namespace
-	{
-		static uint32_t particle_texture[16 * 16] =
-		{
-			1 * 1, 2 * 1, 3 * 1, 4 * 1, 5 * 1, 6 * 1, 7 * 1, 8 * 1, 8 * 1, 7 * 1, 6 * 1, 5 * 1, 4 * 1, 3 * 1, 2 * 1, 1 * 1,
-			1 * 2, 2 * 2, 3 * 2, 4 * 2, 5 * 2, 6 * 2, 7 * 2, 8 * 2, 8 * 2, 7 * 2, 6 * 2, 5 * 2, 4 * 2, 3 * 2, 2 * 2, 1 * 2,
-			1 * 3, 2 * 3, 3 * 3, 4 * 3, 5 * 3, 6 * 3, 7 * 3, 8 * 3, 8 * 3, 7 * 3, 6 * 3, 5 * 3, 4 * 3, 3 * 3, 2 * 3, 1 * 3,
-			1 * 4, 2 * 4, 3 * 4, 4 * 4, 5 * 4, 6 * 4, 7 * 4, 8 * 4, 8 * 4, 7 * 4, 6 * 4, 5 * 4, 4 * 4, 3 * 4, 2 * 4, 1 * 4,
-			1 * 5, 2 * 5, 3 * 5, 4 * 5, 5 * 5, 6 * 5, 7 * 5, 8 * 5, 8 * 5, 7 * 5, 6 * 5, 5 * 5, 4 * 5, 3 * 5, 2 * 5, 1 * 5,
-			1 * 6, 2 * 6, 3 * 6, 4 * 6, 5 * 6, 6 * 6, 7 * 6, 8 * 6, 8 * 6, 7 * 6, 6 * 6, 5 * 6, 4 * 6, 3 * 6, 2 * 6, 1 * 6,
-			1 * 7, 2 * 7, 3 * 7, 4 * 7, 5 * 7, 6 * 7, 7 * 7, 8 * 7, 8 * 7, 7 * 7, 6 * 7, 5 * 7, 4 * 7, 3 * 7, 2 * 7, 1 * 7,
-			1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8, 8 * 8, 8 * 8, 7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8,
-			1 * 8, 2 * 8, 3 * 8, 4 * 8, 5 * 8, 6 * 8, 7 * 8, 8 * 8, 8 * 8, 7 * 8, 6 * 8, 5 * 8, 4 * 8, 3 * 8, 2 * 8, 1 * 8,
-			1 * 7, 2 * 7, 3 * 7, 4 * 7, 5 * 7, 6 * 7, 7 * 7, 8 * 7, 8 * 7, 7 * 7, 6 * 7, 5 * 7, 4 * 7, 3 * 7, 2 * 7, 1 * 7,
-			1 * 6, 2 * 6, 3 * 6, 4 * 6, 5 * 6, 6 * 6, 7 * 6, 8 * 6, 8 * 6, 7 * 6, 6 * 6, 5 * 6, 4 * 6, 3 * 6, 2 * 6, 1 * 6,
-			1 * 5, 2 * 5, 3 * 5, 4 * 5, 5 * 5, 6 * 5, 7 * 5, 8 * 5, 8 * 5, 7 * 5, 6 * 5, 5 * 5, 4 * 5, 3 * 5, 2 * 5, 1 * 5,
-			1 * 4, 2 * 4, 3 * 4, 4 * 4, 5 * 4, 6 * 4, 7 * 4, 8 * 4, 8 * 4, 7 * 4, 6 * 4, 5 * 4, 4 * 4, 3 * 4, 2 * 4, 1 * 4,
-			1 * 3, 2 * 3, 3 * 3, 4 * 3, 5 * 3, 6 * 3, 7 * 3, 8 * 3, 8 * 3, 7 * 3, 6 * 3, 5 * 3, 4 * 3, 3 * 3, 2 * 3, 1 * 3,
-			1 * 2, 2 * 2, 3 * 2, 4 * 2, 5 * 2, 6 * 2, 7 * 2, 8 * 2, 8 * 2, 7 * 2, 6 * 2, 5 * 2, 4 * 2, 3 * 2, 2 * 2, 1 * 2,
-			1 * 1, 2 * 1, 3 * 1, 4 * 1, 5 * 1, 6 * 1, 7 * 1, 8 * 1, 8 * 1, 7 * 1, 6 * 1, 5 * 1, 4 * 1, 3 * 1, 2 * 1, 1 * 1
-		};
-	}
-
 	DrawParticleColumnPalCommand::DrawParticleColumnPalCommand(uint8_t *dest, int dest_y, int pitch, int count, uint32_t fg, uint32_t alpha, uint32_t fracposx)
 	{
 		_dest = dest;
@@ -2797,10 +2788,10 @@ namespace swrenderer
 		uint8_t *dest = thread->dest_for_thread(_dest_y, _pitch, _dest);
 		int pitch = _pitch * thread->num_cores;
 
-		const uint32_t *source = &particle_texture[(_fracposx >> FRACBITS) * 16];
+		const uint32_t *source = &particle_texture[(_fracposx >> FRACBITS) * PARTICLE_TEXTURE_SIZE];
 		uint32_t particle_alpha = _alpha;
 
-		uint32_t fracstep = 16 * FRACUNIT / _count;
+		uint32_t fracstep = PARTICLE_TEXTURE_SIZE * FRACUNIT / _count;
 		uint32_t fracpos = fracstep * thread->skipped_by_thread(_dest_y) + fracstep / 2;
 		fracstep *= thread->num_cores;
 
@@ -2810,7 +2801,7 @@ namespace swrenderer
 
 		for (int y = 0; y < count; y++)
 		{
-			uint32_t alpha = (source[fracpos >> FRACBITS] * particle_alpha) >> 6;
+			uint32_t alpha = (source[fracpos >> FRACBITS] * particle_alpha) >> 7;
 			uint32_t inv_alpha = 256 - alpha;
 
 			int bg = *dest;

@@ -79,7 +79,7 @@
 #include "thingdef.h"
 #include "math/cmath.h"
 #include "a_armor.h"
-#include "a_health.h"
+#include "g_levellocals.h"
 
 AActor *SingleActorFromTID(int tid, AActor *defactor);
 
@@ -1226,22 +1226,6 @@ DEFINE_ACTION_FUNCTION(AActor, CheckInventory)
 
 //==========================================================================
 //
-// State jump function
-//
-//==========================================================================
-DEFINE_ACTION_FUNCTION(AActor, CheckArmorType)
-{
-	PARAM_SELF_PROLOGUE(AActor);
-	PARAM_NAME	 (type);
-	PARAM_INT_DEF(amount);
-
-	ABasicArmor *armor = (ABasicArmor *)self->FindInventory(NAME_BasicArmor);
-
-	ACTION_RETURN_BOOL(armor && armor->ArmorType == type && armor->Amount >= amount);
-}
-
-//==========================================================================
-//
 // Parameterized version of A_Explode
 //
 //==========================================================================
@@ -2269,6 +2253,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_CustomRailgun)
 	PARAM_FLOAT_DEF	(spawnofs_z)		
 	PARAM_INT_DEF	(SpiralOffset)		
 	PARAM_INT_DEF	(limit)				
+	PARAM_FLOAT_DEF	(veleffect)
 
 	if (range == 0) range = 8192.;
 	if (sparsity == 0) sparsity = 1;
@@ -2307,7 +2292,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_CustomRailgun)
 	// Let the aim trail behind the player
 	if (aim)
 	{
-		saved_angle = self->Angles.Yaw = self->AngleTo(self->target, -self->target->Vel.X * 3, -self->target->Vel.Y * 3);
+		saved_angle = self->Angles.Yaw = self->AngleTo(self->target, -self->target->Vel.X * veleffect, -self->target->Vel.Y * veleffect);
 
 		if (aim == CRF_AIMDIRECT)
 		{
@@ -2317,7 +2302,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_CustomRailgun)
 				spawnofs_xy * self->Angles.Yaw.Cos(),
 				spawnofs_xy * self->Angles.Yaw.Sin()));
 			spawnofs_xy = 0;
-			self->Angles.Yaw = self->AngleTo(self->target,- self->target->Vel.X * 3, -self->target->Vel.Y * 3);
+			self->Angles.Yaw = self->AngleTo(self->target,- self->target->Vel.X * veleffect, -self->target->Vel.Y * veleffect);
 		}
 
 		if (self->target->flags & MF_SHADOW)
@@ -2398,7 +2383,7 @@ static bool DoGiveInventory(AActor *receiver, bool orresult, VM_ARGS)
 		{
 			return false;
 		}
-		if (item->IsKindOf(RUNTIME_CLASS(AHealth)))
+		if (item->IsKindOf(PClass::FindActor(NAME_Health)))
 		{
 			item->Amount *= amount;
 		}
@@ -3208,6 +3193,9 @@ DEFINE_ACTION_FUNCTION(AActor, A_Log)
 {
 	PARAM_SELF_PROLOGUE(AActor);
 	PARAM_STRING(text);
+	PARAM_BOOL_DEF(local);
+
+	if (local && !self->CheckLocalView(consoleplayer)) return 0;
 
 	if (text[0] == '$') text = GStrings(&text[1]);
 	FString formatted = strbin1(text);
@@ -3225,6 +3213,9 @@ DEFINE_ACTION_FUNCTION(AActor, A_LogInt)
 {
 	PARAM_SELF_PROLOGUE(AActor);
 	PARAM_INT(num);
+	PARAM_BOOL_DEF(local);
+
+	if (local && !self->CheckLocalView(consoleplayer)) return 0;
 	Printf("%d\n", num);
 	return 0;
 }
@@ -3239,6 +3230,9 @@ DEFINE_ACTION_FUNCTION(AActor, A_LogFloat)
 {
 	PARAM_SELF_PROLOGUE(AActor);
 	PARAM_FLOAT(num);
+	PARAM_BOOL_DEF(local);
+
+	if (local && !self->CheckLocalView(consoleplayer)) return 0;
 	IGNORE_FORMAT_PRE
 	Printf("%H\n", num);
 	IGNORE_FORMAT_POST
@@ -5644,7 +5638,7 @@ static bool DoRadiusGive(AActor *self, AActor *thing, PClassActor *item, int amo
 		if ((flags & RGF_NOSIGHT) || P_CheckSight(thing, self, SF_IGNOREVISIBILITY | SF_IGNOREWATERBOUNDARY))
 		{ // OK to give; target is in direct path, or the monster doesn't care about it being in line of sight.
 			AInventory *gift = static_cast<AInventory *>(Spawn(item));
-			if (gift->IsKindOf(RUNTIME_CLASS(AHealth)))
+			if (gift->IsKindOf(PClass::FindActor(NAME_Health)))
 			{
 				gift->Amount *= amount;
 			}

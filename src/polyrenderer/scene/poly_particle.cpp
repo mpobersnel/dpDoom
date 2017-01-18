@@ -27,6 +27,7 @@
 #include "r_data/r_translate.h"
 #include "poly_particle.h"
 #include "polyrenderer/poly_renderer.h"
+#include "swrenderer/scene/r_light.h"
 
 void RenderPolyParticle::Render(const TriMatrix &worldToClip, const Vec4f &clipPlane, particle_t *particle, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue)
 {
@@ -71,6 +72,8 @@ void RenderPolyParticle::Render(const TriMatrix &worldToClip, const Vec4f &clipP
 	bool fullbrightSprite = particle->bright != 0;
 
 	PolyDrawArgs args;
+
+	args.uniforms.globvis = (float)swrenderer::r_SpriteVisibility;
 
 	if (fullbrightSprite || swrenderer::fixedlightlev >= 0 || swrenderer::fixedcolormap)
 	{
