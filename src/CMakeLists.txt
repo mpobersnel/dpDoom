@@ -898,6 +898,7 @@ set( FASTMATH_PCH_SOURCES
 	hardpoly/gpu/gpu_sampler.cpp
 	hardpoly/gpu/gpu_storagebuffer.cpp
 	hardpoly/gpu/gpu_texture.cpp
+	hardpoly/gpu/gpu_types.cpp
 	hardpoly/gpu/gpu_uniformbuffer.cpp
 	hardpoly/gpu/gpu_vertexarray.cpp
 	hardpoly/gpu/gpu_vertexbuffer.cpp

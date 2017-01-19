@@ -51,15 +51,8 @@ public:
 private:
 	struct FrameUniforms
 	{
-		float WorldToView[4*4];
-		float ViewToProjection[4 * 4];
-	};
-
-	struct Vec4f
-	{
-		Vec4f() { }
-		Vec4f(float x, float y, float z, float w) : X(x), Y(y), Z(z), W(w) { }
-		float X, Y, Z, W;
+		Mat4f WorldToView;
+		Mat4f ViewToProjection;
 	};
 
 	GPUContextPtr mContext;

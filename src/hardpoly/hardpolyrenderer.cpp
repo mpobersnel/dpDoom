@@ -93,18 +93,8 @@ void HardpolyRenderer::RenderView(player_t *player)
 		mFrameUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(FrameUniforms));
 
 	FrameUniforms frameUniforms;
-
-	for (int i = 0; i < 16; i++) frameUniforms.WorldToView[i] = 0.0f;
-	frameUniforms.WorldToView[0] = 0.5f;
-	frameUniforms.WorldToView[5] = 0.5f;
-	frameUniforms.WorldToView[10] = 1.0f;
-	frameUniforms.WorldToView[15] = 1.0f;
-
-	for (int i = 0; i < 16; i++) frameUniforms.ViewToProjection[i] = 0.0f;
-	frameUniforms.ViewToProjection[0] = 1.0f;
-	frameUniforms.ViewToProjection[5] = 1.0f;
-	frameUniforms.ViewToProjection[10] = 1.0f;
-	frameUniforms.ViewToProjection[15] = 1.0f;
+	frameUniforms.WorldToView = Mat4f::Scale(0.5f, 0.5f, 1.0f);
+	frameUniforms.ViewToProjection = Mat4f::Identity();
 
 	mFrameUniforms->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
 

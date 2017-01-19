@@ -33,6 +33,7 @@
 #include "gpu_uniformbuffer.h"
 #include "gpu_vertexarray.h"
 #include "gpu_vertexbuffer.h"
+#include "gpu_types.h"
 
 enum class GPUIndexFormat
 {
