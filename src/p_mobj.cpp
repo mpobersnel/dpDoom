@@ -844,7 +844,13 @@ void AActor::RemoveInventory(AInventory *item)
 			if (inv == item)
 			{
 				*invp = item->Inventory;
-				item->DetachFromOwner();
+
+				IFVIRTUALPTR(item, AInventory, DetachFromOwner)
+				{
+					VMValue params[1] = { item };
+					GlobalVMStack.Call(func, params, 1, nullptr, 0, nullptr);
+				}
+
 				item->Owner = NULL;
 				item->Inventory = NULL;
 				break;
@@ -1032,12 +1038,14 @@ DEFINE_ACTION_FUNCTION(AActor, UseInventory)
 
 AInventory *AActor::DropInventory (AInventory *item)
 {
-	AInventory *drop = item->CallCreateTossable ();
-
-	if (drop == NULL)
+	AInventory *drop = nullptr;
+	IFVIRTUALPTR(item, AInventory, CreateTossable)
 	{
-		return NULL;
+		VMValue params[1] = { (DObject*)this };
+		VMReturn ret((void**)&drop);
+		GlobalVMStack.Call(func, params, 1, &ret, 1, nullptr);
 	}
+	if (drop == nullptr) return NULL;
 	drop->SetOrigin(PosPlusZ(10.), false);
 	drop->Angles.Yaw = Angles.Yaw;
 	drop->VelFromAngle(5.);
@@ -3622,7 +3630,6 @@ int AActor::AbsorbDamage(int damage, FName dmgtype)
 			VMValue params[4] = { item, damage, dmgtype.GetIndex(), &damage };
 			GlobalVMStack.Call(func, params, 4, nullptr, 0, nullptr);
 		}
-		else item->AbsorbDamage(damage, dmgtype, damage);
 	}
 	return damage;
 }
@@ -3940,7 +3947,11 @@ void AActor::Tick ()
 		// by the order in the inventory, not the order in the thinker table
 		while (item != NULL && item->Owner == this)
 		{
-			item->DoEffect();
+			IFVIRTUALPTR(item, AInventory, DoEffect)
+			{
+				VMValue params[1] = { item };
+				GlobalVMStack.Call(func, params, 1, nullptr, 0, nullptr);
+			}
 			item = item->Inventory;
 		}
 
@@ -7587,10 +7598,13 @@ int AActor::GetModifiedDamage(FName damagetype, int damage, bool passive)
 	auto inv = Inventory;
 	while (inv != nullptr)
 	{
-		inv->ModifyDamage(damage, damagetype, damage, passive);
+		IFVIRTUALPTR(inv, AInventory, ModifyDamage)
+		{
+			VMValue params[5] = { (DObject*)inv, damage, int(damagetype), &damage, passive };
+			GlobalVMStack.Call(func, params, 5, nullptr, 0, nullptr);
+		}
 		inv = inv->Inventory;
 	}
-
 	return damage;
 }
 

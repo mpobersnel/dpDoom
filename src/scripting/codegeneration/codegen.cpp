@@ -420,6 +420,10 @@ PPrototype *FxExpression::ReturnProto()
 static int EncodeRegType(ExpEmit reg)
 {
 	int regtype = reg.RegType;
+	if (reg.Fixed && reg.Target)
+	{
+		regtype |= REGT_ADDROF;
+	}
 	if (reg.Konst)
 	{
 		regtype |= REGT_KONST;
@@ -2359,7 +2363,6 @@ FxExpression *FxAssign::Resolve(FCompileContext &ctx)
 ExpEmit FxAssign::Emit(VMFunctionBuilder *build)
 {
 	static const BYTE loadops[] = { OP_LK, OP_LKF, OP_LKS, OP_LKP };
-	assert(ValueType == Base->ValueType);
 	assert(ValueType->GetRegType() == Right->ValueType->GetRegType());
 
 	ExpEmit pointer = Base->Emit(build);
@@ -10009,10 +10012,9 @@ FxExpression *FxReturnStatement::Resolve(FCompileContext &ctx)
 	{
 		for (unsigned i = 0; i < Args.Size(); i++)
 		{
-			auto &Value = Args[0];
-			Value = new FxTypeCast(Value, ctx.ReturnProto->ReturnTypes[i], false, false);
-			Value = Value->Resolve(ctx);
-			if (Value == nullptr) fail = true;
+			Args[i] = new FxTypeCast(Args[i], ctx.ReturnProto->ReturnTypes[i], false, false);
+			Args[i] = Args[i]->Resolve(ctx);
+			if (Args[i] == nullptr) fail = true;
 		}
 		if (fail)
 		{

@@ -69,8 +69,6 @@
 void InitThingdef();
 
 // STATIC FUNCTION PROTOTYPES --------------------------------------------
-PClassActor *QuestItemClasses[31];
-
 
 static TMap<FState *, FScriptPosition> StateSourceLines;
 static FScriptPosition unknownstatesource("unknown file", 0);
@@ -253,12 +251,16 @@ static void CheckForUnsafeStates(PClassActor *obj)
 		if (obj->Size == RUNTIME_CLASS(AWeapon)->Size) return;	// This class cannot have user variables.
 		test = weaponstates;
 	}
-	else if (obj->IsDescendantOf(RUNTIME_CLASS(ACustomInventory)))
+	else
 	{
-		if (obj->Size == RUNTIME_CLASS(ACustomInventory)->Size) return;	// This class cannot have user variables.
-		test = pickupstates;
+		auto citype = PClass::FindActor(NAME_CustomInventory);
+		if (obj->IsDescendantOf(citype))
+		{
+			if (obj->Size == citype->Size) return;	// This class cannot have user variables.
+			test = pickupstates;
+		}
+		else return;	// something else derived from AStateProvider. We do not know what this may be.
 	}
-	else return;	// something else derived from AStateProvider. We do not know what this may be.
 
 	for (; *test != NAME_None; test++)
 	{
@@ -338,7 +340,7 @@ static void CheckStates(PClassActor *obj)
 	{
 		CheckStateLabels(obj, weaponstates, SUF_WEAPON, "weapon sprites");
 	}
-	else if (obj->IsDescendantOf(RUNTIME_CLASS(ACustomInventory)))
+	else if (obj->IsDescendantOf(PClass::FindActor(NAME_CustomInventory)))
 	{
 		CheckStateLabels(obj, pickupstates, SUF_ITEM, "CustomInventory state chain");
 	}
@@ -444,12 +446,5 @@ void LoadActors()
 
 	// Now we may call the scripted OnDestroy method.
 	PClass::bVMOperational = true;
-	// Since these are defined in DECORATE now the table has to be initialized here.
-	for (int i = 0; i < 31; i++)
-	{
-		char fmt[20];
-		mysnprintf(fmt, countof(fmt), "QuestItem%d", i + 1);
-		QuestItemClasses[i] = PClass::FindActor(fmt);
-	}
 	StateSourceLines.Clear();
 }

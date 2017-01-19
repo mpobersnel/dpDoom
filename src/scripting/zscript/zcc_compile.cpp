@@ -1926,6 +1926,7 @@ void ZCCCompiler::DispatchProperty(FPropertyInfo *prop, ZCC_PropertyStmt *proper
 
 void ZCCCompiler::DispatchScriptProperty(PProperty *prop, ZCC_PropertyStmt *property, AActor *defaults, Baggage &bag)
 {
+	ZCC_ExprConstant one;
 	unsigned parmcount = 1;
 	ZCC_TreeNode *x = property->Values;
 	while (x->SiblingNext != property->Values)
@@ -1933,7 +1934,16 @@ void ZCCCompiler::DispatchScriptProperty(PProperty *prop, ZCC_PropertyStmt *prop
 		x = x->SiblingNext;
 		parmcount++;
 	}
-	if (parmcount != prop->Variables.Size())
+	if (parmcount == 0 && prop->Variables.Size() == 1 && prop->Variables[0]->Type == TypeBool)
+	{
+		// allow boolean properties to have the parameter omitted
+		one.Operation = PEX_ConstValue;
+		one.NodeType = AST_ExprConstant;
+		one.Type = TypeBool;
+		one.IntVal = 1;
+		property->Values = &one;
+	}
+	else if (parmcount != prop->Variables.Size())
 	{
 		Error(x, "Argument count mismatch: Got %u, expected %u", parmcount, prop->Variables.Size());
 		return;
@@ -1954,6 +1964,10 @@ void ZCCCompiler::DispatchScriptProperty(PProperty *prop, ZCC_PropertyStmt *prop
 			addr = ((char*)defaults) + f->Offset;
 		}
 
+		if (f->Type == TypeBool)
+		{
+			static_cast<PBool*>(f->Type)->SetValue(addr, !!GetInt(exp));
+		}
 		if (f->Type->IsKindOf(RUNTIME_CLASS(PInt)))
 		{
 			static_cast<PInt*>(f->Type)->SetValue(addr, GetInt(exp));
@@ -2464,7 +2478,12 @@ void ZCCCompiler::CompileFunction(ZCC_StructWork *c, ZCC_FuncDeclarator *f, bool
 		PFunction *virtsym = nullptr;
 		if (cls != nullptr && cls->ParentClass != nullptr) virtsym = dyn_cast<PFunction>(cls->ParentClass->Symbols.FindSymbol(FName(f->Name), true));
 		unsigned vindex = ~0u;
-		if (virtsym != nullptr) vindex = virtsym->Variants[0].Implementation->VirtualIndex;
+		if (virtsym != nullptr)
+		{
+			auto imp = virtsym->Variants[0].Implementation;
+			if (imp != nullptr) vindex = imp->VirtualIndex;
+			else Error(f, "Virtual base function %s not found in %s", FName(f->Name).GetChars(), cls->ParentClass->TypeName.GetChars());
+		}
 
 		if (!(f->Flags & ZCC_Native))
 		{
