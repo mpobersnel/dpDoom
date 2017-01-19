@@ -54,121 +54,46 @@ namespace swrenderer
 	{
 		for (auto &plane : visplanes)
 			plane = nullptr;
-		freehead = &freetail;
 	}
 
-	void VisiblePlaneList::Deinit()
+	VisiblePlane *VisiblePlaneList::Add(unsigned hash)
 	{
-		// do not use R_ClearPlanes because at this point the screen pointer is no longer valid.
-		for (int i = 0; i <= MAXVISPLANES; i++)	// new code -- killough
-		{
-			for (*freehead = visplanes[i], visplanes[i] = nullptr; *freehead; )
-			{
-				freehead = &(*freehead)->next;
-			}
-		}
-		for (visplane_t *pl = freetail; pl != nullptr; )
-		{
-			visplane_t *next = pl->next;
-			free(pl);
-			pl = next;
-		}
+		VisiblePlane *newplane = RenderMemory::NewObject<VisiblePlane>();
+		newplane->next = visplanes[hash];
+		visplanes[hash] = newplane;
+		return newplane;
 	}
 
-	visplane_t *VisiblePlaneList::Add(unsigned hash)
+	void VisiblePlaneList::Clear()
 	{
-		visplane_t *check = freetail;
-
-		if (check == nullptr)
-		{
-			check = (visplane_t *)M_Malloc(sizeof(*check) + 3 + sizeof(*check->top)*(MAXWIDTH * 2));
-			memset(check, 0, sizeof(*check) + 3 + sizeof(*check->top)*(MAXWIDTH * 2));
-			check->bottom = check->top + MAXWIDTH + 2;
-		}
-		else if (nullptr == (freetail = freetail->next))
-		{
-			freehead = &freetail;
-		}
-
-		check->lights = nullptr;
-
-		check->next = visplanes[hash];
-		visplanes[hash] = check;
-		return check;
-	}
-
-	void VisiblePlaneList::Init()
-	{
-		int i;
-		visplane_t *pl;
-
-		// Free all visplanes and let them be re-allocated as needed.
-		pl = freetail;
-
-		while (pl)
-		{
-			visplane_t *next = pl->next;
-			M_Free(pl);
-			pl = next;
-		}
-		freetail = nullptr;
-		freehead = &freetail;
-
-		for (i = 0; i < MAXVISPLANES; i++)
-		{
-			pl = visplanes[i];
+		for (int i = 0; i <= MAXVISPLANES; i++)
 			visplanes[i] = nullptr;
-			while (pl)
-			{
-				visplane_t *next = pl->next;
-				M_Free(pl);
-				pl = next;
-			}
-		}
 	}
 
-	void VisiblePlaneList::Clear(bool fullclear)
+	void VisiblePlaneList::ClearKeepFakePlanes()
 	{
-		int i;
-
-		// Don't clear fake planes if not doing a full clear.
-		if (!fullclear)
+		for (int i = 0; i <= MAXVISPLANES - 1; i++)
 		{
-			for (i = 0; i <= MAXVISPLANES - 1; i++)	// new code -- killough
+			for (VisiblePlane **probe = &visplanes[i]; *probe != nullptr; )
 			{
-				for (visplane_t **probe = &visplanes[i]; *probe != nullptr; )
-				{
-					if ((*probe)->sky < 0)
-					{ // fake: move past it
-						probe = &(*probe)->next;
-					}
-					else
-					{ // not fake: move to freelist
-						visplane_t *vis = *probe;
-						*freehead = vis;
-						*probe = vis->next;
-						vis->next = nullptr;
-						freehead = &vis->next;
-					}
+				if ((*probe)->sky < 0)
+				{ // fake: move past it
+					probe = &(*probe)->next;
 				}
-			}
-		}
-		else
-		{
-			for (i = 0; i <= MAXVISPLANES; i++)	// new code -- killough
-			{
-				for (*freehead = visplanes[i], visplanes[i] = nullptr; *freehead; )
-				{
-					freehead = &(*freehead)->next;
+				else
+				{ // not fake: move from list
+					VisiblePlane *vis = *probe;
+					*probe = vis->next;
+					vis->next = nullptr;
 				}
 			}
 		}
 	}
 
-	visplane_t *VisiblePlaneList::FindPlane(const secplane_t &height, FTextureID picnum, int lightlevel, double Alpha, bool additive, const FTransform &xxform, int sky, FSectorPortal *portal, FDynamicColormap *basecolormap)
+	VisiblePlane *VisiblePlaneList::FindPlane(const secplane_t &height, FTextureID picnum, int lightlevel, double Alpha, bool additive, const FTransform &xxform, int sky, FSectorPortal *portal, FDynamicColormap *basecolormap)
 	{
 		secplane_t plane;
-		visplane_t *check;
+		VisiblePlane *check;
 		unsigned hash;						// killough
 		bool isskybox;
 		const FTransform *xform = &xxform;
@@ -282,8 +207,6 @@ namespace swrenderer
 		check->colormap = basecolormap;		// [RH] Save colormap
 		check->sky = sky;
 		check->portal = portal;
-		check->left = viewwidth;			// Was SCREENWIDTH -- killough 11/98
-		check->right = 0;
 		check->extralight = renderportal->stacked_extralight;
 		check->visibility = renderportal->stacked_visibility;
 		check->viewpos = renderportal->stacked_viewpos;
@@ -294,12 +217,10 @@ namespace swrenderer
 		check->MirrorFlags = renderportal->MirrorFlags;
 		check->CurrentSkybox = Clip3DFloors::Instance()->CurrentSkybox;
 
-		fillshort(check->top, viewwidth, 0x7fff);
-
 		return check;
 	}
 
-	visplane_t *VisiblePlaneList::GetRange(visplane_t *pl, int start, int stop)
+	VisiblePlane *VisiblePlaneList::GetRange(VisiblePlane *pl, int start, int stop)
 	{
 		int intrl, intrh;
 		int unionl, unionh;
@@ -330,8 +251,8 @@ namespace swrenderer
 			intrh = stop;
 		}
 
-		for (x = intrl; x < intrh && pl->top[x] == 0x7fff; x++)
-			;
+		x = intrl;
+		while (x < intrh && pl->top[x] == 0x7fff) x++;
 
 		if (x >= intrh)
 		{
@@ -352,7 +273,7 @@ namespace swrenderer
 			{
 				hash = CalcHash(pl->picnum.GetIndex(), pl->lightlevel, pl->height);
 			}
-			visplane_t *new_pl = Add(hash);
+			VisiblePlane *new_pl = Add(hash);
 
 			new_pl->height = pl->height;
 			new_pl->picnum = pl->picnum;
@@ -374,14 +295,34 @@ namespace swrenderer
 			pl = new_pl;
 			pl->left = start;
 			pl->right = stop;
-			fillshort(pl->top, viewwidth, 0x7fff);
 		}
 		return pl;
 	}
 
+	bool VisiblePlaneList::HasPortalPlanes() const
+	{
+		return visplanes[MAXVISPLANES] != nullptr;
+	}
+
+	VisiblePlane *VisiblePlaneList::PopFirstPortalPlane()
+	{
+		VisiblePlane *pl = visplanes[VisiblePlaneList::MAXVISPLANES];
+		if (pl)
+		{
+			visplanes[VisiblePlaneList::MAXVISPLANES] = pl->next;
+			pl->next = nullptr;
+		}
+		return pl;
+	}
+
+	void VisiblePlaneList::ClearPortalPlanes()
+	{
+		visplanes[VisiblePlaneList::MAXVISPLANES] = nullptr;
+	}
+
 	int VisiblePlaneList::Render()
 	{
-		visplane_t *pl;
+		VisiblePlane *pl;
 		int i;
 		int vpcount = 0;
 
@@ -408,7 +349,7 @@ namespace swrenderer
 
 	void VisiblePlaneList::RenderHeight(double height)
 	{
-		visplane_t *pl;
+		VisiblePlane *pl;
 		int i;
 
 		drawerargs::ds_color = 3;

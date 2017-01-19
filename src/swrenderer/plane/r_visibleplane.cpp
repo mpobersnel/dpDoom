@@ -43,7 +43,19 @@ CVAR(Bool, tilt, false, 0);
 
 namespace swrenderer
 {
-	void visplane_t::AddLights(FLightNode *node)
+	VisiblePlane::VisiblePlane()
+	{
+		picnum.SetNull();
+		height.set(0.0, 0.0, 1.0, 0.0);
+
+		bottom = RenderMemory::AllocMemory<uint16_t>(viewwidth);
+		top = RenderMemory::AllocMemory<uint16_t>(viewwidth);
+
+		fillshort(bottom, viewwidth, 0);
+		fillshort(top, viewwidth, 0x7fff);
+	}
+
+	void VisiblePlane::AddLights(FLightNode *node)
 	{
 		if (!r_dynlights)
 			return;
@@ -53,7 +65,7 @@ namespace swrenderer
 			if (!(node->lightsource->flags2&MF2_DORMANT))
 			{
 				bool found = false;
-				visplane_light *light_node = lights;
+				VisiblePlaneLight *light_node = lights;
 				while (light_node)
 				{
 					if (light_node->lightsource == node->lightsource)
@@ -65,7 +77,7 @@ namespace swrenderer
 				}
 				if (!found)
 				{
-					visplane_light *newlight = RenderMemory::NewObject<visplane_light>();
+					VisiblePlaneLight *newlight = RenderMemory::NewObject<VisiblePlaneLight>();
 					newlight->next = lights;
 					newlight->lightsource = node->lightsource;
 					lights = newlight;
@@ -75,14 +87,15 @@ namespace swrenderer
 		}
 	}
 
-	void visplane_t::Render(fixed_t alpha, bool additive, bool masked)
+	void VisiblePlane::Render(fixed_t alpha, bool additive, bool masked)
 	{
 		if (left >= right)
 			return;
 
 		if (picnum == skyflatnum) // sky flat
 		{
-			RenderSkyPlane::Render(this);
+			RenderSkyPlane renderer;
+			renderer.Render(this);
 		}
 		else // regular flat
 		{

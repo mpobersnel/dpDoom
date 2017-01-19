@@ -133,7 +133,7 @@ namespace swrenderer
 		// Clear buffers.
 		RenderClipSegment::Instance()->Clear(0, viewwidth);
 		R_ClearDrawSegs();
-		VisiblePlaneList::Instance()->Clear(true);
+		VisiblePlaneList::Instance()->Clear();
 		RenderTranslucentPass::Clear();
 
 		// opening / clipping determination
@@ -246,8 +246,6 @@ namespace swrenderer
 
 	void RenderScene::ScreenResized()
 	{
-		VisiblePlaneList::Instance()->Init();
-
 		RenderTarget = screen;
 		int width = SCREENWIDTH;
 		int height = SCREENHEIGHT;
@@ -271,7 +269,6 @@ namespace swrenderer
 	void RenderScene::Deinit()
 	{
 		RenderTranslucentPass::Deinit();
-		VisiblePlaneList::Instance()->Deinit();
 		Clip3DFloors::Instance()->Cleanup();
 		R_FreeDrawSegs();
 	}

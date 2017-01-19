@@ -94,7 +94,7 @@ namespace swrenderer
 
 		VisiblePlaneList *planes = VisiblePlaneList::Instance();
 
-		if (planes->visplanes[VisiblePlaneList::MAXVISPLANES] == nullptr)
+		if (!planes->HasPortalPlanes())
 			return;
 
 		Clip3DFloors::Instance()->EnterSkybox();
@@ -109,22 +109,11 @@ namespace swrenderer
 		AActor *savedcamera = camera;
 		sector_t *savedsector = viewsector;
 
-		int i;
-		visplane_t *pl;
-
-		for (pl = planes->visplanes[VisiblePlaneList::MAXVISPLANES]; pl != nullptr; pl = planes->visplanes[VisiblePlaneList::MAXVISPLANES])
+		for (VisiblePlane *pl = planes->PopFirstPortalPlane(); pl != nullptr; pl = planes->PopFirstPortalPlane())
 		{
-			// Pop the visplane off the list now so that if this skybox adds more
-			// skyboxes to the list, they will be drawn instead of skipped (because
-			// new skyboxes go to the beginning of the list instead of the end).
-			planes->visplanes[VisiblePlaneList::MAXVISPLANES] = pl->next;
-			pl->next = nullptr;
-
 			if (pl->right < pl->left || !r_skyboxes || numskyboxes == MAX_SKYBOX_PLANES || pl->portal == nullptr)
 			{
 				pl->Render(OPAQUE, false, false);
-				*planes->freehead = pl;
-				planes->freehead = &pl->next;
 				continue;
 			}
 
@@ -164,8 +153,6 @@ namespace swrenderer
 
 			default:
 				pl->Render(OPAQUE, false, false);
-				*planes->freehead = pl;
-				planes->freehead = &pl->next;
 				numskyboxes--;
 				continue;
 			}
@@ -178,14 +165,14 @@ namespace swrenderer
 			R_SetViewAngle();
 			validcount++;	// Make sure we see all sprites
 
-			planes->Clear(false);
+			planes->ClearKeepFakePlanes();
 			RenderClipSegment::Instance()->Clear(pl->left, pl->right);
 			WindowLeft = pl->left;
 			WindowRight = pl->right;
 
 			auto ceilingclip = RenderOpaquePass::Instance()->ceilingclip;
 			auto floorclip = RenderOpaquePass::Instance()->floorclip;
-			for (i = pl->left; i < pl->right; i++)
+			for (int i = pl->left; i < pl->right; i++)
 			{
 				if (pl->top[i] == 0x7fff)
 				{
@@ -257,13 +244,12 @@ namespace swrenderer
 
 			VisibleSpriteList::Instance()->PopPortal();
 
+			VisiblePlane *pl;
 			visplaneStack.Pop(pl);
 			if (pl->Alpha > 0 && pl->picnum != skyflatnum)
 			{
 				pl->Render(pl->Alpha, pl->Additive, true);
 			}
-			*planes->freehead = pl;
-			planes->freehead = &pl->next;
 		}
 		firstdrawseg = drawsegs;
 		ds_p = drawsegs + savedds_p;
@@ -283,8 +269,7 @@ namespace swrenderer
 
 		if (Clip3DFloors::Instance()->fakeActive) return;
 
-		for (*planes->freehead = planes->visplanes[VisiblePlaneList::MAXVISPLANES], planes->visplanes[VisiblePlaneList::MAXVISPLANES] = nullptr; *planes->freehead; )
-			planes->freehead = &(*planes->freehead)->next;
+		planes->ClearPortalPlanes();
 	}
 
 	void RenderPortal::RenderLinePortals()
@@ -423,7 +408,7 @@ namespace swrenderer
 		PortalDrawseg* prevpds = CurrentPortal;
 		CurrentPortal = pds;
 
-		VisiblePlaneList::Instance()->Clear(false);
+		VisiblePlaneList::Instance()->ClearKeepFakePlanes();
 		RenderClipSegment::Instance()->Clear(pds->x1, pds->x2);
 
 		WindowLeft = pds->x1;
