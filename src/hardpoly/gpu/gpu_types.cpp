@@ -92,7 +92,7 @@ Mat4f Mat4f::SwapYZ()
 {
 	Mat4f m = Null();
 	m.Matrix[0 + 0 * 4] = 1.0f;
-	m.Matrix[1 + 2 * 4] = -1.0f;
+	m.Matrix[1 + 2 * 4] = 1.0f;
 	m.Matrix[2 + 1 * 4] = -1.0f;
 	m.Matrix[3 + 3 * 4] = 1.0f;
 	return m;
@@ -103,7 +103,7 @@ Mat4f Mat4f::Perspective(float fovy, float aspect, float z_near, float z_far)
 	float f = (float)(1.0 / tan(fovy * M_PI / 360.0));
 	Mat4f m = Null();
 	m.Matrix[0 + 0 * 4] = f / aspect;
-	m.Matrix[1 + 1 * 4] = f;
+	m.Matrix[1 + 1 * 4] = -f;
 	m.Matrix[2 + 2 * 4] = (z_far + z_near) / (z_near - z_far);
 	m.Matrix[2 + 3 * 4] = (2.0f * z_far * z_near) / (z_near - z_far);
 	m.Matrix[3 + 2 * 4] = -1.0f;

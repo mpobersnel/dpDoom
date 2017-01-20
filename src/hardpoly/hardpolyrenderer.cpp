@@ -34,6 +34,7 @@
 #include "swrenderer/scene/r_opaque_pass.h"
 #include "gl/system/gl_system.h"
 #include "gl/system/gl_swframebuffer.h"
+#include "gl/data/gl_data.h"
 #include "levelmeshbuilder.h"
 #include "po_man.h"
 #include "r_data/r_interpolate.h"
@@ -146,7 +147,7 @@ void HardpolyRenderer::RenderView(player_t *player)
 
 	mContext->SetVertexArray(mVertexArray);
 	mContext->SetProgram(mProgram);
-	mContext->SetUniforms(0, mFrameUniforms);
+	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
 
 	mContext->Draw(GPUDrawMode::Triangles, 0, mNumVertices);
 
@@ -195,14 +196,16 @@ void HardpolyRenderer::SetupPerspectiveMatrix()
 
 	Mat4f viewToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f);
 	
-	if (!mFrameUniforms)
-		mFrameUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(FrameUniforms));
+	mCurrentFrameUniforms = (mCurrentFrameUniforms + 1) % 3;
+
+	if (!mFrameUniforms[mCurrentFrameUniforms])
+		mFrameUniforms[mCurrentFrameUniforms] = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(FrameUniforms));
 
 	FrameUniforms frameUniforms;
 	frameUniforms.WorldToView = worldToView;
 	frameUniforms.ViewToProjection = viewToClip;
 
-	mFrameUniforms->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
+	mFrameUniforms[mCurrentFrameUniforms]->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
 }
 
 void HardpolyRenderer::RemapVoxels()

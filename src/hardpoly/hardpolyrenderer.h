@@ -62,7 +62,8 @@ private:
 	GPUTexture2DPtr mDepthStencilBuffer;
 	GPUTexture2DPtr mNormalBuffer;
 	GPUFrameBufferPtr mSceneFB;
-	GPUUniformBufferPtr mFrameUniforms;
+	GPUUniformBufferPtr mFrameUniforms[3];
+	int mCurrentFrameUniforms = 0;
 	GPUVertexArrayPtr mVertexArray;
 	int mNumVertices = 0;
 	GPUProgramPtr mProgram;

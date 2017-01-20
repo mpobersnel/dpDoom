@@ -1315,47 +1315,55 @@ void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 		BindFBBuffer();
 		FBTexture->CurrentBuffer = (FBTexture->CurrentBuffer + 1) & 1;
 
-		if (!UseMappedMemBuffer)
+		if (ViewFBHandle == 0)
 		{
-			int pixelsize = IsBgra() ? 4 : 1;
-			int size = Width * Height * pixelsize;
-
-			uint8_t *dest = (uint8_t*)MapBuffer(GL_PIXEL_UNPACK_BUFFER, size);
-			if (dest)
+			if (!UseMappedMemBuffer)
 			{
-				if (Pitch == Width)
+				int pixelsize = IsBgra() ? 4 : 1;
+				int size = Width * Height * pixelsize;
+
+				uint8_t *dest = (uint8_t*)MapBuffer(GL_PIXEL_UNPACK_BUFFER, size);
+				if (dest)
 				{
-					memcpy(dest, MemBuffer, Width * Height * pixelsize);
-				}
-				else
-				{
-					uint8_t *src = MemBuffer;
-					for (int y = 0; y < Height; y++)
+					if (Pitch == Width)
 					{
-						memcpy(dest, src, Width * pixelsize);
-						dest += Width * pixelsize;
-						src += Pitch * pixelsize;
+						memcpy(dest, MemBuffer, Width * Height * pixelsize);
 					}
+					else
+					{
+						uint8_t *src = MemBuffer;
+						for (int y = 0; y < Height; y++)
+						{
+							memcpy(dest, src, Width * pixelsize);
+							dest += Width * pixelsize;
+							src += Pitch * pixelsize;
+						}
+					}
+					glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 				}
-				glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 			}
+			else if (MappedMemBuffer)
+			{
+				glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+				MappedMemBuffer = nullptr;
+			}
+
+			GLint oldBinding = 0;
+			glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
+			glBindTexture(GL_TEXTURE_2D, FBTexture->Texture);
+			if (IsBgra())
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, Width, Height, GL_BGRA, GL_UNSIGNED_BYTE, 0);
+			else
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, Width, Height, GL_RED, GL_UNSIGNED_BYTE, 0);
+			glBindTexture(GL_TEXTURE_2D, oldBinding);
+
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 		}
 		else if (MappedMemBuffer)
 		{
 			glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 			MappedMemBuffer = nullptr;
 		}
-
-		GLint oldBinding = 0;
-		glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
-		glBindTexture(GL_TEXTURE_2D, FBTexture->Texture);
-		if (IsBgra())
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, Width, Height, GL_BGRA, GL_UNSIGNED_BYTE, 0);
-		else
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, Width, Height, GL_RED, GL_UNSIGNED_BYTE, 0);
-		glBindTexture(GL_TEXTURE_2D, oldBinding);
-
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	}
 	InScene = true;
 	if (vid_hwaalines)
