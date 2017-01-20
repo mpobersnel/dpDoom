@@ -153,8 +153,8 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 				if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && line->sidedef)
 				{
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::bottom);
-					if (texture->UseType == FTexture::TEX_Null) texture = nullptr;
-					if (texture && texture)
+					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+					if (texture)
 						ProcessWall(texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2);
 				}
 			}
