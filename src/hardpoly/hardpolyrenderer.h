@@ -66,6 +66,7 @@ private:
 	GPUFrameBufferPtr mSceneFB;
 	GPUUniformBufferPtr mFrameUniforms[3];
 	int mCurrentFrameUniforms = 0;
+	int mMeshLevel = 0;
 	GPUVertexArrayPtr mVertexArray;
 	std::vector<LevelMeshDrawRun> mDrawRuns;
 	std::map<FTexture*, GPUTexture2DPtr> mTextures;

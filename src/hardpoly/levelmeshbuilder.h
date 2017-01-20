@@ -44,7 +44,7 @@ private:
 	void ProcessBSP();
 	void ProcessNode(void *node);
 	void ProcessSubsector(subsector_t *sub);
-	void ProcessWall(FTexture *texture, const DVector2 &v1, const DVector2 &v2, double ceilz1, double floorz1, double ceilz2, double floorz2);
+	void ProcessWall(FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2);
 	
 	FTexture *GetWallTexture(line_t *line, side_t *side, side_t::ETexpart texpart);
 
@@ -55,4 +55,38 @@ private:
 	};
 
 	std::map<FTexture*, MaterialVertices> mMaterials;
+};
+
+class PlaneUVTransform
+{
+public:
+	PlaneUVTransform(const FTransform &transform, FTexture *tex);
+
+	Vec2f GetUV(const Vec3f &pos) const;
+
+	float GetU(float x, float y) const;
+	float GetV(float x, float y) const;
+
+private:
+	float xscale;
+	float yscale;
+	float cosine;
+	float sine;
+	float xOffs, yOffs;
+};
+
+class WallTextureCoords
+{
+public:
+	WallTextureCoords(FTexture *tex, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double topz, double bottomz, double unpeggedceil);
+
+	double u1, u2;
+	double v1, v2;
+
+private:
+	void CalcU(FTexture *tex, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart);
+	void CalcV(FTexture *tex, const line_t *line, const side_t *side, side_t::ETexpart texpart, double topz, double bottomz, double unpeggedceil);
+	void CalcVTopPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double vscale, double yoffset);
+	void CalcVMidPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double vscale, double yoffset);
+	void CalcVBottomPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double unpeggedceil, double vscale, double yoffset);
 };

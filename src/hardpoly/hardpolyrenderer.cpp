@@ -39,6 +39,7 @@
 #include "po_man.h"
 #include "r_data/r_interpolate.h"
 #include "p_effect.h"
+#include "g_levellocals.h"
 #include "levelmeshbuilder.h"
 
 EXTERN_CVAR(Float, maxviewpitch)
@@ -100,13 +101,16 @@ void HardpolyRenderer::RenderView(player_t *player)
 
 	SetupPerspectiveMatrix();
 
-	if (!mVertexArray)
+	if (!mVertexArray || mMeshLevel != level.levelnum)
 	{
+		mVertexArray.reset();
+
 		LevelMeshBuilder builder;
 		builder.Generate();
 		
 		mVertexArray = builder.VertexArray;
 		mDrawRuns = builder.DrawRuns;
+		mMeshLevel = level.levelnum;
 	}
 
 	if (!mProgram)
