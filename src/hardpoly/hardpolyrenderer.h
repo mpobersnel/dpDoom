@@ -54,6 +54,8 @@ private:
 		Mat4f WorldToView;
 		Mat4f ViewToProjection;
 	};
+	
+	void SetupPerspectiveMatrix();
 
 	GPUContextPtr mContext;
 	GPUTexture2DPtr mAlbedoBuffer;
@@ -61,7 +63,7 @@ private:
 	GPUTexture2DPtr mNormalBuffer;
 	GPUFrameBufferPtr mSceneFB;
 	GPUUniformBufferPtr mFrameUniforms;
-	GPUVertexBufferPtr mVertices;
 	GPUVertexArrayPtr mVertexArray;
+	int mNumVertices = 0;
 	GPUProgramPtr mProgram;
 };

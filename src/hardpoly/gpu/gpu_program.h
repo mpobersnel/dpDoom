@@ -47,6 +47,7 @@ public:
 	void SetDefine(const std::string &name, const std::string &value);
 	void Compile(GPUShaderType type, const char *lumpName);
 	void Compile(GPUShaderType type, const char *name, const std::string &code);
+	void SetAttribLocation(const std::string &name, int index);
 	void SetFragOutput(const std::string &name, int index);
 	void Link(const std::string &name);
 

@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include "gpu_types.h"
 #include "doomtype.h"
+#include <cmath>
 
 Mat4f Mat4f::Null()
 {
@@ -91,7 +92,7 @@ Mat4f Mat4f::SwapYZ()
 {
 	Mat4f m = Null();
 	m.Matrix[0 + 0 * 4] = 1.0f;
-	m.Matrix[1 + 2 * 4] = 1.0f;
+	m.Matrix[1 + 2 * 4] = -1.0f;
 	m.Matrix[2 + 1 * 4] = -1.0f;
 	m.Matrix[3 + 3 * 4] = 1.0f;
 	return m;

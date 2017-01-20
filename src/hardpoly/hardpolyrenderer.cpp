@@ -34,6 +34,10 @@
 #include "swrenderer/scene/r_opaque_pass.h"
 #include "gl/system/gl_system.h"
 #include "gl/system/gl_swframebuffer.h"
+#include "levelmeshbuilder.h"
+#include "po_man.h"
+#include "r_data/r_interpolate.h"
+#include "p_effect.h"
 
 EXTERN_CVAR(Float, maxviewpitch)
 
@@ -41,6 +45,7 @@ void gl_ParseDefs();
 void gl_SetActorLights(AActor *);
 void gl_PreprocessLevel();
 void gl_CleanLevelData();
+void InitGLRMapinfoData();
 
 HardpolyRenderer::HardpolyRenderer()
 {
@@ -61,6 +66,8 @@ void HardpolyRenderer::Precache(BYTE *texhitlist, TMap<PClassActor*, bool> &acto
 
 void HardpolyRenderer::RenderView(player_t *player)
 {
+	P_FindParticleSubsectors();
+	PO_LinkToSubsectors();
 	R_SetupFrame(player->mo);
 
 	mContext->Begin();
@@ -89,33 +96,15 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mContext->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
 	mContext->ClearDepthStencilBuffer(1.0f, 0);
 
-	if (!mFrameUniforms)
-		mFrameUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(FrameUniforms));
-
-	FrameUniforms frameUniforms;
-	frameUniforms.WorldToView = Mat4f::Scale(0.5f, 0.5f, 1.0f);
-	frameUniforms.ViewToProjection = Mat4f::Identity();
-
-	mFrameUniforms->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
-
-	if (!mVertices)
-	{
-		std::vector<Vec4f> vertices;
-		vertices.push_back({ -1.0f, -1.0f, 1.0f, 1.0f });
-		vertices.push_back({  1.0f, -1.0f, 1.0f, 1.0f });
-		vertices.push_back({ -1.0f,  1.0f, 1.0f, 1.0f });
-		vertices.push_back({  1.0f,  1.0f, 1.0f, 1.0f });
-
-		mVertices = std::make_shared<GPUVertexBuffer>(vertices.data(), (int)(vertices.size() * sizeof(Vec4f)));
-	}
+	SetupPerspectiveMatrix();
 
 	if (!mVertexArray)
 	{
-		std::vector<GPUVertexAttributeDesc> attributes =
-		{
-			{ 0, 4, GPUVertexAttributeType::Float, false, 4 * sizeof(float), 0, mVertices }
-		};
-		mVertexArray = std::make_shared<GPUVertexArray>(attributes);
+		LevelMeshBuilder builder;
+		builder.Generate();
+		
+		mVertexArray = builder.VertexArray;
+		mNumVertices = builder.NumVertices;
 	}
 
 	if (!mProgram)
@@ -130,20 +119,26 @@ void HardpolyRenderer::RenderView(player_t *player)
 				};
 
 				in vec4 Position;
+				in vec2 Texcoord;
+				out vec2 UV;
 
 				void main()
 				{
 					gl_Position = ViewToProjection * WorldToView * Position;
+					UV = Texcoord;
 				}
 			)");
 		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+				in vec2 UV;
 				out vec4 FragAlbedo;
 				void main()
 				{
-					FragAlbedo = vec4(1.0, 1.0, 0.0, 1.0);
+					FragAlbedo = vec4(UV, 0.0, 1.0);
 				}
 			)");
 
+		mProgram->SetAttribLocation("Position", 0);
+		mProgram->SetAttribLocation("UV", 1);
 		mProgram->SetFragOutput("FragAlbedo", 0);
 		mProgram->SetFragOutput("FragNormal", 1);
 		mProgram->Link("program");
@@ -153,7 +148,7 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mContext->SetProgram(mProgram);
 	mContext->SetUniforms(0, mFrameUniforms);
 
-	mContext->Draw(GPUDrawMode::TriangleStrip, 0, 4);
+	mContext->Draw(GPUDrawMode::Triangles, 0, mNumVertices);
 
 	mContext->SetUniforms(0, nullptr);
 	mContext->SetVertexArray(nullptr);
@@ -161,11 +156,53 @@ void HardpolyRenderer::RenderView(player_t *player)
 
 	mContext->SetFrameBuffer(nullptr);
 	mContext->End();
+	
+	interpolator.RestoreInterpolations ();
 
 	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
 	swframebuffer->SetViewFB(mSceneFB->Handle());
 
 	FCanvasTextureInfo::UpdateAll();
+}
+
+void HardpolyRenderer::SetupPerspectiveMatrix()
+{
+	static bool bDidSetup = false;
+
+	if (!bDidSetup)
+	{
+		InitGLRMapinfoData();
+		bDidSetup = true;
+	}
+
+	double radPitch = ViewPitch.Normalized180().Radians();
+	double angx = cos(radPitch);
+	double angy = sin(radPitch) * glset.pixelstretch;
+	double alen = sqrt(angx*angx + angy*angy);
+	float adjustedPitch = (float)asin(angy / alen);
+	float adjustedViewAngle = (float)(ViewAngle - 90).Radians();
+
+	float ratio = WidescreenRatio;
+	float fovratio = (WidescreenRatio >= 1.3f) ? 1.333333f : ratio;
+	float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(FieldOfView.Radians() / 2) / fovratio)).Degrees);
+
+	Mat4f worldToView =
+		Mat4f::Rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
+		Mat4f::Rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
+		Mat4f::Scale(1.0f, glset.pixelstretch, 1.0f) *
+		Mat4f::SwapYZ() *
+		Mat4f::Translate((float)-ViewPos.X, (float)-ViewPos.Y, (float)-ViewPos.Z);
+
+	Mat4f viewToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f);
+	
+	if (!mFrameUniforms)
+		mFrameUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(FrameUniforms));
+
+	FrameUniforms frameUniforms;
+	frameUniforms.WorldToView = worldToView;
+	frameUniforms.ViewToProjection = viewToClip;
+
+	mFrameUniforms->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
 }
 
 void HardpolyRenderer::RemapVoxels()

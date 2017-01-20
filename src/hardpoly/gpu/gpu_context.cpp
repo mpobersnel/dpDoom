@@ -38,10 +38,18 @@ void GPUContext::Begin()
 	ClearError();
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldDrawFramebufferBinding);
 	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &oldReadFramebufferBinding);
+	
+	// To do: move elsewhere
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
 }
 
 void GPUContext::End()
 {
+	// To do: move elsewhere
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+	
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, oldDrawFramebufferBinding);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, oldReadFramebufferBinding);
 	CheckError();

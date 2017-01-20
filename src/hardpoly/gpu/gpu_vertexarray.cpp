@@ -24,7 +24,7 @@
 #include "gpu_vertexarray.h"
 #include "gl/system/gl_system.h"
 
-GPUVertexArray::GPUVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes)
+GPUVertexArray::GPUVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes) : mAttributes(attributes)
 {
 	glGenVertexArrays(1, (GLuint*)&mHandle);
 

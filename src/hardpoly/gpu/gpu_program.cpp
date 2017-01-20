@@ -74,7 +74,7 @@ void GPUProgram::SetDefine(const std::string &name, const std::string &value)
 
 std::string GPUProgram::PrefixCode() const
 {
-	std::string prefix = "#version 430\n";
+	std::string prefix = "#version 330\n";
 	for (auto it : mDefines)
 	{
 		prefix += "#define " + it.first + " " + it.second + "\n";
@@ -121,6 +121,11 @@ void GPUProgram::Compile(GPUShaderType type, const char *name, const std::string
 			mHandle = glCreateProgram();
 		glAttachShader(mHandle, shaderHandle);
 	}
+}
+
+void GPUProgram::SetAttribLocation(const std::string &name, int index)
+{
+	glBindAttribLocation(mHandle, index, name.c_str());
 }
 
 void GPUProgram::SetFragOutput(const std::string &name, int index)

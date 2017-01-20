@@ -69,6 +69,7 @@ private:
 	static int FromType(GPUVertexAttributeType type);
 
 	int mHandle = 0;
+	std::vector<GPUVertexAttributeDesc> mAttributes;
 };
 
 typedef std::shared_ptr<GPUVertexArray> GPUVertexArrayPtr;
