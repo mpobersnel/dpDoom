@@ -25,20 +25,34 @@
 #include "r_renderer.h"
 #include "hardpoly/gpu/gpu_context.h"
 
+struct LevelMeshDrawRun
+{
+	FTexture *Texture = nullptr;
+	int Start = 0;
+	int NumVertices = 0;
+};
+
 class LevelMeshBuilder
 {
 public:
 	void Generate();
 	
 	GPUVertexArrayPtr VertexArray;
-	int NumVertices = 0;
+	std::vector<LevelMeshDrawRun> DrawRuns;
 	
 private:
 	void ProcessBSP();
 	void ProcessNode(void *node);
 	void ProcessSubsector(subsector_t *sub);
-	void ProcessWall(const DVector2 &v1, const DVector2 &v2, double ceilz1, double floorz1, double ceilz2, double floorz2);
+	void ProcessWall(FTexture *texture, const DVector2 &v1, const DVector2 &v2, double ceilz1, double floorz1, double ceilz2, double floorz2);
 	
-	std::vector<Vec3f> mCPUVertices;
-	std::vector<Vec2f> mCPUTexcoords;
+	FTexture *GetWallTexture(line_t *line, side_t *side, side_t::ETexpart texpart);
+
+	struct MaterialVertices
+	{
+		std::vector<Vec3f> Vertices;
+		std::vector<Vec2f> Texcoords;
+	};
+
+	std::map<FTexture*, MaterialVertices> mMaterials;
 };

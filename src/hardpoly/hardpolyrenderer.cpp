@@ -39,6 +39,7 @@
 #include "po_man.h"
 #include "r_data/r_interpolate.h"
 #include "p_effect.h"
+#include "levelmeshbuilder.h"
 
 EXTERN_CVAR(Float, maxviewpitch)
 
@@ -105,7 +106,7 @@ void HardpolyRenderer::RenderView(player_t *player)
 		builder.Generate();
 		
 		mVertexArray = builder.VertexArray;
-		mNumVertices = builder.NumVertices;
+		mDrawRuns = builder.DrawRuns;
 	}
 
 	if (!mProgram)
@@ -132,9 +133,10 @@ void HardpolyRenderer::RenderView(player_t *player)
 		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
 				in vec2 UV;
 				out vec4 FragAlbedo;
+				uniform sampler2D DiffuseTexture;
 				void main()
 				{
-					FragAlbedo = vec4(UV, 0.0, 1.0);
+					FragAlbedo = texture(DiffuseTexture, UV);
 				}
 			)");
 
@@ -149,7 +151,51 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mContext->SetProgram(mProgram);
 	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
 
-	mContext->Draw(GPUDrawMode::Triangles, 0, mNumVertices);
+	for (const auto &run : mDrawRuns)
+	{
+		auto &texture = mTextures[run.Texture];
+		if (!texture)
+		{
+			int width, height;
+			bool mipmap;
+			std::vector<uint32_t> pixels;
+			if (run.Texture)
+			{
+				width = run.Texture->GetWidth();
+				height = run.Texture->GetHeight();
+				mipmap = true;
+
+				pixels.resize(width * height);
+				const uint32_t *src = run.Texture->GetPixelsBgra();
+				uint32_t *dest = pixels.data();
+				for (int y = 0; y < height; y++)
+				{
+					for (int x = 0; x < width; x++)
+					{
+						uint32_t pixel = src[y + x * height];
+						uint32_t red = RPART(pixel);
+						uint32_t green = GPART(pixel);
+						uint32_t blue = BPART(pixel);
+						uint32_t alpha = APART(pixel);
+						dest[x + y * width] = red | (green << 8) | (blue << 16) | (alpha << 24);
+					}
+				}
+			}
+			else
+			{
+				width = 1;
+				height = 1;
+				mipmap = false;
+				pixels.push_back(0xff00ffff);
+			}
+
+			texture = std::make_shared<GPUTexture2D>(width, height, mipmap, 0, GPUPixelFormat::RGBA8, pixels.data());
+		}
+
+		mContext->SetTexture(0, texture);
+		mContext->Draw(GPUDrawMode::Triangles, run.Start, run.NumVertices);
+	}
+	mContext->SetTexture(0, nullptr);
 
 	mContext->SetUniforms(0, nullptr);
 	mContext->SetVertexArray(nullptr);

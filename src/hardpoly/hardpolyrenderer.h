@@ -25,6 +25,8 @@
 #include "r_renderer.h"
 #include "hardpoly/gpu/gpu_context.h"
 
+struct LevelMeshDrawRun;
+
 class HardpolyRenderer : public FRenderer
 {
 public:
@@ -65,6 +67,7 @@ private:
 	GPUUniformBufferPtr mFrameUniforms[3];
 	int mCurrentFrameUniforms = 0;
 	GPUVertexArrayPtr mVertexArray;
-	int mNumVertices = 0;
+	std::vector<LevelMeshDrawRun> mDrawRuns;
+	std::map<FTexture*, GPUTexture2DPtr> mTextures;
 	GPUProgramPtr mProgram;
 };

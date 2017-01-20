@@ -36,9 +36,26 @@
 void LevelMeshBuilder::Generate()
 {
 	ProcessBSP();
-	
-	auto vertices = std::make_shared<GPUVertexBuffer>(mCPUVertices.data(), (int)(mCPUVertices.size() * sizeof(Vec3f)));
-	auto texcoords = std::make_shared<GPUVertexBuffer>(mCPUTexcoords.data(), (int)(mCPUTexcoords.size() * sizeof(Vec2f)));
+
+	std::vector<Vec3f> cpuVertices;
+	std::vector<Vec2f> cpuTexcoords;
+
+	for (auto it : mMaterials)
+	{
+		auto &material = it.second;
+
+		LevelMeshDrawRun run;
+		run.Start = (int)cpuVertices.size();
+		run.NumVertices = (int)material.Vertices.size();
+		run.Texture = it.first;
+		DrawRuns.push_back(run);
+
+		cpuVertices.insert(cpuVertices.end(), material.Vertices.begin(), material.Vertices.end());
+		cpuTexcoords.insert(cpuTexcoords.end(), material.Texcoords.begin(), material.Texcoords.end());
+	}
+
+	auto vertices = std::make_shared<GPUVertexBuffer>(cpuVertices.data(), (int)(cpuVertices.size() * sizeof(Vec3f)));
+	auto texcoords = std::make_shared<GPUVertexBuffer>(cpuTexcoords.data(), (int)(cpuTexcoords.size() * sizeof(Vec2f)));
 	
 	std::vector<GPUVertexAttributeDesc> attributes =
 	{
@@ -47,7 +64,6 @@ void LevelMeshBuilder::Generate()
 	};
 	
 	VertexArray = std::make_shared<GPUVertexArray>(attributes);
-	NumVertices = (int)mCPUVertices.size();
 }
 
 void LevelMeshBuilder::ProcessBSP()
@@ -94,7 +110,8 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 			
 			if (!line->backsector)
 			{
-				ProcessWall(line->v1->fPos(), line->v2->fPos(), frontceilz1, frontfloorz1, frontceilz2, frontfloorz2);
+				FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::mid);
+				ProcessWall(texture, line->v1->fPos(), line->v2->fPos(), frontceilz1, frontfloorz1, frontceilz2, frontfloorz2);
 			}
 			else
 			{
@@ -122,53 +139,94 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 
 				if ((topceilz1 > topfloorz1 || topceilz2 > topfloorz2) && line->sidedef && !bothSkyCeiling)
 				{
-					ProcessWall(line->v1->fPos(), line->v2->fPos(), topceilz1, topfloorz1, topceilz2, topfloorz2);
+					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::top);
+					ProcessWall(texture, line->v1->fPos(), line->v2->fPos(), topceilz1, topfloorz1, topceilz2, topfloorz2);
 				}
 
 				if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && line->sidedef)
 				{
-					ProcessWall(line->v1->fPos(), line->v2->fPos(), bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2);
+					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::bottom);
+					ProcessWall(texture, line->v1->fPos(), line->v2->fPos(), bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2);
 				}
 			}
 		}
 	}
 	
+	FTexture *ceilingTexture = TexMan(frontsector->GetTexture(sector_t::ceiling));
+	if (ceilingTexture->UseType == FTexture::TEX_Null) ceilingTexture = nullptr;
+
+	auto &ceilingRun = mMaterials[ceilingTexture];
 	for (size_t i = 2; i < ceilingVertices.size(); i++)
 	{
-		mCPUVertices.push_back(ceilingVertices[i]);
-		mCPUVertices.push_back(ceilingVertices[i - 1]);
-		mCPUVertices.push_back(ceilingVertices[0]);
-		mCPUTexcoords.push_back({ 0.0f, 1.0f });
-		mCPUTexcoords.push_back({ 1.0f, 0.0f });
-		mCPUTexcoords.push_back({ 0.0f, 0.0f });
+		ceilingRun.Vertices.push_back(ceilingVertices[i]);
+		ceilingRun.Vertices.push_back(ceilingVertices[i - 1]);
+		ceilingRun.Vertices.push_back(ceilingVertices[0]);
+		ceilingRun.Texcoords.push_back({ 0.0f, 1.0f });
+		ceilingRun.Texcoords.push_back({ 1.0f, 0.0f });
+		ceilingRun.Texcoords.push_back({ 0.0f, 0.0f });
 	}
 	
+	FTexture *floorTexture = TexMan(frontsector->GetTexture(sector_t::floor));
+	if (floorTexture->UseType == FTexture::TEX_Null) floorTexture = nullptr;
+
+	auto &floorRun = mMaterials[floorTexture];
 	for (size_t i = 2; i < floorVertices.size(); i++)
 	{
-		mCPUVertices.push_back(floorVertices[0]);
-		mCPUVertices.push_back(floorVertices[i - 1]);
-		mCPUVertices.push_back(floorVertices[i]);
-		mCPUTexcoords.push_back({ 0.0f, 0.0f });
-		mCPUTexcoords.push_back({ 1.0f, 0.0f });
-		mCPUTexcoords.push_back({ 0.0f, 1.0f });
+		floorRun.Vertices.push_back(floorVertices[0]);
+		floorRun.Vertices.push_back(floorVertices[i - 1]);
+		floorRun.Vertices.push_back(floorVertices[i]);
+		floorRun.Texcoords.push_back({ 0.0f, 0.0f });
+		floorRun.Texcoords.push_back({ 1.0f, 0.0f });
+		floorRun.Texcoords.push_back({ 0.0f, 1.0f });
 	}
 }
 
-void LevelMeshBuilder::ProcessWall(const DVector2 &v1, const DVector2 &v2, double ceilz1, double floorz1, double ceilz2, double floorz2)
+void LevelMeshBuilder::ProcessWall(FTexture *texture, const DVector2 &v1, const DVector2 &v2, double ceilz1, double floorz1, double ceilz2, double floorz2)
 {
-	mCPUVertices.push_back({ (float)v1.X, (float)v1.Y, (float)ceilz1 });
-	mCPUVertices.push_back({ (float)v2.X, (float)v2.Y, (float)ceilz2 });
-	mCPUVertices.push_back({ (float)v1.X, (float)v1.Y, (float)floorz1 });
+	auto &run = mMaterials[texture];
+
+	run.Vertices.push_back({ (float)v1.X, (float)v1.Y, (float)ceilz1 });
+	run.Vertices.push_back({ (float)v2.X, (float)v2.Y, (float)ceilz2 });
+	run.Vertices.push_back({ (float)v1.X, (float)v1.Y, (float)floorz1 });
 	
-	mCPUVertices.push_back({ (float)v2.X, (float)v2.Y, (float)floorz2 });
-	mCPUVertices.push_back({ (float)v1.X, (float)v1.Y, (float)floorz1 });
-	mCPUVertices.push_back({ (float)v2.X, (float)v2.Y, (float)ceilz2 });
+	run.Vertices.push_back({ (float)v2.X, (float)v2.Y, (float)floorz2 });
+	run.Vertices.push_back({ (float)v1.X, (float)v1.Y, (float)floorz1 });
+	run.Vertices.push_back({ (float)v2.X, (float)v2.Y, (float)ceilz2 });
 	
-	mCPUTexcoords.push_back({ 0.0f, 0.0f });
-	mCPUTexcoords.push_back({ 1.0f, 0.0f });
-	mCPUTexcoords.push_back({ 0.0f, 1.0f });
+	run.Texcoords.push_back({ 0.0f, 0.0f });
+	run.Texcoords.push_back({ 1.0f, 0.0f });
+	run.Texcoords.push_back({ 0.0f, 1.0f });
 	
-	mCPUTexcoords.push_back({ 1.0f, 1.0f });
-	mCPUTexcoords.push_back({ 0.0f, 1.0f });
-	mCPUTexcoords.push_back({ 1.0f, 0.0f });
+	run.Texcoords.push_back({ 1.0f, 1.0f });
+	run.Texcoords.push_back({ 0.0f, 1.0f });
+	run.Texcoords.push_back({ 1.0f, 0.0f });
+}
+
+FTexture *LevelMeshBuilder::GetWallTexture(line_t *line, side_t *side, side_t::ETexpart texpart)
+{
+	FTexture *tex = TexMan(side->GetTexture(texpart), true);
+	if (tex == nullptr || tex->UseType == FTexture::TEX_Null)
+	{
+		// Mapping error. Doom floodfills this with a plane.
+		// This code doesn't do that, but at least it uses the "right" texture..
+
+		if (line && line->backsector && line->sidedef[0] == side)
+		{
+			if (texpart == side_t::top)
+				tex = TexMan(line->backsector->GetTexture(sector_t::ceiling), true);
+			else if (texpart == side_t::bottom)
+				tex = TexMan(line->backsector->GetTexture(sector_t::floor), true);
+		}
+		if (line && line->backsector && line->sidedef[1] == side)
+		{
+			if (texpart == side_t::top)
+				tex = TexMan(line->frontsector->GetTexture(sector_t::ceiling), true);
+			else if (texpart == side_t::bottom)
+				tex = TexMan(line->frontsector->GetTexture(sector_t::floor), true);
+		}
+
+		if (tex == nullptr || tex->UseType == FTexture::TEX_Null)
+			return nullptr;
+	}
+	return tex;
 }
