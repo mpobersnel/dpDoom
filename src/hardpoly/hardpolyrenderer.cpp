@@ -111,6 +111,13 @@ void HardpolyRenderer::RenderView(player_t *player)
 		mVertexArray = builder.VertexArray;
 		mDrawRuns = builder.DrawRuns;
 		mMeshLevel = level.levelnum;
+		
+		cpuStaticSectorHeight.resize(level.sectors.Size());
+		for (unsigned int i = 0; i < level.sectors.Size(); i++)
+		{
+			sector_t *sector = &level.sectors[i];
+			cpuStaticSectorHeight[i] = sector->ceilingplane.Zat0();
+		}
 	}
 
 	if (!mProgram)
@@ -138,7 +145,9 @@ void HardpolyRenderer::RenderView(player_t *player)
 					gl_Position = ViewToProjection * posInView;
 					UV = Texcoord.xy;
 					int sector = int(Texcoord.z);
-					LightLevel = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0).x;
+					vec4 sectorData = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0);
+					LightLevel = sectorData.x;
+					gl_Position *= sectorData.y;
 				}
 			)");
 		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
@@ -190,7 +199,22 @@ void HardpolyRenderer::RenderView(player_t *player)
 	for (unsigned int i = 0; i < level.sectors.Size(); i++)
 	{
 		sector_t *sector = &level.sectors[i];
-		cpuSectors[i] = Vec4f(sector->lightlevel, 0.0f, 0.0f, 0.0f);
+		float dynamicSector = (cpuStaticSectorHeight[i] == sector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+		for (unsigned int j = 0; j < sector->Lines.Size(); j++)
+		{
+			line_t *line = sector->Lines[j];
+			if (line->frontsector != sector)
+			{
+				int k = line->frontsector->sectornum;
+				dynamicSector *= (cpuStaticSectorHeight[k] == line->frontsector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+			}
+			else if (line->backsector && line->backsector != sector)
+			{
+				int k = line->backsector->sectornum;
+				dynamicSector *= (cpuStaticSectorHeight[k] == line->backsector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+			}
+		}
+		cpuSectors[i] = Vec4f(sector->lightlevel, dynamicSector, 0.0f, 0.0f);
 	}
 	mSectorTexture[mCurrentSectorTexture]->Upload(0, 0, 256, MAX(((int)level.sectors.Size() + 255) / 256, 1), 0, cpuSectors.data());
 

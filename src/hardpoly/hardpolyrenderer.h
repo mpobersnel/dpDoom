@@ -71,6 +71,7 @@ private:
 	std::vector<LevelMeshDrawRun> mDrawRuns;
 	std::map<FTexture*, GPUTexture2DPtr> mTextures;
 	std::vector<Vec4f> cpuSectors;
+	std::vector<double> cpuStaticSectorHeight;
 	GPUTexture2DPtr mSectorTexture[3];
 	int mCurrentSectorTexture = 0;
 	GPUProgramPtr mProgram;
