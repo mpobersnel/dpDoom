@@ -84,11 +84,14 @@ void GPUTexture2D::Upload(int x, int y, int width, int height, int level, const 
 {
 	if (mSampleCount <= 1)
 	{
-		GLint oldHandle;
+		GLint oldHandle, oldUnpackHandle;
 		glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldHandle);
+		glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &oldUnpackHandle);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 		glBindTexture(GL_TEXTURE_2D, mHandle);
 		glTexSubImage2D(GL_TEXTURE_2D, level, x, y, width, height, ToUploadFormat(mFormat), ToUploadType(mFormat), pixels);
 		glBindTexture(GL_TEXTURE_2D, oldHandle);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldUnpackHandle);
 	}
 }
 

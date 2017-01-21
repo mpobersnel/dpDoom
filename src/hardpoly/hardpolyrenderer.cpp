@@ -125,22 +125,43 @@ void HardpolyRenderer::RenderView(player_t *player)
 				};
 
 				in vec4 Position;
-				in vec2 Texcoord;
+				in vec4 Texcoord;
 				out vec2 UV;
+				out float LightLevel;
+				out vec3 PositionInView;
+				uniform sampler2D SectorTexture;
 
 				void main()
 				{
-					gl_Position = ViewToProjection * WorldToView * Position;
-					UV = Texcoord;
+					vec4 posInView = WorldToView * Position;
+					PositionInView = posInView.xyz;
+					gl_Position = ViewToProjection * posInView;
+					UV = Texcoord.xy;
+					int sector = int(Texcoord.z);
+					LightLevel = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0).x;
 				}
 			)");
 		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
 				in vec2 UV;
+				in float LightLevel;
+				in vec3 PositionInView;
 				out vec4 FragAlbedo;
 				uniform sampler2D DiffuseTexture;
+				
+				float SoftwareLight()
+				{
+					float globVis = 1706.0;
+					float z = -PositionInView.z;
+					float vis = globVis / z;
+					float shade = 64.0 - (LightLevel + 12.0) * 32.0/128.0;
+					float lightscale = clamp((shade - min(24.0, vis)) / 32.0, 0.0, 31.0/32.0);
+					return 1.0 - lightscale;
+				}
+				
 				void main()
 				{
 					FragAlbedo = texture(DiffuseTexture, UV);
+					FragAlbedo.rgb *= SoftwareLight();
 				}
 			)");
 
@@ -150,11 +171,35 @@ void HardpolyRenderer::RenderView(player_t *player)
 		mProgram->SetFragOutput("FragNormal", 1);
 		mProgram->Link("program");
 	}
+	
+	if (!mSamplerNearest)
+	{
+		mSamplerLinear = std::make_shared<GPUSampler>(GPUSampleMode::Linear, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+		mSamplerNearest = std::make_shared<GPUSampler>(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+	}
 
 	mContext->SetVertexArray(mVertexArray);
 	mContext->SetProgram(mProgram);
 	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
+	
+	mCurrentSectorTexture = (mCurrentSectorTexture + 1) % 3;
+	if (!mSectorTexture[mCurrentSectorTexture])
+		mSectorTexture[mCurrentSectorTexture] = std::make_shared<GPUTexture2D>(256, 16, false, 0, GPUPixelFormat::RGBA32f);
+	
+	cpuSectors.resize((level.sectors.Size() / 256 + 1) * 256);
+	for (unsigned int i = 0; i < level.sectors.Size(); i++)
+	{
+		sector_t *sector = &level.sectors[i];
+		cpuSectors[i] = Vec4f(sector->lightlevel, 0.0f, 0.0f, 0.0f);
+	}
+	mSectorTexture[mCurrentSectorTexture]->Upload(0, 0, 256, MAX(((int)level.sectors.Size() + 255) / 256, 1), 0, cpuSectors.data());
 
+	glUniform1i(glGetUniformLocation(mProgram->Handle(), "SectorTexture"), 0);
+	glUniform1i(glGetUniformLocation(mProgram->Handle(), "DiffuseTexture"), 1);
+
+	mContext->SetSampler(0, mSamplerNearest);
+	mContext->SetTexture(0, mSectorTexture[mCurrentSectorTexture]);
+	mContext->SetSampler(1, mSamplerLinear);
 	for (const auto &run : mDrawRuns)
 	{
 		auto &texture = mTextures[run.Texture];
@@ -196,10 +241,13 @@ void HardpolyRenderer::RenderView(player_t *player)
 			texture = std::make_shared<GPUTexture2D>(width, height, mipmap, 0, GPUPixelFormat::RGBA8, pixels.data());
 		}
 
-		mContext->SetTexture(0, texture);
+		mContext->SetTexture(1, texture);
 		mContext->Draw(GPUDrawMode::Triangles, run.Start, run.NumVertices);
 	}
 	mContext->SetTexture(0, nullptr);
+	mContext->SetTexture(1, nullptr);
+	mContext->SetSampler(0, nullptr);
+	mContext->SetSampler(1, nullptr);
 
 	mContext->SetUniforms(0, nullptr);
 	mContext->SetVertexArray(nullptr);

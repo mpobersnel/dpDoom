@@ -70,5 +70,10 @@ private:
 	GPUVertexArrayPtr mVertexArray;
 	std::vector<LevelMeshDrawRun> mDrawRuns;
 	std::map<FTexture*, GPUTexture2DPtr> mTextures;
+	std::vector<Vec4f> cpuSectors;
+	GPUTexture2DPtr mSectorTexture[3];
+	int mCurrentSectorTexture = 0;
 	GPUProgramPtr mProgram;
+	GPUSamplerPtr mSamplerLinear;
+	GPUSamplerPtr mSamplerNearest;
 };

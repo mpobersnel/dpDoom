@@ -44,14 +44,14 @@ private:
 	void ProcessBSP();
 	void ProcessNode(void *node);
 	void ProcessSubsector(subsector_t *sub);
-	void ProcessWall(FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2);
+	void ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2);
 	
 	FTexture *GetWallTexture(line_t *line, side_t *side, side_t::ETexpart texpart);
 
 	struct MaterialVertices
 	{
 		std::vector<Vec3f> Vertices;
-		std::vector<Vec2f> Texcoords;
+		std::vector<Vec4f> Texcoords;
 	};
 
 	std::map<FTexture*, MaterialVertices> mMaterials;
