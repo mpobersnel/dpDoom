@@ -41,6 +41,7 @@
 #include "p_effect.h"
 #include "g_levellocals.h"
 #include "levelmeshbuilder.h"
+#include <set>
 
 EXTERN_CVAR(Float, maxviewpitch)
 
@@ -99,8 +100,6 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mContext->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
 	mContext->ClearDepthStencilBuffer(1.0f, 0);
 
-	SetupPerspectiveMatrix();
-
 	if (!mVertexArray || mMeshLevel != level.levelnum)
 	{
 		mVertexArray.reset();
@@ -112,11 +111,13 @@ void HardpolyRenderer::RenderView(player_t *player)
 		mDrawRuns = builder.DrawRuns;
 		mMeshLevel = level.levelnum;
 		
-		cpuStaticSectorHeight.resize(level.sectors.Size());
+		cpuStaticSectorCeiling.resize(level.sectors.Size());
+		cpuStaticSectorFloor.resize(level.sectors.Size());
 		for (unsigned int i = 0; i < level.sectors.Size(); i++)
 		{
 			sector_t *sector = &level.sectors[i];
-			cpuStaticSectorHeight[i] = sector->ceilingplane.Zat0();
+			cpuStaticSectorCeiling[i] = sector->ceilingplane.Zat0();
+			cpuStaticSectorFloor[i] = sector->floorplane.Zat0();
 		}
 	}
 
@@ -129,6 +130,8 @@ void HardpolyRenderer::RenderView(player_t *player)
 				{
 					mat4 WorldToView;
 					mat4 ViewToProjection;
+					float MeshId;
+					float Padding1, Padding2, Padding3;
 				};
 
 				in vec4 Position;
@@ -147,7 +150,7 @@ void HardpolyRenderer::RenderView(player_t *player)
 					int sector = int(Texcoord.z);
 					vec4 sectorData = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0);
 					LightLevel = sectorData.x;
-					gl_Position *= sectorData.y;
+					if (sectorData.y != MeshId) gl_Position = vec4(0.0);
 				}
 			)");
 		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
@@ -187,36 +190,75 @@ void HardpolyRenderer::RenderView(player_t *player)
 		mSamplerNearest = std::make_shared<GPUSampler>(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
 	}
 
-	mContext->SetVertexArray(mVertexArray);
-	mContext->SetProgram(mProgram);
-	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
-	
 	mCurrentSectorTexture = (mCurrentSectorTexture + 1) % 3;
 	if (!mSectorTexture[mCurrentSectorTexture])
 		mSectorTexture[mCurrentSectorTexture] = std::make_shared<GPUTexture2D>(256, 16, false, 0, GPUPixelFormat::RGBA32f);
 	
+	std::set<sector_t*> dynamicSectors;
+
 	cpuSectors.resize((level.sectors.Size() / 256 + 1) * 256);
 	for (unsigned int i = 0; i < level.sectors.Size(); i++)
 	{
 		sector_t *sector = &level.sectors[i];
-		float dynamicSector = (cpuStaticSectorHeight[i] == sector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+		float dynamicSector = (cpuStaticSectorCeiling[i] == sector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+		dynamicSector *= (cpuStaticSectorFloor[i] == sector->floorplane.Zat0()) ? 1.0 : 0.0;
 		for (unsigned int j = 0; j < sector->Lines.Size(); j++)
 		{
 			line_t *line = sector->Lines[j];
 			if (line->frontsector != sector)
 			{
 				int k = line->frontsector->sectornum;
-				dynamicSector *= (cpuStaticSectorHeight[k] == line->frontsector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+				dynamicSector *= (cpuStaticSectorCeiling[k] == line->frontsector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+				dynamicSector *= (cpuStaticSectorFloor[k] == line->frontsector->floorplane.Zat0()) ? 1.0 : 0.0;
 			}
 			else if (line->backsector && line->backsector != sector)
 			{
 				int k = line->backsector->sectornum;
-				dynamicSector *= (cpuStaticSectorHeight[k] == line->backsector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+				dynamicSector *= (cpuStaticSectorCeiling[k] == line->backsector->ceilingplane.Zat0()) ? 1.0 : 0.0;
+				dynamicSector *= (cpuStaticSectorFloor[k] == line->backsector->floorplane.Zat0()) ? 1.0 : 0.0;
 			}
 		}
+		if (dynamicSector == 0.0)
+			dynamicSectors.insert(sector);
 		cpuSectors[i] = Vec4f(sector->lightlevel, dynamicSector, 0.0f, 0.0f);
 	}
 	mSectorTexture[mCurrentSectorTexture]->Upload(0, 0, 256, MAX(((int)level.sectors.Size() + 255) / 256, 1), 0, cpuSectors.data());
+
+	RenderLevelMesh(mVertexArray, mDrawRuns, 1.0f);
+
+	std::vector<subsector_t*> subsectors;
+	for (auto sector : dynamicSectors)
+	{
+		for (int i = 0; i < sector->subsectorcount; i++)
+		{
+			subsectors.push_back(sector->subsectors[i]);
+		}
+	}
+	if (!subsectors.empty())
+	{
+		LevelMeshBuilder dynamicMesh;
+		dynamicMesh.Generate(subsectors);
+		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.DrawRuns, 0.0f);
+	}
+
+	mContext->SetFrameBuffer(nullptr);
+	mContext->End();
+	
+	interpolator.RestoreInterpolations ();
+
+	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
+	swframebuffer->SetViewFB(mSceneFB->Handle());
+
+	FCanvasTextureInfo::UpdateAll();
+}
+
+void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId)
+{
+	SetupPerspectiveMatrix(meshId);
+
+	mContext->SetVertexArray(vertexArray);
+	mContext->SetProgram(mProgram);
+	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
 
 	glUniform1i(glGetUniformLocation(mProgram->Handle(), "SectorTexture"), 0);
 	glUniform1i(glGetUniformLocation(mProgram->Handle(), "DiffuseTexture"), 1);
@@ -224,7 +266,7 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mContext->SetSampler(0, mSamplerNearest);
 	mContext->SetTexture(0, mSectorTexture[mCurrentSectorTexture]);
 	mContext->SetSampler(1, mSamplerLinear);
-	for (const auto &run : mDrawRuns)
+	for (const auto &run : drawRuns)
 	{
 		auto &texture = mTextures[run.Texture];
 		if (!texture)
@@ -276,19 +318,9 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mContext->SetUniforms(0, nullptr);
 	mContext->SetVertexArray(nullptr);
 	mContext->SetProgram(nullptr);
-
-	mContext->SetFrameBuffer(nullptr);
-	mContext->End();
-	
-	interpolator.RestoreInterpolations ();
-
-	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
-	swframebuffer->SetViewFB(mSceneFB->Handle());
-
-	FCanvasTextureInfo::UpdateAll();
 }
 
-void HardpolyRenderer::SetupPerspectiveMatrix()
+void HardpolyRenderer::SetupPerspectiveMatrix(float meshId)
 {
 	static bool bDidSetup = false;
 
@@ -326,6 +358,7 @@ void HardpolyRenderer::SetupPerspectiveMatrix()
 	FrameUniforms frameUniforms;
 	frameUniforms.WorldToView = worldToView;
 	frameUniforms.ViewToProjection = viewToClip;
+	frameUniforms.MeshId = meshId;
 
 	mFrameUniforms[mCurrentFrameUniforms]->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
 }

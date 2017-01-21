@@ -55,9 +55,12 @@ private:
 	{
 		Mat4f WorldToView;
 		Mat4f ViewToProjection;
+		float MeshId;
+		float Padding1, Padding2, Padding3;
 	};
 	
-	void SetupPerspectiveMatrix();
+	void SetupPerspectiveMatrix(float meshId);
+	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId);
 
 	GPUContextPtr mContext;
 	GPUTexture2DPtr mAlbedoBuffer;
@@ -71,10 +74,14 @@ private:
 	std::vector<LevelMeshDrawRun> mDrawRuns;
 	std::map<FTexture*, GPUTexture2DPtr> mTextures;
 	std::vector<Vec4f> cpuSectors;
-	std::vector<double> cpuStaticSectorHeight;
+	std::vector<double> cpuStaticSectorCeiling;
+	std::vector<double> cpuStaticSectorFloor;
 	GPUTexture2DPtr mSectorTexture[3];
 	int mCurrentSectorTexture = 0;
 	GPUProgramPtr mProgram;
 	GPUSamplerPtr mSamplerLinear;
 	GPUSamplerPtr mSamplerNearest;
+
+	GPUVertexArrayPtr mDynamicVertexArray;
+	std::vector<LevelMeshDrawRun> mDynamicDrawRuns;
 };

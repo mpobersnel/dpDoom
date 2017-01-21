@@ -36,11 +36,13 @@ class LevelMeshBuilder
 {
 public:
 	void Generate();
-	
+	void Generate(const std::vector<subsector_t*> &subsectors);
+
 	GPUVertexArrayPtr VertexArray;
 	std::vector<LevelMeshDrawRun> DrawRuns;
 	
 private:
+	void Upload();
 	void ProcessBSP();
 	void ProcessNode(void *node);
 	void ProcessSubsector(subsector_t *sub);

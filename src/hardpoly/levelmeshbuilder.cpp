@@ -36,7 +36,18 @@
 void LevelMeshBuilder::Generate()
 {
 	ProcessBSP();
+	Upload();
+}
 
+void LevelMeshBuilder::Generate(const std::vector<subsector_t*> &subsectors)
+{
+	for (auto subsector : subsectors)
+		ProcessSubsector(subsector);
+	Upload();
+}
+
+void LevelMeshBuilder::Upload()
+{
 	std::vector<Vec3f> cpuVertices;
 	std::vector<Vec4f> cpuTexcoords;
 
@@ -56,13 +67,13 @@ void LevelMeshBuilder::Generate()
 
 	auto vertices = std::make_shared<GPUVertexBuffer>(cpuVertices.data(), (int)(cpuVertices.size() * sizeof(Vec3f)));
 	auto texcoords = std::make_shared<GPUVertexBuffer>(cpuTexcoords.data(), (int)(cpuTexcoords.size() * sizeof(Vec4f)));
-	
+
 	std::vector<GPUVertexAttributeDesc> attributes =
 	{
 		{ 0, 3, GPUVertexAttributeType::Float, false, 3 * sizeof(float), 0, vertices },
 		{ 1, 4, GPUVertexAttributeType::Float, false, 4 * sizeof(float), 0, texcoords }
 	};
-	
+
 	VertexArray = std::make_shared<GPUVertexArray>(attributes);
 }
 
