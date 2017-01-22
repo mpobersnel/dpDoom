@@ -27,6 +27,7 @@
 #include <set>
 
 struct LevelMeshDrawRun;
+struct subsector_t;
 
 class HardpolyRenderer : public FRenderer
 {
@@ -93,4 +94,5 @@ private:
 	GPUVertexArrayPtr mDynamicVertexArray;
 	std::vector<LevelMeshDrawRun> mDynamicDrawRuns;
 	std::set<sector_t*> dynamicSectors;
+	std::vector<subsector_t*> dynamicSubsectors;
 };

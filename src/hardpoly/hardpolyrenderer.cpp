@@ -96,18 +96,18 @@ void HardpolyRenderer::RenderView(player_t *player)
 
 void HardpolyRenderer::RenderDynamicMesh()
 {
-	std::vector<subsector_t*> subsectors;
+	dynamicSubsectors.clear();
 	for (auto sector : dynamicSectors)
 	{
 		for (int i = 0; i < sector->subsectorcount; i++)
 		{
-			subsectors.push_back(sector->subsectors[i]);
+			dynamicSubsectors.push_back(sector->subsectors[i]);
 		}
 	}
-	if (!subsectors.empty())
+	if (!dynamicSubsectors.empty())
 	{
 		LevelMeshBuilder dynamicMesh;
-		dynamicMesh.Generate(subsectors);
+		dynamicMesh.Generate(dynamicSubsectors);
 		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.DrawRuns, 0.0f);
 	}
 }
