@@ -127,7 +127,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::mid);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, false);
 				}
 			}
 			else
@@ -159,7 +159,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::top);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, false);
 				}
 
 				if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && line->sidedef)
@@ -167,7 +167,15 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::bottom);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, false);
+				}
+
+				if (line->sidedef)
+				{
+					FTexture *texture = TexMan(line->sidedef->GetTexture(side_t::mid), true);
+					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+					if (texture)
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, true);
 				}
 			}
 		}
@@ -210,30 +218,77 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 	}
 }
 
-void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2)
+void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, bool masked)
 {
 	DVector2 v1 = lineseg->v1->fPos();
 	DVector2 v2 = lineseg->v2->fPos();
 
-	WallTextureCoords texcoords(texture, lineseg, line, side, texpart, ceilz1, floorz1, unpeggedceil1);
+	WallTextureCoords walltexcoords(texture, lineseg, line, side, texpart, ceilz1, floorz1, unpeggedceil1);
+
+	Vec3f vertices[4] =
+	{
+		{ (float)v1.X, (float)v1.Y, (float)ceilz1 },
+		{ (float)v2.X, (float)v2.Y, (float)ceilz2 },
+		{ (float)v1.X, (float)v1.Y, (float)floorz1 },
+		{ (float)v2.X, (float)v2.Y, (float)floorz2 }
+	};
+
+	Vec4f texcoords[4] =
+	{
+		{ (float)walltexcoords.u1, (float)walltexcoords.v1, sectornum, 0.0f },
+		{ (float)walltexcoords.u2, (float)walltexcoords.v1, sectornum, 0.0f },
+		{ (float)walltexcoords.u1, (float)walltexcoords.v2, sectornum, 0.0f },
+		{ (float)walltexcoords.u2, (float)walltexcoords.v2, sectornum, 0.0f }
+	};
+
+	// Masked walls clamp to the 0-1 range (no texture repeat)
+	if (masked)
+	{
+		ClampWallHeight(vertices[0], vertices[3], texcoords[0], texcoords[3]);
+		ClampWallHeight(vertices[1], vertices[2], texcoords[1], texcoords[2]);
+	}
 
 	auto &run = mMaterials[texture];
 
-	run.Vertices.push_back({ (float)v1.X, (float)v1.Y, (float)ceilz1 });
-	run.Vertices.push_back({ (float)v2.X, (float)v2.Y, (float)ceilz2 });
-	run.Vertices.push_back({ (float)v1.X, (float)v1.Y, (float)floorz1 });
+	run.Vertices.push_back(vertices[0]);
+	run.Vertices.push_back(vertices[1]);
+	run.Vertices.push_back(vertices[2]);
 	
-	run.Vertices.push_back({ (float)v2.X, (float)v2.Y, (float)floorz2 });
-	run.Vertices.push_back({ (float)v1.X, (float)v1.Y, (float)floorz1 });
-	run.Vertices.push_back({ (float)v2.X, (float)v2.Y, (float)ceilz2 });
+	run.Vertices.push_back(vertices[3]);
+	run.Vertices.push_back(vertices[2]);
+	run.Vertices.push_back(vertices[1]);
 
-	run.Texcoords.push_back({ (float)texcoords.u1, (float)texcoords.v1, sectornum, 0.0f });
-	run.Texcoords.push_back({ (float)texcoords.u2, (float)texcoords.v1, sectornum, 0.0f });
-	run.Texcoords.push_back({ (float)texcoords.u1, (float)texcoords.v2, sectornum, 0.0f });
+	run.Texcoords.push_back(texcoords[0]);
+	run.Texcoords.push_back(texcoords[1]);
+	run.Texcoords.push_back(texcoords[2]);
 	
-	run.Texcoords.push_back({ (float)texcoords.u2, (float)texcoords.v2, sectornum, 0.0f });
-	run.Texcoords.push_back({ (float)texcoords.u1, (float)texcoords.v2, sectornum, 0.0f });
-	run.Texcoords.push_back({ (float)texcoords.u2, (float)texcoords.v1, sectornum, 0.0f });
+	run.Texcoords.push_back(texcoords[3]);
+	run.Texcoords.push_back(texcoords[2]);
+	run.Texcoords.push_back(texcoords[1]);
+}
+
+void LevelMeshBuilder::ClampWallHeight(Vec3f &v1, Vec3f &v2, Vec4f &uv1, Vec4f &uv2)
+{
+	float top = v1.Z;
+	float bottom = v2.Z;
+	float texv1 = uv1.Y;
+	float texv2 = uv2.Y;
+	float delta = (texv2 - texv1);
+
+	float t1 = texv1 < 0.0f ? -texv1 / delta : 0.0f;
+	float t2 = texv2 > 1.0f ? (1.0f - texv1) / delta : 1.0f;
+	float inv_t1 = 1.0f - t1;
+	float inv_t2 = 1.0f - t2;
+
+	v1.Z = top * inv_t1 + bottom * t1;
+	uv1.Y = texv1 * inv_t1 + texv2 * t1;
+
+	v2.Z = top * inv_t2 + bottom * t2;
+	uv2.Y = texv1 * inv_t2 + texv2 * t2;
+
+	// Enable alpha test
+	uv1.W = 0.5f;
+	uv2.W = 0.5f;
 }
 
 FTexture *LevelMeshBuilder::GetWallTexture(line_t *line, side_t *side, side_t::ETexpart texpart)

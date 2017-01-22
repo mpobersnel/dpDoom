@@ -46,8 +46,9 @@ private:
 	void ProcessBSP();
 	void ProcessNode(void *node);
 	void ProcessSubsector(subsector_t *sub);
-	void ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2);
-	
+	void ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, bool masked);
+	static void ClampWallHeight(Vec3f &v1, Vec3f &v2, Vec4f &uv1, Vec4f &uv2);
+
 	FTexture *GetWallTexture(line_t *line, side_t *side, side_t::ETexpart texpart);
 
 	struct MaterialVertices

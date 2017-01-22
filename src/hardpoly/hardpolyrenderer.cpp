@@ -344,6 +344,7 @@ void HardpolyRenderer::CompileShaders()
 				out vec2 UV;
 				out float LightLevel;
 				out vec3 PositionInView;
+				out float AlphaTest;
 				uniform sampler2D SectorTexture;
 
 				void main()
@@ -356,12 +357,14 @@ void HardpolyRenderer::CompileShaders()
 					vec4 sectorData = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0);
 					LightLevel = sectorData.x;
 					if (sectorData.y != MeshId) gl_Position = vec4(0.0);
+					AlphaTest = Texcoord.w;
 				}
 			)");
 		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
 				in vec2 UV;
 				in float LightLevel;
 				in vec3 PositionInView;
+				in float AlphaTest;
 				out vec4 FragAlbedo;
 				uniform sampler2D DiffuseTexture;
 				
@@ -378,6 +381,7 @@ void HardpolyRenderer::CompileShaders()
 				void main()
 				{
 					FragAlbedo = texture(DiffuseTexture, UV);
+					if (FragAlbedo.a < AlphaTest) discard;
 					FragAlbedo.rgb *= SoftwareLight();
 				}
 			)");
