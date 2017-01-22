@@ -24,6 +24,7 @@
 
 #include "r_renderer.h"
 #include "hardpoly/gpu/gpu_context.h"
+#include <set>
 
 struct LevelMeshDrawRun;
 
@@ -59,7 +60,13 @@ private:
 		float Padding1, Padding2, Padding3;
 	};
 	
+	void SetupFramebuffer();
+	void SetupStaticLevelMesh();
 	void SetupPerspectiveMatrix(float meshId);
+	void CompileShaders();
+	void CreateSamplers();
+	void UploadSectorTexture();
+	void RenderDynamicMesh();
 	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId);
 	GPUTexture2DPtr GetTexture(FTexture *texture);
 
@@ -85,4 +92,5 @@ private:
 
 	GPUVertexArrayPtr mDynamicVertexArray;
 	std::vector<LevelMeshDrawRun> mDynamicDrawRuns;
+	std::set<sector_t*> dynamicSectors;
 };

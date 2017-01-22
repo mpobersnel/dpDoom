@@ -41,7 +41,6 @@
 #include "p_effect.h"
 #include "g_levellocals.h"
 #include "levelmeshbuilder.h"
-#include <set>
 
 EXTERN_CVAR(Float, maxviewpitch)
 
@@ -76,125 +75,50 @@ void HardpolyRenderer::RenderView(player_t *player)
 
 	mContext->Begin();
 
-	int width = screen->GetWidth();
-	int height = screen->GetHeight();
-	if (!mSceneFB || mAlbedoBuffer->Width() != width || mAlbedoBuffer->Height() != height)
-	{
-		mSceneFB.reset();
-		mAlbedoBuffer.reset();
-		mDepthStencilBuffer.reset();
-		mNormalBuffer.reset();
-		
-		mAlbedoBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
-		mNormalBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
-		mDepthStencilBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
-		
-		std::vector<GPUTexture2DPtr> colorbuffers = { mAlbedoBuffer, mNormalBuffer };
-		mSceneFB = std::make_shared<GPUFrameBuffer>(colorbuffers, mDepthStencilBuffer);
-	}
+	SetupFramebuffer();
+	SetupStaticLevelMesh();
+	CompileShaders();
+	CreateSamplers();
+	UploadSectorTexture();
+	RenderLevelMesh(mVertexArray, mDrawRuns, 1.0f);
+	RenderDynamicMesh();
+
+	mContext->SetFrameBuffer(nullptr);
+	mContext->End();
 	
-	mContext->SetFrameBuffer(mSceneFB);
-	mContext->SetViewport(0, 0, width, height);
+	interpolator.RestoreInterpolations ();
 
-	mContext->ClearColorBuffer(0, 0.5f, 0.5f, 0.2f, 1.0f);
-	mContext->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
-	mContext->ClearDepthStencilBuffer(1.0f, 0);
+	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
+	swframebuffer->SetViewFB(mSceneFB->Handle());
 
-	if (!mVertexArray || mMeshLevel != level.levelnum)
+	FCanvasTextureInfo::UpdateAll();
+}
+
+void HardpolyRenderer::RenderDynamicMesh()
+{
+	std::vector<subsector_t*> subsectors;
+	for (auto sector : dynamicSectors)
 	{
-		mVertexArray.reset();
-
-		LevelMeshBuilder builder;
-		builder.Generate();
-		
-		mVertexArray = builder.VertexArray;
-		mDrawRuns = builder.DrawRuns;
-		mMeshLevel = level.levelnum;
-		
-		cpuStaticSectorCeiling.resize(level.sectors.Size());
-		cpuStaticSectorFloor.resize(level.sectors.Size());
-		for (unsigned int i = 0; i < level.sectors.Size(); i++)
+		for (int i = 0; i < sector->subsectorcount; i++)
 		{
-			sector_t *sector = &level.sectors[i];
-			cpuStaticSectorCeiling[i] = sector->ceilingplane.Zat0();
-			cpuStaticSectorFloor[i] = sector->floorplane.Zat0();
+			subsectors.push_back(sector->subsectors[i]);
 		}
 	}
-
-	if (!mProgram)
+	if (!subsectors.empty())
 	{
-		mProgram = std::make_shared<GPUProgram>();
-
-		mProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
-				layout(std140) uniform FrameUniforms
-				{
-					mat4 WorldToView;
-					mat4 ViewToProjection;
-					float MeshId;
-					float Padding1, Padding2, Padding3;
-				};
-
-				in vec4 Position;
-				in vec4 Texcoord;
-				out vec2 UV;
-				out float LightLevel;
-				out vec3 PositionInView;
-				uniform sampler2D SectorTexture;
-
-				void main()
-				{
-					vec4 posInView = WorldToView * Position;
-					PositionInView = posInView.xyz;
-					gl_Position = ViewToProjection * posInView;
-					UV = Texcoord.xy;
-					int sector = int(Texcoord.z);
-					vec4 sectorData = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0);
-					LightLevel = sectorData.x;
-					if (sectorData.y != MeshId) gl_Position = vec4(0.0);
-				}
-			)");
-		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
-				in vec2 UV;
-				in float LightLevel;
-				in vec3 PositionInView;
-				out vec4 FragAlbedo;
-				uniform sampler2D DiffuseTexture;
-				
-				float SoftwareLight()
-				{
-					float globVis = 1706.0;
-					float z = -PositionInView.z;
-					float vis = globVis / z;
-					float shade = 64.0 - (LightLevel + 12.0) * 32.0/128.0;
-					float lightscale = clamp((shade - min(24.0, vis)) / 32.0, 0.0, 31.0/32.0);
-					return 1.0 - lightscale;
-				}
-				
-				void main()
-				{
-					FragAlbedo = texture(DiffuseTexture, UV);
-					FragAlbedo.rgb *= SoftwareLight();
-				}
-			)");
-
-		mProgram->SetAttribLocation("Position", 0);
-		mProgram->SetAttribLocation("UV", 1);
-		mProgram->SetFragOutput("FragAlbedo", 0);
-		mProgram->SetFragOutput("FragNormal", 1);
-		mProgram->Link("program");
+		LevelMeshBuilder dynamicMesh;
+		dynamicMesh.Generate(subsectors);
+		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.DrawRuns, 0.0f);
 	}
-	
-	if (!mSamplerNearest)
-	{
-		mSamplerLinear = std::make_shared<GPUSampler>(GPUSampleMode::Linear, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
-		mSamplerNearest = std::make_shared<GPUSampler>(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
-	}
+}
 
+void HardpolyRenderer::UploadSectorTexture()
+{
 	mCurrentSectorTexture = (mCurrentSectorTexture + 1) % 3;
 	if (!mSectorTexture[mCurrentSectorTexture])
 		mSectorTexture[mCurrentSectorTexture] = std::make_shared<GPUTexture2D>(256, 16, false, 0, GPUPixelFormat::RGBA32f);
-	
-	std::set<sector_t*> dynamicSectors;
+
+	dynamicSectors.clear();
 
 	cpuSectors.resize((level.sectors.Size() / 256 + 1) * 256);
 	for (unsigned int i = 0; i < level.sectors.Size(); i++)
@@ -223,33 +147,66 @@ void HardpolyRenderer::RenderView(player_t *player)
 		cpuSectors[i] = Vec4f(sector->lightlevel, dynamicSector, 0.0f, 0.0f);
 	}
 	mSectorTexture[mCurrentSectorTexture]->Upload(0, 0, 256, MAX(((int)level.sectors.Size() + 255) / 256, 1), 0, cpuSectors.data());
+}
 
-	RenderLevelMesh(mVertexArray, mDrawRuns, 1.0f);
-
-	std::vector<subsector_t*> subsectors;
-	for (auto sector : dynamicSectors)
+void HardpolyRenderer::SetupFramebuffer()
+{
+	int width = screen->GetWidth();
+	int height = screen->GetHeight();
+	if (!mSceneFB || mAlbedoBuffer->Width() != width || mAlbedoBuffer->Height() != height)
 	{
-		for (int i = 0; i < sector->subsectorcount; i++)
+		mSceneFB.reset();
+		mAlbedoBuffer.reset();
+		mDepthStencilBuffer.reset();
+		mNormalBuffer.reset();
+
+		mAlbedoBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mNormalBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mDepthStencilBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
+
+		std::vector<GPUTexture2DPtr> colorbuffers = { mAlbedoBuffer, mNormalBuffer };
+		mSceneFB = std::make_shared<GPUFrameBuffer>(colorbuffers, mDepthStencilBuffer);
+	}
+
+	mContext->SetFrameBuffer(mSceneFB);
+	mContext->SetViewport(0, 0, width, height);
+
+	mContext->ClearColorBuffer(0, 0.5f, 0.5f, 0.2f, 1.0f);
+	mContext->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
+	mContext->ClearDepthStencilBuffer(1.0f, 0);
+}
+
+void HardpolyRenderer::SetupStaticLevelMesh()
+{
+	if (!mVertexArray || mMeshLevel != level.levelnum)
+	{
+		mVertexArray.reset();
+
+		LevelMeshBuilder builder;
+		builder.Generate();
+
+		mVertexArray = builder.VertexArray;
+		mDrawRuns = builder.DrawRuns;
+		mMeshLevel = level.levelnum;
+
+		cpuStaticSectorCeiling.resize(level.sectors.Size());
+		cpuStaticSectorFloor.resize(level.sectors.Size());
+		for (unsigned int i = 0; i < level.sectors.Size(); i++)
 		{
-			subsectors.push_back(sector->subsectors[i]);
+			sector_t *sector = &level.sectors[i];
+			cpuStaticSectorCeiling[i] = sector->ceilingplane.Zat0();
+			cpuStaticSectorFloor[i] = sector->floorplane.Zat0();
 		}
 	}
-	if (!subsectors.empty())
+}
+
+void HardpolyRenderer::CreateSamplers()
+{
+	if (!mSamplerNearest)
 	{
-		LevelMeshBuilder dynamicMesh;
-		dynamicMesh.Generate(subsectors);
-		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.DrawRuns, 0.0f);
+		mSamplerLinear = std::make_shared<GPUSampler>(GPUSampleMode::Linear, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+		mSamplerNearest = std::make_shared<GPUSampler>(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
 	}
-
-	mContext->SetFrameBuffer(nullptr);
-	mContext->End();
-	
-	interpolator.RestoreInterpolations ();
-
-	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
-	swframebuffer->SetViewFB(mSceneFB->Handle());
-
-	FCanvasTextureInfo::UpdateAll();
 }
 
 void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId)
@@ -365,6 +322,72 @@ void HardpolyRenderer::SetupPerspectiveMatrix(float meshId)
 	frameUniforms.MeshId = meshId;
 
 	mFrameUniforms[mCurrentFrameUniforms]->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
+}
+
+void HardpolyRenderer::CompileShaders()
+{
+	if (!mProgram)
+	{
+		mProgram = std::make_shared<GPUProgram>();
+
+		mProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
+				layout(std140) uniform FrameUniforms
+				{
+					mat4 WorldToView;
+					mat4 ViewToProjection;
+					float MeshId;
+					float Padding1, Padding2, Padding3;
+				};
+
+				in vec4 Position;
+				in vec4 Texcoord;
+				out vec2 UV;
+				out float LightLevel;
+				out vec3 PositionInView;
+				uniform sampler2D SectorTexture;
+
+				void main()
+				{
+					vec4 posInView = WorldToView * Position;
+					PositionInView = posInView.xyz;
+					gl_Position = ViewToProjection * posInView;
+					UV = Texcoord.xy;
+					int sector = int(Texcoord.z);
+					vec4 sectorData = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0);
+					LightLevel = sectorData.x;
+					if (sectorData.y != MeshId) gl_Position = vec4(0.0);
+				}
+			)");
+		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+				in vec2 UV;
+				in float LightLevel;
+				in vec3 PositionInView;
+				out vec4 FragAlbedo;
+				uniform sampler2D DiffuseTexture;
+				
+				float SoftwareLight()
+				{
+					float globVis = 1706.0;
+					float z = -PositionInView.z;
+					float vis = globVis / z;
+					float shade = 64.0 - (LightLevel + 12.0) * 32.0/128.0;
+					float lightscale = clamp((shade - min(24.0, vis)) / 32.0, 0.0, 31.0/32.0);
+					return 1.0 - lightscale;
+				}
+				
+				void main()
+				{
+					FragAlbedo = texture(DiffuseTexture, UV);
+					FragAlbedo.rgb *= SoftwareLight();
+				}
+			)");
+
+		mProgram->SetAttribLocation("Position", 0);
+		mProgram->SetAttribLocation("UV", 1);
+		mProgram->SetFragOutput("FragAlbedo", 0);
+		mProgram->SetFragOutput("FragNormal", 1);
+		mProgram->Link("program");
+	}
 }
 
 void HardpolyRenderer::RemapVoxels()
