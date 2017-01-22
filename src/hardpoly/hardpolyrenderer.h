@@ -61,6 +61,7 @@ private:
 	
 	void SetupPerspectiveMatrix(float meshId);
 	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId);
+	GPUTexture2DPtr GetTexture(FTexture *texture);
 
 	GPUContextPtr mContext;
 	GPUTexture2DPtr mAlbedoBuffer;

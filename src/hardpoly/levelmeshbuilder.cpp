@@ -127,7 +127,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::mid);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2);
 				}
 			}
 			else
@@ -159,7 +159,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::top);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2);
 				}
 
 				if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && line->sidedef)
@@ -167,7 +167,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::bottom);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2);
 				}
 			}
 		}
@@ -210,13 +210,12 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 	}
 }
 
-void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2)
+void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2)
 {
-	DVector2 v1 = line->v1->fPos();
-	DVector2 v2 = line->v2->fPos();
+	DVector2 v1 = lineseg->v1->fPos();
+	DVector2 v2 = lineseg->v2->fPos();
 
-	double unpeggedceil = ceilz1;
-	WallTextureCoords texcoords(texture, lineseg, line, side, texpart, ceilz1, floorz1, unpeggedceil);
+	WallTextureCoords texcoords(texture, lineseg, line, side, texpart, ceilz1, floorz1, unpeggedceil1);
 
 	auto &run = mMaterials[texture];
 

@@ -268,46 +268,7 @@ void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, con
 	mContext->SetSampler(1, mSamplerLinear);
 	for (const auto &run : drawRuns)
 	{
-		auto &texture = mTextures[run.Texture];
-		if (!texture)
-		{
-			int width, height;
-			bool mipmap;
-			std::vector<uint32_t> pixels;
-			if (run.Texture)
-			{
-				width = run.Texture->GetWidth();
-				height = run.Texture->GetHeight();
-				mipmap = true;
-
-				pixels.resize(width * height);
-				const uint32_t *src = run.Texture->GetPixelsBgra();
-				uint32_t *dest = pixels.data();
-				for (int y = 0; y < height; y++)
-				{
-					for (int x = 0; x < width; x++)
-					{
-						uint32_t pixel = src[y + x * height];
-						uint32_t red = RPART(pixel);
-						uint32_t green = GPART(pixel);
-						uint32_t blue = BPART(pixel);
-						uint32_t alpha = APART(pixel);
-						dest[x + y * width] = red | (green << 8) | (blue << 16) | (alpha << 24);
-					}
-				}
-			}
-			else
-			{
-				width = 1;
-				height = 1;
-				mipmap = false;
-				pixels.push_back(0xff00ffff);
-			}
-
-			texture = std::make_shared<GPUTexture2D>(width, height, mipmap, 0, GPUPixelFormat::RGBA8, pixels.data());
-		}
-
-		mContext->SetTexture(1, texture);
+		mContext->SetTexture(1, GetTexture(run.Texture));
 		mContext->Draw(GPUDrawMode::Triangles, run.Start, run.NumVertices);
 	}
 	mContext->SetTexture(0, nullptr);
@@ -318,6 +279,49 @@ void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, con
 	mContext->SetUniforms(0, nullptr);
 	mContext->SetVertexArray(nullptr);
 	mContext->SetProgram(nullptr);
+}
+
+GPUTexture2DPtr HardpolyRenderer::GetTexture(FTexture *ztexture)
+{
+	auto &texture = mTextures[ztexture];
+	if (!texture)
+	{
+		int width, height;
+		bool mipmap;
+		std::vector<uint32_t> pixels;
+		if (ztexture)
+		{
+			width = ztexture->GetWidth();
+			height = ztexture->GetHeight();
+			mipmap = true;
+
+			pixels.resize(width * height);
+			const uint32_t *src = ztexture->GetPixelsBgra();
+			uint32_t *dest = pixels.data();
+			for (int y = 0; y < height; y++)
+			{
+				for (int x = 0; x < width; x++)
+				{
+					uint32_t pixel = src[y + x * height];
+					uint32_t red = RPART(pixel);
+					uint32_t green = GPART(pixel);
+					uint32_t blue = BPART(pixel);
+					uint32_t alpha = APART(pixel);
+					dest[x + y * width] = red | (green << 8) | (blue << 16) | (alpha << 24);
+				}
+			}
+		}
+		else
+		{
+			width = 1;
+			height = 1;
+			mipmap = false;
+			pixels.push_back(0xff00ffff);
+		}
+
+		texture = std::make_shared<GPUTexture2D>(width, height, mipmap, 0, GPUPixelFormat::RGBA8, pixels.data());
+	}
+	return texture;
 }
 
 void HardpolyRenderer::SetupPerspectiveMatrix(float meshId)
