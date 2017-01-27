@@ -93,6 +93,7 @@ namespace swrenderer
 		numskyboxes = 0;
 
 		VisiblePlaneList *planes = VisiblePlaneList::Instance();
+		DrawSegmentList *drawseglist = DrawSegmentList::Instance();
 
 		if (!planes->HasPortalPlanes())
 			return;
@@ -103,9 +104,9 @@ namespace swrenderer
 		int savedextralight = extralight;
 		DVector3 savedpos = ViewPos;
 		DAngle savedangle = ViewAngle;
-		ptrdiff_t savedds_p = ds_p - drawsegs;
-		size_t savedinteresting = FirstInterestingDrawseg;
-		double savedvisibility = R_GetVisibility();
+		ptrdiff_t savedds_p = drawseglist->ds_p - drawseglist->drawsegs;
+		size_t savedinteresting = drawseglist->FirstInterestingDrawseg;
+		double savedvisibility = LightVisibility::Instance()->GetVisibility();
 		AActor *savedcamera = camera;
 		sector_t *savedsector = viewsector;
 
@@ -127,7 +128,7 @@ namespace swrenderer
 				// Don't let gun flashes brighten the sky box
 				AActor *sky = port->mSkybox;
 				extralight = 0;
-				R_SetVisibility(sky->args[0] * 0.25f);
+				LightVisibility::Instance()->SetVisibility(sky->args[0] * 0.25f);
 
 				ViewPos = sky->InterpolatedPosition(r_TicFracF);
 				ViewAngle = savedangle + (sky->PrevAngles.Yaw + deltaangle(sky->PrevAngles.Yaw, sky->Angles.Yaw) * r_TicFracF);
@@ -140,7 +141,7 @@ namespace swrenderer
 			case PORTS_PORTAL:
 			case PORTS_LINKEDPORTAL:
 				extralight = pl->extralight;
-				R_SetVisibility(pl->visibility);
+				LightVisibility::Instance()->SetVisibility(pl->visibility);
 				ViewPos.X = pl->viewpos.X + port->mDisplacement.X;
 				ViewPos.Y = pl->viewpos.Y + port->mDisplacement.Y;
 				ViewPos.Z = pl->viewpos.Z;
@@ -187,7 +188,7 @@ namespace swrenderer
 			}
 
 			// Create a drawseg to clip sprites to the sky plane
-			drawseg_t *draw_segment = R_AddDrawSegment();
+			DrawSegment *draw_segment = drawseglist->Add();
 			draw_segment->CurrentPortalUniq = CurrentPortalUniq;
 			draw_segment->siz1 = INT_MAX;
 			draw_segment->siz2 = INT_MAX;
@@ -207,11 +208,11 @@ namespace swrenderer
 			memcpy(draw_segment->sprbottomclip, floorclip + pl->left, (pl->right - pl->left) * sizeof(short));
 			memcpy(draw_segment->sprtopclip, ceilingclip + pl->left, (pl->right - pl->left) * sizeof(short));
 
-			firstdrawseg = draw_segment;
-			FirstInterestingDrawseg = InterestingDrawsegs.Size();
+			drawseglist->firstdrawseg = draw_segment;
+			drawseglist->FirstInterestingDrawseg = drawseglist->InterestingDrawsegs.Size();
 
-			interestingStack.Push(FirstInterestingDrawseg);
-			ptrdiff_t diffnum = firstdrawseg - drawsegs;
+			interestingStack.Push(drawseglist->FirstInterestingDrawseg);
+			ptrdiff_t diffnum = drawseglist->firstdrawseg - drawseglist->drawsegs;
 			drawsegStack.Push(diffnum);
 			VisibleSpriteList::Instance()->PushPortal();
 			viewposStack.Push(ViewPos);
@@ -228,19 +229,19 @@ namespace swrenderer
 		// Draw all the masked textures in a second pass, in the reverse order they
 		// were added. This must be done separately from the previous step for the
 		// sake of nested skyboxes.
-		while (interestingStack.Pop(FirstInterestingDrawseg))
+		while (interestingStack.Pop(drawseglist->FirstInterestingDrawseg))
 		{
 			ptrdiff_t pd = 0;
 
 			drawsegStack.Pop(pd);
-			firstdrawseg = drawsegs + pd;
+			drawseglist->firstdrawseg = drawseglist->drawsegs + pd;
 
 			// Masked textures and planes need the view coordinates restored for proper positioning.
 			viewposStack.Pop(ViewPos);
 
-			RenderTranslucentPass::Render();
+			RenderTranslucentPass::Instance()->Render();
 
-			ds_p = firstdrawseg;
+			drawseglist->ds_p = drawseglist->firstdrawseg;
 
 			VisibleSpriteList::Instance()->PopPortal();
 
@@ -251,15 +252,15 @@ namespace swrenderer
 				pl->Render(pl->Alpha, pl->Additive, true);
 			}
 		}
-		firstdrawseg = drawsegs;
-		ds_p = drawsegs + savedds_p;
-		InterestingDrawsegs.Resize((unsigned int)FirstInterestingDrawseg);
-		FirstInterestingDrawseg = savedinteresting;
+		drawseglist->firstdrawseg = drawseglist->drawsegs;
+		drawseglist->ds_p = drawseglist->drawsegs + savedds_p;
+		drawseglist->InterestingDrawsegs.Resize((unsigned int)drawseglist->FirstInterestingDrawseg);
+		drawseglist->FirstInterestingDrawseg = savedinteresting;
 
 		camera = savedcamera;
 		viewsector = savedsector;
 		ViewPos = savedpos;
-		R_SetVisibility(savedvisibility);
+		LightVisibility::Instance()->SetVisibility(savedvisibility);
 		extralight = savedextralight;
 		ViewAngle = savedangle;
 		R_SetViewAngle();
@@ -279,7 +280,7 @@ namespace swrenderer
 		size_t lastportal = WallPortals.Size();
 		for (unsigned int i = 0; i < lastportal; i++)
 		{
-			RenderLinePortal(&WallPortals[i], 0);
+			RenderLinePortal(WallPortals[i], 0);
 		}
 
 		CurrentPortal = nullptr;
@@ -449,7 +450,7 @@ namespace swrenderer
 		unsigned int portalsAtEnd = WallPortals.Size();
 		for (; portalsAtStart < portalsAtEnd; portalsAtStart++)
 		{
-			RenderLinePortal(&WallPortals[portalsAtStart], depth + 1);
+			RenderLinePortal(WallPortals[portalsAtStart], depth + 1);
 		}
 		int prevuniq2 = CurrentPortalUniq;
 		CurrentPortalUniq = prevuniq;
@@ -457,7 +458,7 @@ namespace swrenderer
 		NetUpdate();
 
 		MaskedCycles.Clock(); // [ZZ] count sprites in portals/mirrors along with normal ones.
-		RenderTranslucentPass::Render();	  //      this is required since with portals there often will be cases when more than 80% of the view is inside a portal.
+		RenderTranslucentPass::Instance()->Render();	  //      this is required since with portals there often will be cases when more than 80% of the view is inside a portal.
 		MaskedCycles.Unclock();
 
 		NetUpdate();
@@ -522,7 +523,7 @@ namespace swrenderer
 		stacked_viewpos = ViewPos;
 		stacked_angle = ViewAngle;
 		stacked_extralight = extralight;
-		stacked_visibility = R_GetVisibility();
+		stacked_visibility = LightVisibility::Instance()->GetVisibility();
 	}
 	
 	void RenderPortal::SetMainPortal()
@@ -532,6 +533,12 @@ namespace swrenderer
 		MirrorFlags = 0;
 		CurrentPortal = nullptr;
 		CurrentPortalUniq = 0;
+		WallPortals.Clear();
+	}
+
+	void RenderPortal::AddLinePortal(line_t *linedef, int x1, int x2, const short *topclip, const short *bottomclip)
+	{
+		WallPortals.Push(RenderMemory::NewObject<PortalDrawseg>(linedef, x1, x2, topclip, bottomclip));
 	}
 }
 

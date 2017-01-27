@@ -29,6 +29,7 @@
 #include "swrenderer/things/r_wallsprite.h"
 #include "swrenderer/things/r_playersprite.h"
 #include "swrenderer/segments/r_drawsegment.h"
+#include "swrenderer/line/r_renderdrawsegment.h"
 #include "swrenderer/plane/r_visibleplane.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_light.h"
@@ -46,14 +47,14 @@ namespace swrenderer
 
 		VisibleSprite *spr = this;
 
-		drawseg_t *ds;
+		DrawSegment *ds;
 		int i;
 		int x1, x2;
 		int r1, r2;
 		short topclip, botclip;
 		short *clip1, *clip2;
-		FSWColormap *colormap = spr->BaseColormap;
-		int colormapnum = spr->ColormapNum;
+		FSWColormap *colormap = spr->Light.BaseColormap;
+		int colormapnum = spr->Light.ColormapNum;
 		F3DFloor *rover;
 
 		Clip3DFloors *clip3d = Clip3DFloors::Instance();
@@ -85,7 +86,8 @@ namespace swrenderer
 		if ((clip3d->fake3D & FAKE3D_CLIPTOP) && spr->gzb >= clip3d->sclipTop) return;
 
 		// kg3D - correct colors now
-		if (!fixedcolormap && fixedlightlev < 0 && spr->sector->e && spr->sector->e->XFloor.lightlist.Size())
+		CameraLight *cameraLight = CameraLight::Instance();
+		if (!cameraLight->fixedcolormap && cameraLight->fixedlightlev < 0 && spr->sector->e && spr->sector->e->XFloor.lightlist.Size())
 		{
 			if (!(clip3d->fake3D & FAKE3D_CLIPTOP))
 			{
@@ -134,7 +136,7 @@ namespace swrenderer
 
 				int spriteshade = LIGHT2SHADE(sec->lightlevel + R_ActualExtraLight(spr->foggy));
 
-				SetColormap(r_SpriteVisibility / MAX(MINZ, (double)spr->depth), spriteshade, mybasecolormap, isFullBright, invertcolormap, fadeToBlack);
+				Light.SetColormap(LightVisibility::Instance()->SpriteGlobVis() / MAX(MINZ, (double)spr->depth), spriteshade, mybasecolormap, isFullBright, invertcolormap, fadeToBlack);
 			}
 		}
 
@@ -259,8 +261,8 @@ namespace swrenderer
 
 		if (topclip >= botclip)
 		{
-			spr->BaseColormap = colormap;
-			spr->ColormapNum = colormapnum;
+			spr->Light.BaseColormap = colormap;
+			spr->Light.ColormapNum = colormapnum;
 			return;
 		}
 
@@ -282,7 +284,8 @@ namespace swrenderer
 
 		//		for (ds=ds_p-1 ; ds >= drawsegs ; ds--)    old buggy code
 
-		for (ds = ds_p; ds-- > firstdrawseg; )  // new -- killough
+		DrawSegmentList *segmentlist = DrawSegmentList::Instance();
+		for (ds = segmentlist->ds_p; ds-- > segmentlist->firstdrawseg; )  // new -- killough
 		{
 			// [ZZ] portal handling here
 			//if (ds->CurrentPortalUniq != spr->CurrentPortalUniq)
@@ -327,7 +330,10 @@ namespace swrenderer
 				// seg is behind sprite, so draw the mid texture if it has one
 				if (ds->CurrentPortalUniq == renderportal->CurrentPortalUniq && // [ZZ] instead, portal uniq check is made here
 					(ds->maskedtexturecol != nullptr || ds->bFogBoundary))
-					R_RenderMaskedSegRange(ds, r1, r2);
+				{
+					RenderDrawSegment renderer;
+					renderer.Render(ds, r1, r2);
+				}
 
 				continue;
 			}
@@ -386,8 +392,8 @@ namespace swrenderer
 				}
 				if (i == x2)
 				{
-					spr->BaseColormap = colormap;
-					spr->ColormapNum = colormapnum;
+					spr->Light.BaseColormap = colormap;
+					spr->Light.ColormapNum = colormapnum;
 					return;
 				}
 			}
@@ -405,49 +411,7 @@ namespace swrenderer
 			int maxvoxely = spr->gzb > hzb ? INT_MAX : xs_RoundToInt((spr->gzt - hzb) / spr->yscale);
 			spr->Render(cliptop, clipbot, minvoxely, maxvoxely);
 		}
-		spr->BaseColormap = colormap;
-		spr->ColormapNum = colormapnum;
-	}
-
-	void VisibleSprite::SetColormap(double visibility, int shade, FDynamicColormap *basecolormap, bool fullbright, bool invertColormap, bool fadeToBlack)
-	{
-		if (fadeToBlack)
-		{
-			if (invertColormap) // Fade to white
-			{
-				basecolormap = GetSpecialLights(basecolormap->Color, MAKERGB(255, 255, 255), basecolormap->Desaturate);
-				invertColormap = false;
-			}
-			else // Fade to black
-			{
-				basecolormap = GetSpecialLights(basecolormap->Color, MAKERGB(0, 0, 0), basecolormap->Desaturate);
-			}
-		}
-
-		if (invertColormap)
-		{
-			basecolormap = GetSpecialLights(basecolormap->Color, basecolormap->Fade.InverseColor(), basecolormap->Desaturate);
-		}
-
-		if (fixedcolormap)
-		{
-			BaseColormap = fixedcolormap;
-			ColormapNum = 0;
-		}
-		else if (fixedlightlev >= 0)
-		{
-			BaseColormap = (r_fullbrightignoresectorcolor) ? &FullNormalLight : basecolormap;
-			ColormapNum = fixedlightlev >> COLORMAPSHIFT;
-		}
-		else if (fullbright)
-		{
-			BaseColormap = (r_fullbrightignoresectorcolor) ? &FullNormalLight : basecolormap;
-			ColormapNum = 0;
-		}
-		else
-		{
-			BaseColormap = basecolormap;
-			ColormapNum = GETPALOOKUP(visibility, shade);
-		}
+		spr->Light.BaseColormap = colormap;
+		spr->Light.ColormapNum = colormapnum;
 	}
 }

@@ -35,6 +35,7 @@ enum
 	VARF_Ref			= (1<<16),	// argument is passed by reference.
 	VARF_Transient		= (1<<17),  // don't auto serialize field.
 	VARF_Meta			= (1<<18),	// static class data (by necessity read only.)
+	VARF_VarArg			= (1<<19),  // [ZZ] vararg: don't typecheck values after ... in function signature
 };
 
 // Symbol information -------------------------------------------------------
@@ -75,6 +76,7 @@ class VMFrameStack;
 struct VMValue;
 struct VMReturn;
 class VMFunction;
+struct FNamespaceManager;
 
 // A VM function ------------------------------------------------------------
 
@@ -156,6 +158,7 @@ private:
 	MapType Symbols;
 
 	friend class DObject;
+	friend struct FNamespaceManager;
 };
 
 // A symbol for a compiler tree node ----------------------------------------
@@ -169,8 +172,6 @@ public:
 	PSymbolTreeNode(FName name, struct ZCC_TreeNode *node) : PSymbol(name), Node(node) {}
 	PSymbolTreeNode() : PSymbol(NAME_None) {}
 };
-
-extern PSymbolTable		 GlobalSymbols;
 
 // Basic information shared by all types ------------------------------------
 
@@ -213,15 +214,6 @@ public:
 	typedef PClassType MetaClass;
 	MetaClass *GetClass() const;
 
-	struct Conversion
-	{
-		Conversion(PType *target, void (*convert)(ZCC_ExprConstant *, class FSharedStringArena &))
-			: TargetType(target), ConvertConstant(convert) {}
-
-		PType *TargetType;
-		void (*ConvertConstant)(ZCC_ExprConstant *val, class FSharedStringArena &strdump);
-	};
-
 	unsigned int	Size;			// this type's size
 	unsigned int	Align;			// this type's preferred alignment
 	PType			*HashNext;		// next type in this type table
@@ -233,10 +225,6 @@ public:
 	PType(unsigned int size = 1, unsigned int align = 1);
 	virtual ~PType();
 	virtual bool isNumeric() { return false; }
-
-	bool AddConversion(PType *target, void (*convertconst)(ZCC_ExprConstant *, class FSharedStringArena &));
-
-	int FindConversion(PType *target, const Conversion **slots, int numslots);
 
 	// Writes the value of a variable of this type at (addr) to an archive, preceded by
 	// a tag indicating its type. The tag is there so that variable types can be changed
@@ -317,54 +305,6 @@ public:
 	size_t PropagateMark();
 
 	static void StaticInit();
-
-private:
-	// Stuff for type conversion searches
-	class VisitQueue
-	{
-	public:
-		VisitQueue() : In(0), Out(0) {}
-		void Push(PType *type);
-		PType *Pop();
-		bool IsEmpty() { return In == Out; }
-
-	private:
-		// This is a fixed-sized ring buffer.
-		PType *Queue[64];
-		int In, Out;
-
-		void Advance(int &ptr)
-		{
-			ptr = (ptr + 1) & (countof(Queue) - 1);
-		}
-	};
-
-	class VisitedNodeSet
-	{
-	public:
-		VisitedNodeSet() { memset(Buckets, 0, sizeof(Buckets)); }
-		void Insert(PType *node);
-		bool Check(const PType *node);
-
-	private:
-		PType *Buckets[32];
-
-		size_t Hash(const PType *type) { return size_t(type) >> 4; }
-	};
-
-	TArray<Conversion> Conversions;
-	PType *PredType;
-	PType *VisitNext;
-	short PredConv;
-	short Distance;
-
-	void MarkPred(PType *pred, int conv, int dist)
-	{
-		PredType = pred;
-		PredConv = conv;
-		Distance = dist;
-	}
-	void FillConversionPath(const Conversion **slots);
 };
 
 // Not-really-a-type types --------------------------------------------------
@@ -597,8 +537,6 @@ public:
 
 	class PClass *ClassRestriction;
 
-	// this is only here to block PPointer's implementation
-	void SetPointer(void *base, unsigned offset, TArray<size_t> *special = NULL) const override {}
 	bool isCompatible(PType *type);
 
 	virtual bool IsMatch(intptr_t id1, intptr_t id2) const;
@@ -655,15 +593,15 @@ protected:
 
 // Compound types -----------------------------------------------------------
 
-class PEnum : public PNamedType
+class PEnum : public PInt
 {
-	DECLARE_CLASS(PEnum, PNamedType);
+	DECLARE_CLASS(PEnum, PInt);
 	HAS_OBJECT_POINTERS;
 public:
 	PEnum(FName name, PTypeBase *outer);
 
-	PType *ValueType;
-	TMap<FName, int> Values;
+	PTypeBase *Outer;
+	FName EnumName;
 protected:
 	PEnum();
 };
@@ -772,7 +710,7 @@ class PNativeStruct : public PStruct
 {
 	DECLARE_CLASS(PNativeStruct, PStruct);
 public:
-	PNativeStruct(FName name = NAME_None);
+	PNativeStruct(FName name = NAME_None, PTypeBase *outer = nullptr);
 };
 
 class PPrototype : public PCompoundType
@@ -1044,34 +982,43 @@ class PSymbolConstString : public PSymbolConst
 public:
 	FString Str;
 
-	PSymbolConstString(FName name, FString &str) : PSymbolConst(name, TypeString), Str(str) {}
+	PSymbolConstString(FName name, const FString &str) : PSymbolConst(name, TypeString), Str(str) {}
 	PSymbolConstString() {}
 };
 
-// Enumerations for serializing types in an archive -------------------------
+// Namespaces --------------------------------------------------
 
-enum ETypeVal : BYTE
+class PNamespace : public PTypeBase
 {
-	VAL_Int8,
-	VAL_UInt8,
-	VAL_Int16,
-	VAL_UInt16,
-	VAL_Int32,
-	VAL_UInt32,
-	VAL_Int64,
-	VAL_UInt64,
-	VAL_Zero,
-	VAL_One,
-	VAL_Float32,
-	VAL_Float64,
-	VAL_String,
-	VAL_Name,
-	VAL_Struct,
-	VAL_Array,
-	VAL_Object,
-	VAL_State,
-	VAL_Class,
+	DECLARE_CLASS(PNamespace, PTypeBase)
+	HAS_OBJECT_POINTERS;
+
+public:
+	PSymbolTable Symbols;
+	PNamespace *Parent;
+	int FileNum;	// This is for blocking DECORATE access to later files.
+
+	PNamespace() {}
+	PNamespace(int filenum, PNamespace *parent);
+	size_t PropagateMark();
 };
+
+struct FNamespaceManager
+{
+	PNamespace *GlobalNamespace;
+	TArray<PNamespace *> AllNamespaces;
+
+	FNamespaceManager();
+	PNamespace *NewNamespace(int filenum);
+	size_t MarkSymbols();
+	void ReleaseSymbols();
+	int RemoveSymbols();
+};
+
+extern FNamespaceManager Namespaces;
+
+
+// Enumerations for serializing types in an archive -------------------------
 
 inline bool &DObject::BoolVar(FName field)
 {
@@ -1103,4 +1050,7 @@ inline T *&DObject::PointerVar(FName field)
 {
 	return *(T**)ScriptVar(field, nullptr);	// pointer check is more tricky and for the handful of uses in the DECORATE parser not worth the hassle.
 }
+
+void RemoveUnusedSymbols();
+
 #endif

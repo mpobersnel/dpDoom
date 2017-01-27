@@ -106,16 +106,17 @@ namespace swrenderer
 		planeheight = fabs(pl->height.Zat0() - ViewPos.Z);
 
 		basecolormap = colormap;
-		GlobVis = r_FloorVisibility / planeheight;
+		GlobVis = LightVisibility::Instance()->FlatPlaneGlobVis() / planeheight;
 		ds_light = 0;
-		if (fixedlightlev >= 0)
+		CameraLight *cameraLight = CameraLight::Instance();
+		if (cameraLight->fixedlightlev >= 0)
 		{
-			R_SetDSColorMapLight(basecolormap, 0, FIXEDLIGHT2SHADE(fixedlightlev));
+			R_SetDSColorMapLight(basecolormap, 0, FIXEDLIGHT2SHADE(cameraLight->fixedlightlev));
 			plane_shade = false;
 		}
-		else if (fixedcolormap)
+		else if (cameraLight->fixedcolormap)
 		{
-			R_SetDSColorMapLight(fixedcolormap, 0, 0);
+			R_SetDSColorMapLight(cameraLight->fixedcolormap, 0, 0);
 			plane_shade = false;
 		}
 		else

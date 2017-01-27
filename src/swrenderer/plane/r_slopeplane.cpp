@@ -143,21 +143,22 @@ namespace swrenderer
 			plane_sz[0] = -plane_sz[0];
 		}
 
-		planelightfloat = (r_TiltVisibility * lxscale * lyscale) / (fabs(pl->height.ZatPoint(ViewPos) - ViewPos.Z)) / 65536.f;
+		planelightfloat = (LightVisibility::Instance()->SlopePlaneGlobVis() * lxscale * lyscale) / (fabs(pl->height.ZatPoint(ViewPos) - ViewPos.Z)) / 65536.f;
 
 		if (pl->height.fC() > 0)
 			planelightfloat = -planelightfloat;
 
 		basecolormap = colormap;
 
-		if (fixedlightlev >= 0)
+		CameraLight *cameraLight = CameraLight::Instance();
+		if (cameraLight->fixedlightlev >= 0)
 		{
-			R_SetDSColorMapLight(basecolormap, 0, FIXEDLIGHT2SHADE(fixedlightlev));
+			R_SetDSColorMapLight(basecolormap, 0, FIXEDLIGHT2SHADE(cameraLight->fixedlightlev));
 			plane_shade = false;
 		}
-		else if (fixedcolormap)
+		else if (cameraLight->fixedcolormap)
 		{
-			R_SetDSColorMapLight(fixedcolormap, 0, 0);
+			R_SetDSColorMapLight(cameraLight->fixedcolormap, 0, 0);
 			plane_shade = false;
 		}
 		else

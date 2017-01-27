@@ -103,9 +103,9 @@ namespace swrenderer
 		RenderActorView(player->mo);
 
 		// Apply special colormap if the target cannot do it
-		if (realfixedcolormap && r_swtruecolor && !(r_shadercolormaps && screen->Accel2D))
+		if (CameraLight::Instance()->realfixedcolormap && r_swtruecolor && !(r_shadercolormaps && screen->Accel2D))
 		{
-			DrawerCommandQueue::QueueCommand<ApplySpecialColormapRGBACommand>(realfixedcolormap, screen);
+			DrawerCommandQueue::QueueCommand<ApplySpecialColormapRGBACommand>(CameraLight::Instance()->realfixedcolormap, screen);
 		}
 
 		R_EndDrawerCommands();
@@ -125,16 +125,16 @@ namespace swrenderer
 		clip3d->ResetClip(); // reset clips (floor/ceiling)
 
 		R_SetupFrame(actor);
-		R_SetupColormap(actor);
+		CameraLight::Instance()->SetCamera(actor);
 		RenderViewport::Instance()->SetupFreelook();
 
 		RenderPortal::Instance()->CopyStackedViewParameters();
 
 		// Clear buffers.
 		RenderClipSegment::Instance()->Clear(0, viewwidth);
-		R_ClearDrawSegs();
+		DrawSegmentList::Instance()->Clear();
 		VisiblePlaneList::Instance()->Clear();
-		RenderTranslucentPass::Clear();
+		RenderTranslucentPass::Instance()->Clear();
 
 		// opening / clipping determination
 		RenderOpaquePass::Instance()->ClearClip();
@@ -182,19 +182,18 @@ namespace swrenderer
 			NetUpdate();
 
 			MaskedCycles.Clock();
-			RenderTranslucentPass::Render();
+			RenderTranslucentPass::Instance()->Render();
 			MaskedCycles.Unclock();
 
 			NetUpdate();
 		}
-		WallPortals.Clear();
 		interpolator.RestoreInterpolations();
 
 		// If we don't want shadered colormaps, NULL it now so that the
 		// copy to the screen does not use a special colormap shader.
 		if (!r_shadercolormaps && !r_swtruecolor)
 		{
-			realfixedcolormap = NULL;
+			CameraLight::Instance()->realfixedcolormap = NULL;
 		}
 	}
 
@@ -268,9 +267,9 @@ namespace swrenderer
 
 	void RenderScene::Deinit()
 	{
-		RenderTranslucentPass::Deinit();
+		RenderTranslucentPass::Instance()->Deinit();
 		Clip3DFloors::Instance()->Cleanup();
-		R_FreeDrawSegs();
+		DrawSegmentList::Instance()->Deinit();
 	}
 
 	/////////////////////////////////////////////////////////////////////////

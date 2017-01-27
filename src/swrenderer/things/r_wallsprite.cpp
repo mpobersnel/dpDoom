@@ -132,7 +132,7 @@ namespace swrenderer
 		vis->wallc = wallc;
 		vis->foggy = foggy;
 
-		vis->SetColormap(r_SpriteVisibility / MAX(tz, MINZ), spriteshade, basecolormap, false, false, false);
+		vis->Light.SetColormap(LightVisibility::Instance()->SpriteGlobVis() / MAX(tz, MINZ), spriteshade, basecolormap, false, false, false);
 
 		VisibleSpriteList::Instance()->Push(vis);
 	}
@@ -149,9 +149,13 @@ namespace swrenderer
 		x2 = MIN<int>(spr->x2, spr->wallc.sx2);
 		if (x1 >= x2)
 			return;
+
 		FWallTmapVals WallT;
 		WallT.InitFromWallCoords(&spr->wallc);
-		PrepWall(swall, lwall, spr->pic->GetWidth() << FRACBITS, x1, x2, WallT);
+
+		ProjectedWallTexcoords walltexcoords;
+		walltexcoords.Project(spr->pic->GetWidth() << FRACBITS, x1, x2, WallT);
+
 		iyscale = 1 / spr->yscale;
 		double texturemid = (spr->gzt - ViewPos.Z) * iyscale;
 		if (spr->renderflags & RF_XFLIP)
@@ -160,12 +164,12 @@ namespace swrenderer
 
 			for (int i = x1; i < x2; i++)
 			{
-				lwall[i] = right - lwall[i];
+				walltexcoords.UPos[i] = right - walltexcoords.UPos[i];
 			}
 		}
 		// Prepare lighting
 		bool calclighting = false;
-		FSWColormap *usecolormap = spr->BaseColormap;
+		FSWColormap *usecolormap = spr->Light.BaseColormap;
 		bool rereadcolormap = true;
 
 		// Decals that are added to the scene must fade to black.
@@ -176,14 +180,15 @@ namespace swrenderer
 		}
 
 		int shade = LIGHT2SHADE(spr->sector->lightlevel + R_ActualExtraLight(spr->foggy));
-		double GlobVis = r_WallVisibility;
+		double GlobVis = LightVisibility::Instance()->WallGlobVis();
 		float lightleft = float(GlobVis / spr->wallc.sz1);
 		float lightstep = float((GlobVis / spr->wallc.sz2 - lightleft) / (spr->wallc.sx2 - spr->wallc.sx1));
 		float light = lightleft + (x1 - spr->wallc.sx1) * lightstep;
-		if (fixedlightlev >= 0)
-			R_SetColorMapLight(usecolormap, 0, FIXEDLIGHT2SHADE(fixedlightlev));
-		else if (fixedcolormap != NULL)
-			R_SetColorMapLight(fixedcolormap, 0, 0);
+		CameraLight *cameraLight = CameraLight::Instance();
+		if (cameraLight->fixedlightlev >= 0)
+			R_SetColorMapLight(usecolormap, 0, FIXEDLIGHT2SHADE(cameraLight->fixedlightlev));
+		else if (cameraLight->fixedcolormap != NULL)
+			R_SetColorMapLight(cameraLight->fixedcolormap, 0, 0);
 		else if (!spr->foggy && (spr->renderflags & RF_FULLBRIGHT))
 			R_SetColorMapLight((r_fullbrightignoresectorcolor) ? &FullNormalLight : usecolormap, 0, 0);
 		else
@@ -206,14 +211,14 @@ namespace swrenderer
 
 		int x = x1;
 
-		FDynamicColormap *basecolormap = static_cast<FDynamicColormap*>(spr->BaseColormap);
+		FDynamicColormap *basecolormap = static_cast<FDynamicColormap*>(spr->Light.BaseColormap);
 
 		bool visible = R_SetPatchStyle(spr->RenderStyle, spr->Alpha, spr->Translation, spr->FillColor, basecolormap);
 
 		// R_SetPatchStyle can modify basecolormap.
 		if (rereadcolormap)
 		{
-			usecolormap = spr->BaseColormap;
+			usecolormap = spr->Light.BaseColormap;
 		}
 
 		if (!visible)
@@ -222,23 +227,25 @@ namespace swrenderer
 		}
 		else
 		{
+			RenderTranslucentPass *translucentPass = RenderTranslucentPass::Instance();
+
 			while (x < x2)
 			{
 				if (calclighting)
 				{ // calculate lighting
 					R_SetColorMapLight(usecolormap, light, shade);
 				}
-				if (!RenderTranslucentPass::ClipSpriteColumnWithPortals(x, spr))
-					DrawColumn(x, WallSpriteTile, texturemid, maskedScaleY, sprflipvert, mfloorclip, mceilingclip);
+				if (!translucentPass->ClipSpriteColumnWithPortals(x, spr))
+					DrawColumn(x, WallSpriteTile, walltexcoords, texturemid, maskedScaleY, sprflipvert, mfloorclip, mceilingclip);
 				light += lightstep;
 				x++;
 			}
 		}
 	}
 
-	void RenderWallSprite::DrawColumn(int x, FTexture *WallSpriteTile, double texturemid, float maskedScaleY, bool sprflipvert, const short *mfloorclip, const short *mceilingclip)
+	void RenderWallSprite::DrawColumn(int x, FTexture *WallSpriteTile, const ProjectedWallTexcoords &walltexcoords, double texturemid, float maskedScaleY, bool sprflipvert, const short *mfloorclip, const short *mceilingclip)
 	{
-		float iscale = swall[x] * maskedScaleY;
+		float iscale = walltexcoords.VStep[x] * maskedScaleY;
 		double spryscale = 1 / iscale;
 		double sprtopscreen;
 		if (sprflipvert)
@@ -246,6 +253,6 @@ namespace swrenderer
 		else
 			sprtopscreen = CenterY - texturemid * spryscale;
 
-		R_DrawMaskedColumn(x, FLOAT2FIXED(iscale), WallSpriteTile, lwall[x], spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip);
+		R_DrawMaskedColumn(x, FLOAT2FIXED(iscale), WallSpriteTile, walltexcoords.UPos[x], spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip);
 	}
 }

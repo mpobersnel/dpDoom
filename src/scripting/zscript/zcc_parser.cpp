@@ -136,6 +136,7 @@ static void InitTokenMap()
 	TOKENDEF (TK_Protected,		ZCC_PROTECTED);
 	TOKENDEF (TK_Latent,		ZCC_LATENT);
 	TOKENDEF (TK_Virtual,		ZCC_VIRTUAL);
+	TOKENDEF (TK_VarArg,        ZCC_VARARG);
 	TOKENDEF (TK_Override,		ZCC_OVERRIDE);
 	TOKENDEF (TK_Final,			ZCC_FINAL);
 	TOKENDEF (TK_Meta,			ZCC_META);
@@ -225,6 +226,8 @@ static void InitTokenMap()
 #undef TOKENDEF
 #undef TOKENDEF2
 
+//**--------------------------------------------------------------------------
+
 static void ParseSingleFile(const char *filename, int lump, void *parser, ZCCParseState &state)
 {
 	int tokentype;
@@ -310,11 +313,15 @@ parse_end:
 	state.sc = nullptr;
 }
 
+//**--------------------------------------------------------------------------
+
 static void DoParse(int lumpnum)
 {
 	FScanner sc;
 	void *parser;
 	ZCCToken value;
+	auto baselump = lumpnum;
+	auto fileno = Wads.GetLumpFile(lumpnum);
 
 	parser = ZCCParseAlloc(malloc);
 	ZCCParseState state;
@@ -343,6 +350,13 @@ static void DoParse(int lumpnum)
 		}
 		else
 		{
+			auto fileno2 = Wads.GetLumpFile(lumpnum);
+			if (fileno == 0 && fileno2 != 0)
+			{
+				I_FatalError("File %s is overriding core lump %s.",
+					Wads.GetWadFullName(Wads.GetLumpFile(baselump)), Includes[i].GetChars());
+			}
+
 			ParseSingleFile(nullptr, lumpnum, parser, state);
 		}
 	}
@@ -385,7 +399,8 @@ static void DoParse(int lumpnum)
 	}
 
 	PSymbolTable symtable;
-	ZCCCompiler cc(state, NULL, symtable, GlobalSymbols, lumpnum);
+	auto newns = Wads.GetLumpFile(lumpnum) == 0 ? Namespaces.GlobalNamespace : Namespaces.NewNamespace(Wads.GetLumpFile(lumpnum));
+	ZCCCompiler cc(state, NULL, symtable, newns, lumpnum);
 	cc.Compile();
 
 	if (FScriptPosition::ErrorCounter > 0)
@@ -407,9 +422,6 @@ void ParseScripts()
 	{
 		InitTokenMap();
 	}
-	ZCC_InitOperators();
-	ZCC_InitConversions();
-
 	int lump, lastlump = 0;
 	FScriptPosition::ResetErrorCounter();
 

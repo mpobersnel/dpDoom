@@ -24,6 +24,7 @@
 #include "templates.h"
 #include "doomdef.h"
 #include "sbar.h"
+#include "st_stuff.h"
 #include "r_data/r_translate.h"
 #include "r_data/r_interpolate.h"
 #include "poly_renderer.h"
@@ -60,7 +61,7 @@ void PolyRenderer::RenderView(player_t *player)
 
 	int width = SCREENWIDTH;
 	int height = SCREENHEIGHT;
-	int stHeight = ST_Y;
+	int stHeight = gST_Y;
 	float trueratio;
 	ActiveRatio(width, height, &trueratio);
 	RenderViewport::Instance()->SetViewport(width, height, trueratio);
@@ -68,10 +69,11 @@ void PolyRenderer::RenderView(player_t *player)
 	RenderActorView(player->mo, false);
 
 	// Apply special colormap if the target cannot do it
-	if (realfixedcolormap && r_swtruecolor && !(r_shadercolormaps && screen->Accel2D))
+	CameraLight *cameraLight = CameraLight::Instance();
+	if (cameraLight->realfixedcolormap && r_swtruecolor && !(r_shadercolormaps && screen->Accel2D))
 	{
 		R_BeginDrawerCommands();
-		DrawerCommandQueue::QueueCommand<ApplySpecialColormapRGBACommand>(realfixedcolormap, screen);
+		DrawerCommandQueue::QueueCommand<ApplySpecialColormapRGBACommand>(cameraLight->realfixedcolormap, screen);
 		R_EndDrawerCommands();
 	}
 
@@ -118,7 +120,7 @@ void PolyRenderer::RenderActorView(AActor *actor, bool dontmaplines)
 	P_FindParticleSubsectors();
 	PO_LinkToSubsectors();
 	R_SetupFrame(actor);
-	swrenderer::R_SetupColormap(actor);
+	swrenderer::CameraLight::Instance()->SetCamera(actor);
 	swrenderer::RenderViewport::Instance()->SetupFreelook();
 
 	ActorRenderFlags savedflags = camera->renderflags;

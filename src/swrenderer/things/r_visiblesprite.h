@@ -14,18 +14,18 @@
 #pragma once
 
 #include "swrenderer/line/r_line.h"
+#include "swrenderer/scene/r_light.h"
 #include "swrenderer/scene/r_opaque_pass.h"
 #include "swrenderer/things/r_visiblespritelist.h"
 
 #define MINZ double((2048*4) / double(1 << 20))
-
-struct FSWColormap;
 
 namespace swrenderer
 {
 	class VisibleSprite
 	{
 	public:
+		VisibleSprite() { RenderStyle = STYLE_Normal; }
 		virtual ~VisibleSprite() { }
 		
 		void Render();
@@ -37,46 +37,42 @@ namespace swrenderer
 		float SortDist() const { return idepth; }
 
 	protected:
-		void SetColormap(double visibility, int shade, FDynamicColormap *basecolormap, bool fullbright, bool invertColormap, bool fadeToBlack);
-
 		virtual bool IsParticle() const { return false; }
 		virtual bool IsVoxel() const { return false; }
 		virtual bool IsWallSprite() const { return false; }
 
 		virtual void Render(short *cliptop, short *clipbottom, int minZ, int maxZ) = 0;
 
-		FTexture *pic;
+		FTexture *pic = nullptr;
 
-		short x1, x2;
-		float gzb, gzt; // global bottom / top for silhouette clipping
+		short x1 = 0, x2 = 0;
+		float gzb = 0.0f, gzt = 0.0f; // global bottom / top for silhouette clipping
 
-		double floorclip;
+		double floorclip = 0.0;
 
-		double texturemid; // floorclip
-		float yscale; // voxel and floorclip
+		double texturemid = 0.0; // floorclip
+		float yscale = 0.0f; // voxel and floorclip
 
-		sector_t *heightsec; // height sector for underwater/fake ceiling
-		WaterFakeSide FakeFlatStat; // which side of fake/floor ceiling sprite is on
+		sector_t *heightsec = nullptr; // height sector for underwater/fake ceiling
+		WaterFakeSide FakeFlatStat = WaterFakeSide::Center; // which side of fake/floor ceiling sprite is on
 
-		F3DFloor *fakefloor; // 3d floor clipping
-		F3DFloor *fakeceiling;
+		F3DFloor *fakefloor = nullptr; // 3d floor clipping
+		F3DFloor *fakeceiling = nullptr;
 
-		FVector3 gpos; // origin in world coordinates
-		sector_t *sector; // sector this sprite is in
+		FVector3 gpos = { 0.0f, 0.0f, 0.0f }; // origin in world coordinates
+		sector_t *sector = nullptr; // sector this sprite is in
 
-		// Light shared calculation?
-		int ColormapNum;	// Which colormap is rendered
-		FSWColormap *BaseColormap;	// Base colormap used together with ColormapNum
-		float Alpha;
+		ColormapLight Light;
+		float Alpha = 0.0f;
 		FRenderStyle RenderStyle;
-		bool foggy;
-		short renderflags;
+		bool foggy = false;
+		short renderflags = 0;
 
-		float depth; // Sort (draw segments), also light
+		float depth = 0.0f; // Sort (draw segments), also light
 
-		float deltax, deltay; // Sort (2d/voxel version)
-		float idepth; // Sort (non-voxel version)
+		float deltax = 0.0f, deltay = 0.0f; // Sort (2d/voxel version)
+		float idepth = 0.0f; // Sort (non-voxel version)
 
-		int CurrentPortalUniq; // to identify the portal that this thing is in. used for clipping.
+		int CurrentPortalUniq = 0; // to identify the portal that this thing is in. used for clipping.
 	};
 }

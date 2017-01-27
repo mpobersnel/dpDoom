@@ -36,6 +36,7 @@
 #include "swrenderer/scene/r_light.h"
 #include "swrenderer/plane/r_visibleplane.h"
 #include "swrenderer/plane/r_visibleplanelist.h"
+#include "swrenderer/line/r_renderdrawsegment.h"
 #include "swrenderer/r_memory.h"
 
 EXTERN_CVAR(Int, r_drawfuzz)
@@ -46,8 +47,11 @@ CVAR(Bool, r_fullbrightignoresectorcolor, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG
 
 namespace swrenderer
 {
-	bool RenderTranslucentPass::DrewAVoxel;
-	TArray<drawseg_t *> RenderTranslucentPass::portaldrawsegs;
+	RenderTranslucentPass *RenderTranslucentPass::Instance()
+	{
+		static RenderTranslucentPass instance;
+		return &instance;
+	}
 
 	void RenderTranslucentPass::Deinit()
 	{
@@ -57,7 +61,6 @@ namespace swrenderer
 	void RenderTranslucentPass::Clear()
 	{
 		VisibleSpriteList::Instance()->Clear();
-		DrewAVoxel = false;
 	}
 
 	void RenderTranslucentPass::CollectPortals()
@@ -68,7 +71,8 @@ namespace swrenderer
 		// a) exit early if no relevant info is found and
 		// b) skip most of the collected drawsegs which have no portal attached.
 		portaldrawsegs.Clear();
-		for (drawseg_t* seg = ds_p; seg-- > firstdrawseg; ) // copied code from killough below
+		DrawSegmentList *drawseglist = DrawSegmentList::Instance();
+		for (DrawSegment* seg = drawseglist->ds_p; seg-- > drawseglist->firstdrawseg; )
 		{
 			// I don't know what makes this happen (some old top-down portal code or possibly skybox code? something adds null lines...)
 			// crashes at the first frame of the first map of Action2.wad
@@ -98,7 +102,7 @@ namespace swrenderer
 		if (renderportal->CurrentPortalInSkybox)
 			return false;
 
-		for (drawseg_t *seg : portaldrawsegs)
+		for (DrawSegment *seg : portaldrawsegs)
 		{
 			// ignore segs from other portals
 			if (seg->CurrentPortalUniq != renderportal->CurrentPortalUniq)
@@ -133,17 +137,12 @@ namespace swrenderer
 
 		// render any remaining masked mid textures
 
-		// Modified by Lee Killough:
-		// (pointer check was originally nonportable
-		// and buggy, by going past LEFT end of array):
-
-		//		for (ds=ds_p-1 ; ds >= drawsegs ; ds--)    old buggy code
-
 		if (renew)
 		{
 			Clip3DFloors::Instance()->fake3D |= FAKE3D_REFRESHCLIP;
 		}
-		for (drawseg_t *ds = ds_p; ds-- > firstdrawseg; )	// new -- killough
+		DrawSegmentList *drawseglist = DrawSegmentList::Instance();
+		for (DrawSegment *ds = drawseglist->ds_p; ds-- > drawseglist->firstdrawseg; )
 		{
 			// [ZZ] the same as above
 			if (ds->CurrentPortalUniq != renderportal->CurrentPortalUniq)
@@ -152,7 +151,8 @@ namespace swrenderer
 			if (ds->fake) continue;
 			if (ds->maskedtexturecol != nullptr || ds->bFogBoundary)
 			{
-				R_RenderMaskedSegRange(ds, ds->x1, ds->x2);
+				RenderDrawSegment renderer;
+				renderer.Render(ds, ds->x1, ds->x2);
 			}
 		}
 	}
@@ -160,7 +160,7 @@ namespace swrenderer
 	void RenderTranslucentPass::Render()
 	{
 		CollectPortals();
-		VisibleSpriteList::Instance()->Sort(DrewAVoxel);
+		VisibleSpriteList::Instance()->Sort();
 
 		Clip3DFloors *clip3d = Clip3DFloors::Instance();
 		if (clip3d->height_top == nullptr)
@@ -208,6 +208,7 @@ namespace swrenderer
 			clip3d->DeleteHeights();
 			clip3d->fake3D = 0;
 		}
-		RenderPlayerSprite::RenderPlayerSprites();
+
+		RenderPlayerSprites::Instance()->Render();
 	}
 }

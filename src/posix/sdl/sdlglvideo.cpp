@@ -13,6 +13,7 @@
 #include "c_console.h"
 
 #include "sdlglvideo.h"
+#include "sdlvideo.h"
 #include "gl/system/gl_system.h"
 #include "r_defs.h"
 #include "gl/gl_functions.h"
@@ -29,6 +30,7 @@
 
 // TYPES -------------------------------------------------------------------
 
+IMPLEMENT_CLASS(SDLBaseFB, true, false)
 IMPLEMENT_CLASS(SDLGLFB, true, false)
 
 struct MiniModeInfo
@@ -60,6 +62,18 @@ CUSTOM_CVAR(Bool, gl_debug, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINI
 {
 	Printf("This won't take effect until " GAMENAME " is restarted.\n");
 }
+
+#ifdef __arm__
+CUSTOM_CVAR(Bool, gl_es, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	Printf("This won't take effect until " GAMENAME " is restarted.\n");
+}
+#else
+CUSTOM_CVAR(Bool, gl_es, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	Printf("This won't take effect until " GAMENAME " is restarted.\n");
+}
+#endif
 
 // PRIVATE DATA DEFINITIONS ------------------------------------------------
 
@@ -133,10 +147,6 @@ SDLGLVideo::SDLGLVideo (int parm)
         fprintf( stderr, "Video initialization failed: %s\n",
              SDL_GetError( ) );
     }
-#ifndef	_WIN32
-	// mouse cursor is visible by default on linux systems, we disable it by default
-	SDL_ShowCursor (0);
-#endif
 }
 
 SDLGLVideo::~SDLGLVideo ()
@@ -175,15 +185,15 @@ DFrameBuffer *SDLGLVideo::CreateFrameBuffer (int width, int height, bool bgra, b
 
 	if (old != NULL)
 	{ // Reuse the old framebuffer if its attributes are the same
-		SDLGLFB *fb = static_cast<SDLGLFB *> (old);
+		SDLBaseFB *fb = static_cast<SDLBaseFB *> (old);
 		if (fb->Width == width &&
 			fb->Height == height)
 		{
-			bool fsnow = (SDL_GetWindowFlags (fb->Screen) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
+			bool fsnow = (SDL_GetWindowFlags (fb->GetSDLWindow()) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
 	
 			if (fsnow != fullscreen)
 			{
-				SDL_SetWindowFullscreen (fb->Screen, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+				SDL_SetWindowFullscreen (fb->GetSDLWindow(), fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
 			}
 			return old;
 		}
@@ -196,11 +206,17 @@ DFrameBuffer *SDLGLVideo::CreateFrameBuffer (int width, int height, bool bgra, b
 //		flashAmount = 0;
 	}
 	
-	SDLGLFB *fb;
+	SDLBaseFB *fb;
 	if (vid_renderer == 1)
-		fb = new OpenGLFrameBuffer (0, width, height, 32, 60, fullscreen);
+	{
+		fb = new OpenGLFrameBuffer(0, width, height, 32, 60, fullscreen);
+	}
 	else
-		fb = (SDLGLFB*)CreateGLSWFrameBuffer (width, height, bgra, fullscreen);
+	{
+		fb = (SDLBaseFB*)CreateGLSWFrameBuffer(width, height, bgra, fullscreen);
+		if (!fb->IsValid())
+			fb = new SDLFB(width, height, bgra, fullscreen, nullptr);
+	}
 
 	retry = 0;
 	
@@ -244,7 +260,7 @@ DFrameBuffer *SDLGLVideo::CreateFrameBuffer (int width, int height, bool bgra, b
 		}
 
 		++retry;
-		fb = static_cast<SDLGLFB *>(CreateFrameBuffer (width, height, false, fullscreen, NULL));
+		fb = static_cast<SDLBaseFB *>(CreateFrameBuffer (width, height, false, fullscreen, NULL));
 	}
 
 //	fb->SetFlash (flashColor, flashAmount);
@@ -299,6 +315,14 @@ bool SDLGLVideo::SetupPixelFormat(bool allowsoftware, int multisample)
 	}
 	if (gl_debug)
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+		
+	if (gl_es)
+	{
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+	}
+	
 	return true;
 }
 
@@ -322,7 +346,7 @@ bool SDLGLVideo::InitHardware (bool allowsoftware, int multisample)
 // FrameBuffer implementation -----------------------------------------------
 
 SDLGLFB::SDLGLFB (void *, int width, int height, int, int, bool fullscreen, bool bgra)
-	: DFrameBuffer (width, height, bgra)
+	: SDLBaseFB (width, height, bgra)
 {
 	int i;
 	

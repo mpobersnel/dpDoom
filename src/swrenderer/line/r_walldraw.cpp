@@ -1,24 +1,15 @@
-/*
-**  Wall drawing stuff
-**  Copyright (c) 2016 Magnus Norddahl
-**
-**  This software is provided 'as-is', without any express or implied
-**  warranty.  In no event will the authors be held liable for any damages
-**  arising from the use of this software.
-**
-**  Permission is granted to anyone to use this software for any purpose,
-**  including commercial applications, and to alter it and redistribute it
-**  freely, subject to the following restrictions:
-**
-**  1. The origin of this software must not be misrepresented; you must not
-**     claim that you wrote the original software. If you use this software
-**     in a product, an acknowledgment in the product documentation would be
-**     appreciated but is not required.
-**  2. Altered source versions must be plainly marked as such, and must not be
-**     misrepresented as being the original software.
-**  3. This notice may not be removed or altered from any source distribution.
-**
-*/
+//
+// Copyright (C) 1993-1996 by id Software, Inc.
+//
+// This source is available for distribution and/or modification
+// only under the terms of the DOOM Source Code License as
+// published by id Software. All rights reserved.
+//
+// The source is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
+// for more details.
+//
 
 #include <stdlib.h>
 #include <stddef.h>
@@ -52,13 +43,6 @@
 
 namespace swrenderer
 {
-	using namespace drawerargs;
-
-	namespace
-	{
-		FTexture *rw_pic;
-	}
-
 	WallSampler::WallSampler(int y1, double texturemid, float swal, double yrepeat, fixed_t xoffset, double xmagnitude, FTexture *texture)
 	{
 		xoffset += FLOAT2FIXED(xmagnitude * 0.5);
@@ -184,8 +168,10 @@ namespace swrenderer
 	}
 
 	// Draw a column with support for non-power-of-two ranges
-	static void Draw1Column(const FWallCoords &WallC, int x, int y1, int y2, WallSampler &sampler, FLightNode *light_list, DrawerFunc draw1column)
+	void RenderWallPart::Draw1Column(int x, int y1, int y2, WallSampler &sampler, DrawerFunc draw1column)
 	{
+		using namespace drawerargs;
+
 		if (r_dynlights && light_list)
 		{
 			// Find column position in view space
@@ -322,12 +308,10 @@ namespace swrenderer
 		}
 	}
 
-	static void ProcessWallWorker(
-		const FWallCoords &WallC,
-		int x1, int x2, short *uwal, short *dwal, double texturemid, float *swal, fixed_t *lwal, double yrepeat, int wallshade, fixed_t xoffset, float light, float lightstep, FDynamicColormap *basecolormap,
-		FLightNode *light_list,
-		DrawerFunc drawcolumn)
+	void RenderWallPart::ProcessWallWorker(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal, DrawerFunc drawcolumn)
 	{
+		using namespace drawerargs;
+
 		if (rw_pic->UseType == FTexture::TEX_Null)
 			return;
 
@@ -342,7 +326,8 @@ namespace swrenderer
 
 		dc_wall_fracbits = r_swtruecolor ? FRACBITS : fracbits;
 
-		bool fixed = (fixedcolormap != NULL || fixedlightlev >= 0);
+		CameraLight *cameraLight = CameraLight::Instance();
+		bool fixed = (cameraLight->fixedcolormap != NULL || cameraLight->fixedlightlev >= 0);
 		if (fixed)
 		{
 			dc_wall_colormap[0] = dc_colormap;
@@ -355,8 +340,8 @@ namespace swrenderer
 			dc_wall_light[3] = 0;
 		}
 
-		if (fixedcolormap)
-			R_SetColorMapLight(fixedcolormap, 0, 0);
+		if (cameraLight->fixedcolormap)
+			R_SetColorMapLight(cameraLight->fixedcolormap, 0, 0);
 		else
 			R_SetColorMapLight(basecolormap, 0, 0);
 
@@ -382,50 +367,51 @@ namespace swrenderer
 			if (x + 1 < x2) xmagnitude = fabs(FIXED2DBL(lwal[x + 1]) - FIXED2DBL(lwal[x]));
 
 			WallSampler sampler(y1, texturemid, swal[x], yrepeat, lwal[x] + xoffset, xmagnitude, rw_pic);
-			Draw1Column(WallC, x, y1, y2, sampler, light_list, drawcolumn);
+			Draw1Column(x, y1, y2, sampler, drawcolumn);
 		}
 
 		NetUpdate();
 	}
 
-	static void ProcessNormalWall(const FWallCoords &WallC, int x1, int x2, short *uwal, short *dwal, double texturemid, float *swal, fixed_t *lwal, double yrepeat, int wallshade, fixed_t xoffset, float light, float lightstep, FDynamicColormap *basecolormap, FLightNode *light_list)
+	void RenderWallPart::ProcessNormalWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal)
 	{
-		ProcessWallWorker(WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list, &SWPixelFormatDrawers::DrawWallColumn);
+		ProcessWallWorker(uwal, dwal, texturemid, swal, lwal, &SWPixelFormatDrawers::DrawWallColumn);
 	}
 
-	static void ProcessMaskedWall(const FWallCoords &WallC, int x1, int x2, short *uwal, short *dwal, double texturemid, float *swal, fixed_t *lwal, double yrepeat, int wallshade, fixed_t xoffset, float light, float lightstep, FDynamicColormap *basecolormap, FLightNode *light_list)
+	void RenderWallPart::ProcessMaskedWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal)
 	{
 		if (!rw_pic->bMasked) // Textures that aren't masked can use the faster ProcessNormalWall.
 		{
-			ProcessNormalWall(WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list);
+			ProcessNormalWall(uwal, dwal, texturemid, swal, lwal);
 		}
 		else
 		{
-			ProcessWallWorker(WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list, &SWPixelFormatDrawers::DrawWallMaskedColumn);
+			ProcessWallWorker(uwal, dwal, texturemid, swal, lwal, &SWPixelFormatDrawers::DrawWallMaskedColumn);
 		}
 	}
 
-	static void ProcessTranslucentWall(const FWallCoords &WallC, int x1, int x2, short *uwal, short *dwal, double texturemid, float *swal, fixed_t *lwal, double yrepeat, int wallshade, fixed_t xoffset, float light, float lightstep, FDynamicColormap *basecolormap, FLightNode *light_list)
+	void RenderWallPart::ProcessTranslucentWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal)
 	{
 		DrawerFunc drawcol1 = R_GetTransMaskDrawer();
 		if (drawcol1 == nullptr)
 		{
 			// The current translucency is unsupported, so draw with regular ProcessMaskedWall instead.
-			ProcessMaskedWall(WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list);
+			ProcessMaskedWall(uwal, dwal, texturemid, swal, lwal);
 		}
 		else
 		{
-			ProcessWallWorker(WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list, drawcol1);
+			ProcessWallWorker(uwal, dwal, texturemid, swal, lwal, drawcol1);
 		}
 	}
 
-	static void ProcessStripedWall(sector_t *frontsector, seg_t *curline, const FWallCoords &WallC, int x1, int x2, short *uwal, short *dwal, double texturemid, float *swal, fixed_t *lwal, double yrepeat, int wallshade, fixed_t xoffset, float light, float lightstep, bool foggy, FDynamicColormap *basecolormap, FLightNode *light_list)
+	void RenderWallPart::ProcessStripedWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal)
 	{
-		short most1[MAXWIDTH], most2[MAXWIDTH], most3[MAXWIDTH];
-		short *up, *down;
+		ProjectedWallLine most1, most2, most3;
+		const short *up;
+		short *down;
 
 		up = uwal;
-		down = most1;
+		down = most1.ScreenY;
 
 		assert(WallC.sx1 <= x1);
 		assert(WallC.sx2 >= x2);
@@ -435,16 +421,16 @@ namespace swrenderer
 		// kg3D - fake floors instead of zdoom light list
 		for (unsigned int i = 0; i < frontsector->e->XFloor.lightlist.Size(); i++)
 		{
-			int j = R_CreateWallSegmentYSloped(most3, frontsector->e->XFloor.lightlist[i].plane, &WallC, curline, renderportal->MirrorFlags & RF_XFLIP);
-			if (j != 3)
+			ProjectedWallCull j = most3.Project(frontsector->e->XFloor.lightlist[i].plane, &WallC, curline, renderportal->MirrorFlags & RF_XFLIP);
+			if (j != ProjectedWallCull::OutsideAbove)
 			{
 				for (int j = x1; j < x2; ++j)
 				{
-					down[j] = clamp(most3[j], up[j], dwal[j]);
+					down[j] = clamp(most3.ScreenY[j], up[j], dwal[j]);
 				}
-				ProcessNormalWall(WallC, x1, x2, up, down, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list);
+				ProcessNormalWall(up, down, texturemid, swal, lwal);
 				up = down;
-				down = (down == most1) ? most2 : most1;
+				down = (down == most1.ScreenY) ? most2.ScreenY : most1.ScreenY;
 			}
 
 			lightlist_t *lit = &frontsector->e->XFloor.lightlist[i];
@@ -452,31 +438,32 @@ namespace swrenderer
 			wallshade = LIGHT2SHADE(curline->sidedef->GetLightLevel(foggy, *lit->p_lightlevel, lit->lightsource != NULL) + R_ActualExtraLight(foggy));
 		}
 
-		ProcessNormalWall(WallC, x1, x2, up, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list);
+		ProcessNormalWall(up, dwal, texturemid, swal, lwal);
 	}
 
-	static void ProcessWall(sector_t *frontsector, seg_t *curline, const FWallCoords &WallC, int x1, int x2, short *uwal, short *dwal, double texturemid, float *swal, fixed_t *lwal, double yrepeat, int wallshade, fixed_t xoffset, float light, float lightstep, bool mask, bool foggy, FDynamicColormap *basecolormap, FLightNode *light_list)
+	void RenderWallPart::ProcessWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal)
 	{
 		if (mask)
 		{
 			if (colfunc == basecolfunc)
 			{
-				ProcessMaskedWall(WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list);
+				ProcessMaskedWall(uwal, dwal, texturemid, swal, lwal);
 			}
 			else
 			{
-				ProcessTranslucentWall(WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list);
+				ProcessTranslucentWall(uwal, dwal, texturemid, swal, lwal);
 			}
 		}
 		else
 		{
-			if (fixedcolormap != NULL || fixedlightlev >= 0 || !(frontsector->e && frontsector->e->XFloor.lightlist.Size()))
+			CameraLight *cameraLight = CameraLight::Instance();
+			if (cameraLight->fixedcolormap != NULL || cameraLight->fixedlightlev >= 0 || !(frontsector->e && frontsector->e->XFloor.lightlist.Size()))
 			{
-				ProcessNormalWall(WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, basecolormap, light_list);
+				ProcessNormalWall(uwal, dwal, texturemid, swal, lwal);
 			}
 			else
 			{
-				ProcessStripedWall(frontsector, curline, WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, foggy, basecolormap, light_list);
+				ProcessStripedWall(uwal, dwal, texturemid, swal, lwal);
 			}
 		}
 	}
@@ -492,10 +479,9 @@ namespace swrenderer
 	//
 	//=============================================================================
 
-	static void ProcessWallNP2(sector_t *frontsector, seg_t *curline, const FWallCoords &WallC, int x1, int x2, short *uwal, short *dwal, double texturemid, float *swal, fixed_t *lwal, double yrepeat, double top, double bot, int wallshade, fixed_t xoffset, float light, float lightstep, bool mask, bool foggy, FDynamicColormap *basecolormap, FLightNode *light_list)
+	void RenderWallPart::ProcessWallNP2(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal, double top, double bot)
 	{
-		short most1[MAXWIDTH], most2[MAXWIDTH], most3[MAXWIDTH];
-		short *up, *down;
+		ProjectedWallLine most1, most2, most3;
 		double texheight = rw_pic->GetHeight();
 		double partition;
 		double scaledtexheight = texheight / yrepeat;
@@ -507,92 +493,78 @@ namespace swrenderer
 			{
 				partition -= scaledtexheight;
 			}
-			up = uwal;
-			down = most1;
+			const short *up = uwal;
+			short *down = most1.ScreenY;
 			texturemid = (partition - ViewPos.Z) * yrepeat + texheight;
 			while (partition > bot)
 			{
-				int j = R_CreateWallSegmentY(most3, partition - ViewPos.Z, &WallC);
-				if (j != 3)
+				ProjectedWallCull j = most3.Project(partition - ViewPos.Z, &WallC);
+				if (j != ProjectedWallCull::OutsideAbove)
 				{
 					for (int j = x1; j < x2; ++j)
 					{
-						down[j] = clamp(most3[j], up[j], dwal[j]);
+						down[j] = clamp(most3.ScreenY[j], up[j], dwal[j]);
 					}
-					ProcessWall(frontsector, curline, WallC, x1, x2, up, down, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, mask, foggy, basecolormap, light_list);
+					ProcessWall(up, down, texturemid, swal, lwal);
 					up = down;
-					down = (down == most1) ? most2 : most1;
+					down = (down == most1.ScreenY) ? most2.ScreenY : most1.ScreenY;
 				}
 				partition -= scaledtexheight;
 				texturemid -= texheight;
 			}
-			ProcessWall(frontsector, curline, WallC, x1, x2, up, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, mask, foggy, basecolormap, light_list);
+			ProcessWall(up, dwal, texturemid, swal, lwal);
 		}
 		else
 		{ // upside down: draw strips from bottom to top
 			partition = bot - fmod(bot - texturemid / yrepeat - ViewPos.Z, scaledtexheight);
-			up = most1;
-			down = dwal;
+			short *up = most1.ScreenY;
+			const short *down = dwal;
 			texturemid = (partition - ViewPos.Z) * yrepeat + texheight;
 			while (partition < top)
 			{
-				int j = R_CreateWallSegmentY(most3, partition - ViewPos.Z, &WallC);
-				if (j != 12)
+				ProjectedWallCull j = most3.Project(partition - ViewPos.Z, &WallC);
+				if (j != ProjectedWallCull::OutsideBelow)
 				{
 					for (int j = x1; j < x2; ++j)
 					{
-						up[j] = clamp(most3[j], uwal[j], down[j]);
+						up[j] = clamp(most3.ScreenY[j], uwal[j], down[j]);
 					}
-					ProcessWall(frontsector, curline, WallC, x1, x2, up, down, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, mask, foggy, basecolormap, light_list);
+					ProcessWall(up, down, texturemid, swal, lwal);
 					down = up;
-					up = (up == most1) ? most2 : most1;
+					up = (up == most1.ScreenY) ? most2.ScreenY : most1.ScreenY;
 				}
 				partition -= scaledtexheight;
 				texturemid -= texheight;
 			}
-			ProcessWall(frontsector, curline, WallC, x1, x2, uwal, down, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, mask, foggy, basecolormap, light_list);
+			ProcessWall(uwal, down, texturemid, swal, lwal);
 		}
 	}
 
-	void R_DrawDrawSeg(sector_t *frontsector, seg_t *curline, const FWallCoords &WallC, FTexture *pic, drawseg_t *ds, int x1, int x2, short *uwal, short *dwal, double texturemid, float *swal, fixed_t *lwal, double yrepeat, int wallshade, fixed_t xoffset, float light, float lightstep, bool foggy, FDynamicColormap *basecolormap)
+	void RenderWallPart::Render(sector_t *frontsector, seg_t *curline, const FWallCoords &WallC, FTexture *pic, int x1, int x2, const short *walltop, const short *wallbottom, double texturemid, float *swall, fixed_t *lwall, double yscale, double top, double bottom, bool mask, int wallshade, fixed_t xoffset, float light, float lightstep, FLightNode *light_list, bool foggy, FDynamicColormap *basecolormap)
 	{
-		rw_pic = pic;
+		this->x1 = x1;
+		this->x2 = x2;
+		this->frontsector = frontsector;
+		this->curline = curline;
+		this->WallC = WallC;
+		this->yrepeat = yscale;
+		this->wallshade = wallshade;
+		this->xoffset = xoffset;
+		this->light = light;
+		this->lightstep = lightstep;
+		this->foggy = foggy;
+		this->basecolormap = basecolormap;
+		this->light_list = light_list;
+		this->rw_pic = pic;
+		this->mask = mask;
+
 		if (rw_pic->GetHeight() != 1 << rw_pic->HeightBits)
 		{
-			double frontcz1 = ds->curline->frontsector->ceilingplane.ZatPoint(ds->curline->v1);
-			double frontfz1 = ds->curline->frontsector->floorplane.ZatPoint(ds->curline->v1);
-			double frontcz2 = ds->curline->frontsector->ceilingplane.ZatPoint(ds->curline->v2);
-			double frontfz2 = ds->curline->frontsector->floorplane.ZatPoint(ds->curline->v2);
-			double top = MAX(frontcz1, frontcz2);
-			double bot = MIN(frontfz1, frontfz2);
-			Clip3DFloors *clip3d = Clip3DFloors::Instance();
-			if (clip3d->fake3D & FAKE3D_CLIPTOP)
-			{
-				top = MIN(top, clip3d->sclipTop);
-			}
-			if (clip3d->fake3D & FAKE3D_CLIPBOTTOM)
-			{
-				bot = MAX(bot, clip3d->sclipBottom);
-			}
-			ProcessWallNP2(frontsector, curline, WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, top, bot, wallshade, xoffset, light, lightstep, true, foggy, basecolormap, nullptr);
+			ProcessWallNP2(walltop, wallbottom, texturemid, swall, lwall, top, bottom);
 		}
 		else
 		{
-			ProcessWall(frontsector, curline, WallC, x1, x2, uwal, dwal, texturemid, swal, lwal, yrepeat, wallshade, xoffset, light, lightstep, true, foggy, basecolormap, nullptr);
-		}
-	}
-
-
-	void R_DrawWallSegment(sector_t *frontsector, seg_t *curline, const FWallCoords &WallC, FTexture *pic, int x1, int x2, short *walltop, short *wallbottom, double texturemid, float *swall, fixed_t *lwall, double yscale, double top, double bottom, bool mask, int wallshade, fixed_t xoffset, float light, float lightstep, FLightNode *light_list, bool foggy, FDynamicColormap *basecolormap)
-	{
-		rw_pic = pic;
-		if (rw_pic->GetHeight() != 1 << rw_pic->HeightBits)
-		{
-			ProcessWallNP2(frontsector, curline, WallC, x1, x2, walltop, wallbottom, texturemid, swall, lwall, yscale, top, bottom, wallshade, xoffset, light, lightstep, false, foggy, basecolormap, light_list);
-		}
-		else
-		{
-			ProcessWall(frontsector, curline, WallC, x1, x2, walltop, wallbottom, texturemid, swall, lwall, yscale, wallshade, xoffset, light, lightstep, false, foggy, basecolormap, light_list);
+			ProcessWall(walltop, wallbottom, texturemid, swall, lwall);
 		}
 	}
 }

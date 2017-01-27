@@ -20,7 +20,6 @@
 #include "m_swap.h"
 #include "i_system.h"
 #include "w_wad.h"
-#include "swrenderer/things/r_particle.h"
 #include "c_console.h"
 #include "c_cvars.h"
 #include "c_dispatch.h"
@@ -37,11 +36,6 @@
 #include "colormatcher.h"
 #include "d_netinf.h"
 #include "p_effect.h"
-#include "swrenderer/scene/r_opaque_pass.h"
-#include "swrenderer/scene/r_3dfloors.h"
-#include "swrenderer/scene/r_translucent_pass.h"
-#include "swrenderer/drawers/r_draw_rgba.h"
-#include "swrenderer/drawers/r_draw_pal.h"
 #include "v_palette.h"
 #include "r_data/r_translate.h"
 #include "r_data/colormaps.h"
@@ -49,11 +43,18 @@
 #include "p_local.h"
 #include "p_maputl.h"
 #include "r_voxel.h"
-#include "swrenderer/segments/r_drawsegment.h"
+#include "swrenderer/scene/r_opaque_pass.h"
+#include "swrenderer/scene/r_3dfloors.h"
+#include "swrenderer/scene/r_translucent_pass.h"
 #include "swrenderer/scene/r_portal.h"
-#include "swrenderer/r_memory.h"
 #include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
+#include "swrenderer/segments/r_drawsegment.h"
+#include "swrenderer/line/r_renderdrawsegment.h"
+#include "swrenderer/things/r_particle.h"
+#include "swrenderer/drawers/r_draw_rgba.h"
+#include "swrenderer/drawers/r_draw_pal.h"
+#include "swrenderer/r_memory.h"
 
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor);
 
@@ -179,6 +180,7 @@ namespace swrenderer
 
 		// store information in a vissprite
 		RenderParticle *vis = RenderMemory::NewObject<RenderParticle>();
+
 		vis->CurrentPortalUniq = renderportal->CurrentPortalUniq;
 		vis->heightsec = heightsec;
 		vis->xscale = FLOAT2FIXED(xscale);
@@ -197,11 +199,9 @@ namespace swrenderer
 		vis->renderflags = (short)(particle->alpha * 255.0f + 0.5f);
 		vis->FakeFlatStat = fakeside;
 		vis->floorclip = 0;
-		vis->ColormapNum = 0;
 		vis->foggy = foggy;
 
-		// Particles are slightly more visible than regular sprites.
-		vis->SetColormap(tiz * r_SpriteVisibility * 0.5, shade, map, particle->bright != 0, false, false);
+		vis->Light.SetColormap(tiz * LightVisibility::Instance()->ParticleGlobVis(), shade, map, particle->bright != 0, false, false);
 
 		VisibleSpriteList::Instance()->Push(vis);
 	}
@@ -213,7 +213,7 @@ namespace swrenderer
 		auto vis = this;
 
 		int spacing;
-		BYTE color = vis->BaseColormap->Maps[vis->startfrac];
+		BYTE color = vis->Light.BaseColormap->Maps[vis->startfrac];
 		int yl = vis->y1;
 		int ycount = vis->y2 - yl + 1;
 		int x1 = vis->x1;
@@ -224,7 +224,7 @@ namespace swrenderer
 
 		DrawMaskedSegsBehindParticle();
 
-		uint32_t fg = LightBgra::shade_pal_index_simple(color, LightBgra::calc_light_multiplier(LIGHTSCALE(0, vis->ColormapNum << FRACBITS)));
+		uint32_t fg = LightBgra::shade_pal_index_simple(color, LightBgra::calc_light_multiplier(LIGHTSCALE(0, vis->Light.ColormapNum << FRACBITS)));
 
 		// vis->renderflags holds translucency level (0-255)
 		fixed_t fglevel = ((vis->renderflags + 1) << 8) & ~0x3ff;
@@ -235,11 +235,13 @@ namespace swrenderer
 		uint32_t fracstepx = PARTICLE_TEXTURE_SIZE * FRACUNIT / countbase;
 		uint32_t fracposx = fracstepx / 2;
 
+		RenderTranslucentPass *translucentPass = RenderTranslucentPass::Instance();
+
 		if (r_swtruecolor)
 		{
 			for (int x = x1; x < (x1 + countbase); x++, fracposx += fracstepx)
 			{
-				if (RenderTranslucentPass::ClipSpriteColumnWithPortals(x, vis))
+				if (translucentPass->ClipSpriteColumnWithPortals(x, vis))
 					continue;
 				uint32_t *dest = ylookup[yl] + x + (uint32_t*)dc_destorg;
 				DrawerCommandQueue::QueueCommand<DrawParticleColumnRGBACommand>(dest, yl, spacing, ycount, fg, alpha, fracposx);
@@ -249,7 +251,7 @@ namespace swrenderer
 		{
 			for (int x = x1; x < (x1 + countbase); x++, fracposx += fracstepx)
 			{
-				if (RenderTranslucentPass::ClipSpriteColumnWithPortals(x, vis))
+				if (translucentPass->ClipSpriteColumnWithPortals(x, vis))
 					continue;
 				uint8_t *dest = ylookup[yl] + x + dc_destorg;
 				DrawerCommandQueue::QueueCommand<DrawParticleColumnPalCommand>(dest, yl, spacing, ycount, fg, alpha, fracposx);
@@ -261,9 +263,10 @@ namespace swrenderer
 	{
 		// Draw any masked textures behind this particle so that when the
 		// particle is drawn, it will be in front of them.
-		for (unsigned int p = InterestingDrawsegs.Size(); p-- > FirstInterestingDrawseg; )
+		DrawSegmentList *segmentlist = DrawSegmentList::Instance();
+		for (unsigned int p = segmentlist->InterestingDrawsegs.Size(); p-- > segmentlist->FirstInterestingDrawseg; )
 		{
-			drawseg_t *ds = &drawsegs[InterestingDrawsegs[p]];
+			DrawSegment *ds = &segmentlist->drawsegs[segmentlist->InterestingDrawsegs[p]];
 			// kg3D - no fake segs
 			if (ds->fake) continue;
 			if (ds->x1 >= x2 || ds->x2 <= x1)
@@ -274,7 +277,10 @@ namespace swrenderer
 			{
 				// [ZZ] only draw stuff that's inside the same portal as the particle, other portals will care for themselves
 				if (ds->CurrentPortalUniq == CurrentPortalUniq)
-					R_RenderMaskedSegRange(ds, MAX<int>(ds->x1, x1), MIN<int>(ds->x2, x2));
+				{
+					RenderDrawSegment renderer;
+					renderer.Render(ds, MAX<int>(ds->x1, x1), MIN<int>(ds->x2, x2));
+				}
 			}
 		}
 	}

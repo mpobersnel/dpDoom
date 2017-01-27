@@ -84,9 +84,10 @@ struct FCompileContext
 	int Lump;
 	bool Unsafe = false;
 	TDeletingArray<FxLocalVariableDeclaration *> FunctionArgs;
+	PNamespace *CurGlobals;
 
-	FCompileContext(PFunction *func, PPrototype *ret, bool fromdecorate, int stateindex, int statecount, int lump);
-	FCompileContext(PStruct *cls, bool fromdecorate);	// only to be used to resolve constants!
+	FCompileContext(PNamespace *spc, PFunction *func, PPrototype *ret, bool fromdecorate, int stateindex, int statecount, int lump);
+	FCompileContext(PNamespace *spc, PStruct *cls, bool fromdecorate);	// only to be used to resolve constants!
 
 	PSymbol *FindInClass(FName identifier, PSymbolTable *&symt);
 	PSymbol *FindInSelfClass(FName identifier, PSymbolTable *&symt);
@@ -255,7 +256,6 @@ enum EFxType
 	EFX_MemberFunctionCall,
 	EFX_ActionSpecialCall,
 	EFX_FlopFunctionCall,
-	EFX_Format,
 	EFX_VMFunctionCall,
 	EFX_Sequence,
 	EFX_CompoundStatement,
@@ -1536,26 +1536,6 @@ public:
 
 //==========================================================================
 //
-//	FxFormat
-//
-//==========================================================================
-
-class FxFormat : public FxExpression
-{
-	FArgumentList ArgList;
-	bool EmitTail;
-
-public:
-
-	FxFormat(FArgumentList &args, const FScriptPosition &pos);
-	~FxFormat();
-	FxExpression *Resolve(FCompileContext&);
-	PPrototype *ReturnProto();
-	ExpEmit Emit(VMFunctionBuilder *build);
-};
-
-//==========================================================================
-//
 //	FxVectorBuiltin
 //
 //==========================================================================
@@ -1933,10 +1913,11 @@ class FxClassTypeCast : public FxExpression
 {
 	PClass *desttype;
 	FxExpression *basex;
+	bool Explicit;
 
 public:
 
-	FxClassTypeCast(PClassPointer *dtype, FxExpression *x);
+	FxClassTypeCast(PClassPointer *dtype, FxExpression *x, bool explicitly);
 	~FxClassTypeCast();
 	FxExpression *Resolve(FCompileContext&);
 	ExpEmit Emit(VMFunctionBuilder *build);

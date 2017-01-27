@@ -324,6 +324,8 @@ static FFlagDef ActorFlagDefs[]=
 	DEFINE_FLAG(RF, MASKROTATION, AActor, renderflags),
 	DEFINE_FLAG(RF, ABSMASKANGLE, AActor, renderflags),
 	DEFINE_FLAG(RF, ABSMASKPITCH, AActor, renderflags),
+	DEFINE_FLAG(RF, XFLIP, AActor, renderflags),
+	DEFINE_FLAG(RF, YFLIP, AActor, renderflags),
 
 	// Bounce flags
 	DEFINE_FLAG2(BOUNCE_Walls, BOUNCEONWALLS, AActor, BounceFlags),
@@ -760,16 +762,16 @@ void InitThingdef()
 
 	// expose the global validcount variable.
 	PField *vcf = new PField("validcount", TypeSInt32, VARF_Native | VARF_Static, (intptr_t)&validcount);
-	GlobalSymbols.AddSymbol(vcf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(vcf);
 
 	// expose the global Multiplayer variable.
 	PField *multif = new PField("multiplayer", TypeBool, VARF_Native | VARF_ReadOnly | VARF_Static, (intptr_t)&multiplayer);
-	GlobalSymbols.AddSymbol(multif);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(multif);
 
 	// set up a variable for the global level data structure
 	PStruct *lstruct = NewNativeStruct("LevelLocals", nullptr);
 	PField *levelf = new PField("level", lstruct, VARF_Native | VARF_Static, (intptr_t)&level);
-	GlobalSymbols.AddSymbol(levelf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(levelf);
 
 	// Add the game data arrays to LevelLocals.
 	lstruct->AddNativeField("sectors", NewPointer(NewResizableArray(sectorstruct), false), myoffsetof(FLevelLocals, sectors), VARF_Native);
@@ -781,17 +783,17 @@ void InitThingdef()
 
 	auto aact = NewPointer(NewResizableArray(NewClassPointer(RUNTIME_CLASS(AActor))), true);
 	PField *aacf = new PField("AllActorClasses", aact, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&PClassActor::AllActorClasses);
-	GlobalSymbols.AddSymbol(aacf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(aacf);
 
 	// set up a variable for the DEH data
 	PStruct *dstruct = NewNativeStruct("DehInfo", nullptr);
 	PField *dehf = new PField("deh", dstruct, VARF_Native | VARF_Static, (intptr_t)&deh);
-	GlobalSymbols.AddSymbol(dehf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(dehf);
 
 	// set up a variable for the global gameinfo data
 	PStruct *gistruct = NewNativeStruct("GameInfoStruct", nullptr);
 	PField *gi = new PField("gameinfo", gistruct, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&gameinfo);
-	GlobalSymbols.AddSymbol(gi);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(gi);
 
 	// set up a variable for the global players array.
 	PStruct *pstruct = NewNativeStruct("PlayerInfo", nullptr);
@@ -799,33 +801,33 @@ void InitThingdef()
 	pstruct->Align = alignof(player_t);
 	PArray *parray = NewArray(pstruct, MAXPLAYERS);
 	PField *playerf = new PField("players", parray, VARF_Native | VARF_Static, (intptr_t)&players);
-	GlobalSymbols.AddSymbol(playerf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
 
 	pstruct->AddNativeField("weapons", NewNativeStruct("WeaponSlots", nullptr), myoffsetof(player_t, weapons), VARF_Native);
 
 
 	parray = NewArray(TypeBool, MAXPLAYERS);
 	playerf = new PField("playeringame", parray, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&playeringame);
-	GlobalSymbols.AddSymbol(playerf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
 
 	playerf = new PField("gameaction", TypeUInt8, VARF_Native | VARF_Static, (intptr_t)&gameaction);
-	GlobalSymbols.AddSymbol(playerf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
 
 	playerf = new PField("skyflatnum", TypeTextureID, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&skyflatnum);
-	GlobalSymbols.AddSymbol(playerf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
 
 	playerf = new PField("globalfreeze", TypeUInt8, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&bglobal.freeze);
-	GlobalSymbols.AddSymbol(playerf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
 
 	playerf = new PField("consoleplayer", TypeSInt32, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&consoleplayer);
-	GlobalSymbols.AddSymbol(playerf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
 
 	// Argh. It sucks when bad hacks need to be supported. WP_NOCHANGE is just a bogus pointer but it used everywhere as a special flag.
 	// It cannot be defined as constant because constants can either be numbers or strings but nothing else, so the only 'solution'
 	// is to create a static variable from it and reference that in the script. Yuck!!!
 	static AWeapon *wpnochg = WP_NOCHANGE;
 	playerf = new PField("WP_NOCHANGE", NewPointer(RUNTIME_CLASS(AWeapon), false), VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&wpnochg);
-	GlobalSymbols.AddSymbol(playerf);
+	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
 
 	// synthesize a symbol for each flag from the flag name tables to avoid redundant declaration of them.
 	for (auto &fl : FlagLists)
@@ -934,7 +936,7 @@ DEFINE_ACTION_FUNCTION(FStringTable, Localize)
 	ACTION_RETURN_STRING(GStrings(&label[1]));
 }
 
-DEFINE_ACTION_FUNCTION(FString, Replace)
+DEFINE_ACTION_FUNCTION(FStringStruct, Replace)
 {
 	PARAM_SELF_STRUCT_PROLOGUE(FString);
 	PARAM_STRING(s1);
@@ -943,3 +945,176 @@ DEFINE_ACTION_FUNCTION(FString, Replace)
 	return 0;
 }
 
+static FString FStringFormat(VM_ARGS)
+{
+	assert(param[0].Type == REGT_STRING);
+	FString fmtstring = param[0].s().GetChars();
+
+	// note: we don't need a real printf format parser.
+	//       enough to simply find the subtitution tokens and feed them to the real printf after checking types.
+	//       https://en.wikipedia.org/wiki/Printf_format_string#Format_placeholder_specification
+	FString output;
+	bool in_fmt = false;
+	FString fmt_current;
+	int argnum = 1;
+	int argauto = 1;
+	// % = starts
+	//  [0-9], -, +, \s, 0, #, . continue
+	//  %, s, d, i, u, fF, eE, gG, xX, o, c, p, aA terminate
+	// various type flags are not supported. not like stuff like 'hh' modifier is to be used in the VM.
+	// the only combination that is parsed locally is %n$...
+	bool haveargnums = false;
+	for (size_t i = 0; i < fmtstring.Len(); i++)
+	{
+		char c = fmtstring[i];
+		if (in_fmt)
+		{
+			if ((c >= '0' && c <= '9') ||
+				c == '-' || c == '+' || (c == ' ' && fmt_current[fmt_current.Len() - 1] != ' ') || c == '#' || c == '.')
+			{
+				fmt_current += c;
+			}
+			else if (c == '$') // %number$format
+			{
+				if (!haveargnums && argauto > 1)
+					ThrowAbortException(X_FORMAT_ERROR, "Cannot mix explicit and implicit arguments.");
+				FString argnumstr = fmt_current.Mid(1);
+				if (!argnumstr.IsInt()) ThrowAbortException(X_FORMAT_ERROR, "Expected a numeric value for argument number, got '%s'.", argnumstr.GetChars());
+				argnum = argnumstr.ToLong();
+				if (argnum < 1 || argnum >= numparam) ThrowAbortException(X_FORMAT_ERROR, "Not enough arguments for format (tried to access argument %d, %d total).", argnum, numparam);
+				fmt_current = "%";
+				haveargnums = true;
+			}
+			else
+			{
+				fmt_current += c;
+
+				switch (c)
+				{
+					// string
+				case 's':
+				{
+					if (argnum < 0 && haveargnums)
+						ThrowAbortException(X_FORMAT_ERROR, "Cannot mix explicit and implicit arguments.");
+					in_fmt = false;
+					// fail if something was found, but it's not a string
+					if (argnum >= numparam) ThrowAbortException(X_FORMAT_ERROR, "Not enough arguments for format.");
+					if (param[argnum].Type != REGT_STRING) ThrowAbortException(X_FORMAT_ERROR, "Expected a string for format %s.", fmt_current.GetChars());
+					// append
+					output.AppendFormat(fmt_current.GetChars(), param[argnum].s().GetChars());
+					if (!haveargnums) argnum = ++argauto;
+					else argnum = -1;
+					break;
+				}
+
+				// pointer
+				case 'p':
+				{
+					if (argnum < 0 && haveargnums)
+						ThrowAbortException(X_FORMAT_ERROR, "Cannot mix explicit and implicit arguments.");
+					in_fmt = false;
+					// fail if something was found, but it's not a string
+					if (argnum >= numparam) ThrowAbortException(X_FORMAT_ERROR, "Not enough arguments for format.");
+					if (param[argnum].Type != REGT_POINTER) ThrowAbortException(X_FORMAT_ERROR, "Expected a pointer for format %s.", fmt_current.GetChars());
+					// append
+					output.AppendFormat(fmt_current.GetChars(), param[argnum].a);
+					if (!haveargnums) argnum = ++argauto;
+					else argnum = -1;
+					break;
+				}
+
+				// int formats (including char)
+				case 'd':
+				case 'i':
+				case 'u':
+				case 'x':
+				case 'X':
+				case 'o':
+				case 'c':
+				{
+					if (argnum < 0 && haveargnums)
+						ThrowAbortException(X_FORMAT_ERROR, "Cannot mix explicit and implicit arguments.");
+					in_fmt = false;
+					// fail if something was found, but it's not an int
+					if (argnum >= numparam) ThrowAbortException(X_FORMAT_ERROR, "Not enough arguments for format.");
+					if (param[argnum].Type != REGT_INT &&
+						param[argnum].Type != REGT_FLOAT) ThrowAbortException(X_FORMAT_ERROR, "Expected a numeric value for format %s.", fmt_current.GetChars());
+					// append
+					output.AppendFormat(fmt_current.GetChars(), param[argnum].ToInt());
+					if (!haveargnums) argnum = ++argauto;
+					else argnum = -1;
+					break;
+				}
+
+				// double formats
+				case 'f':
+				case 'F':
+				case 'e':
+				case 'E':
+				case 'g':
+				case 'G':
+				case 'a':
+				case 'A':
+				{
+					if (argnum < 0 && haveargnums)
+						ThrowAbortException(X_FORMAT_ERROR, "Cannot mix explicit and implicit arguments.");
+					in_fmt = false;
+					// fail if something was found, but it's not a float
+					if (argnum >= numparam) ThrowAbortException(X_FORMAT_ERROR, "Not enough arguments for format.");
+					if (param[argnum].Type != REGT_INT &&
+						param[argnum].Type != REGT_FLOAT) ThrowAbortException(X_FORMAT_ERROR, "Expected a numeric value for format %s.", fmt_current.GetChars());
+					// append
+					output.AppendFormat(fmt_current.GetChars(), param[argnum].ToDouble());
+					if (!haveargnums) argnum = ++argauto;
+					else argnum = -1;
+					break;
+				}
+
+				default:
+					// invalid character
+					output += fmt_current;
+					in_fmt = false;
+					break;
+				}
+			}
+		}
+		else
+		{
+			if (c == '%')
+			{
+				if (i + 1 < fmtstring.Len() && fmtstring[i + 1] == '%')
+				{
+					output += '%';
+					i++;
+				}
+				else
+				{
+					in_fmt = true;
+					fmt_current = "%";
+				}
+			}
+			else
+			{
+				output += c;
+			}
+		}
+	}
+
+	return output;
+}
+
+DEFINE_ACTION_FUNCTION(FStringStruct, Format)
+{
+	PARAM_PROLOGUE;
+	FString s = FStringFormat(param, defaultparam, numparam, ret, numret);
+	ACTION_RETURN_STRING(s);
+}
+
+DEFINE_ACTION_FUNCTION(FStringStruct, AppendFormat)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FString);
+	// first parameter is the self pointer
+	FString s = FStringFormat(param+1, defaultparam, numparam-1, ret, numret);
+	(*self) += s;
+	return 0;
+}

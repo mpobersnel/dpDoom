@@ -18,6 +18,7 @@
 #include "v_palette.h"
 #include "r_data/colormaps.h"
 #include "r_utility.h"
+#include "r_viewport.h"
 
 // Lighting.
 //
@@ -49,22 +50,61 @@
 // Converts fixedlightlev into a shade value
 #define FIXEDLIGHT2SHADE(lightlev) (((lightlev) >> COLORMAPSHIFT) << FRACBITS)
 
+struct FSWColormap;
+
 namespace swrenderer
 {
-	extern double r_BaseVisibility;
-	extern double r_WallVisibility;
-	extern double r_FloorVisibility;
-	extern float r_TiltVisibility;
-	extern double r_SpriteVisibility;
+	class CameraLight
+	{
+	public:
+		static CameraLight *Instance();
 
-	extern int fixedlightlev;
-	extern FSWColormap *fixedcolormap;
-	extern FSpecialColormap *realfixedcolormap;
+		int fixedlightlev = 0;
+		FSWColormap *fixedcolormap = nullptr;
+		FSpecialColormap *realfixedcolormap = nullptr;
+
+		void SetCamera(AActor *actor);
+	};
+
+	class LightVisibility
+	{
+	public:
+		static LightVisibility *Instance();
+
+		void SetVisibility(double visibility);
+		double GetVisibility() const { return CurrentVisibility; }
+
+		double WallGlobVis() const { return WallVisibility; }
+		double SpriteGlobVis() const { return WallVisibility; }
+		double ParticleGlobVis() const { return WallVisibility * 0.5; }
+		double FlatPlaneGlobVis() const { return FloorVisibility; }
+		double SlopePlaneGlobVis() const { return TiltVisibility; }
+
+		// The vis value to pass into the GETPALOOKUP or LIGHTSCALE macros
+		double WallVis(double screenZ) const { return WallGlobVis() / screenZ; }
+		double SpriteVis(double screenZ) const { return WallGlobVis() / screenZ; }
+		double ParticleVis(double screenZ) const { return WallGlobVis() / screenZ; }
+		double FlatPlaneVis(int screenY, double planeZ) const { return FlatPlaneGlobVis() / fabs(planeZ - ViewPos.Z) * fabs(CenterY - screenY); }
+
+	private:
+		double BaseVisibility = 0.0;
+		double WallVisibility = 0.0;
+		double FloorVisibility = 0.0;
+		float TiltVisibility = 0.0f;
+
+		double CurrentVisibility = 8.f;
+		double MaxVisForWall = 0.0;
+		double MaxVisForFloor = 0.0;
+	};
+
+	class ColormapLight
+	{
+	public:
+		int ColormapNum = 0;
+		FSWColormap *BaseColormap = nullptr;
+
+		void SetColormap(double visibility, int shade, FDynamicColormap *basecolormap, bool fullbright, bool invertColormap, bool fadeToBlack);
+	};
 
 	inline int R_ActualExtraLight(bool fog) { return fog ? 0 : extralight << 4; }
-
-	void R_SetVisibility(double visibility);
-	double R_GetVisibility();
-
-	void R_SetupColormap(AActor *actor);
 }

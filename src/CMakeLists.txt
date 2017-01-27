@@ -13,7 +13,6 @@ include( CheckIncludeFile )
 include( CheckIncludeFiles )
 include( CheckLibraryExists )
 include( FindPkgConfig )
-include( FindOpenGL )
 
 if( ZD_CMAKE_COMPILER_IS_GNUCXX_COMPATIBLE )
 	option( NO_STRIP "Do not strip Release or MinSizeRel builds" )
@@ -162,6 +161,7 @@ if( WIN32 )
 	endif()
 
 	set( ZDOOM_LIBS
+		opengl32
 		wsock32
 		winmm
 		"${DX_dinput8_LIBRARY}"
@@ -254,15 +254,6 @@ else()
 		add_definitions( -DHAVE_FPU_CONTROL )
 	endif()
 endif()
-
-# Check if we have OpenGL
-
-if( NOT OPENGL_FOUND )
-	message( FATAL_ERROR "OpenGL is required for building." )
-endif( NOT OPENGL_FOUND )
-
-set( ZDOOM_LIBS ${ZDOOM_LIBS} ${OPENGL_LIBRARIES} )
-include_directories( ${OPENGL_INCLUDE_DIR} )
 
 if( NOT NO_OPENAL )
 	find_package( OpenAL )
@@ -714,6 +705,25 @@ else()
 	set( OTHER_SYSTEM_SOURCES ${PLAT_WIN32_SOURCES} ${PLAT_OSX_SOURCES} ${PLAT_COCOA_SOURCES} )
 endif()
 
+if( HAVE_MMX )
+	add_definitions( -DHAVE_MMX=1 )
+
+	set( SYSTEM_SOURCES ${SYSTEM_SOURCES}
+		gl/hqnx_asm/hq2x_asm.cpp
+		gl/hqnx_asm/hq3x_asm.cpp
+		gl/hqnx_asm/hq4x_asm.cpp
+		gl/hqnx_asm/hqnx_asm_Image.cpp)
+
+	if( ZD_CMAKE_COMPILER_IS_GNUCXX_COMPATIBLE )
+		set_source_files_properties(
+			gl/hqnx_asm/hq2x_asm.cpp
+			gl/hqnx_asm/hq3x_asm.cpp
+			gl/hqnx_asm/hq4x_asm.cpp
+			gl/textures/gl_hqresize.cpp
+			PROPERTIES COMPILE_FLAGS "-mmmx" )
+	endif( ZD_CMAKE_COMPILER_IS_GNUCXX_COMPATIBLE )
+endif( HAVE_MMX )
+
 add_custom_command( OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/xlat_parser.c ${CMAKE_CURRENT_BINARY_DIR}/xlat_parser.h
 	COMMAND lemon -C${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/xlat/xlat_parser.y
 	DEPENDS lemon ${CMAKE_CURRENT_SOURCE_DIR}/xlat/xlat_parser.y )
@@ -769,8 +779,8 @@ file( GLOB HEADER_FILES
 	${EXTRA_HEADER_DIRS}
 	fragglescript/*.h
 	g_shared/*.h
+	g_statusbar/*.h
 	g_inventory/*.h
-	g_strife/*.h
 	intermission/*.h
 	menu/*.h
 	oplsynth/*.h
@@ -827,7 +837,7 @@ set( NOT_COMPILED_SOURCE_FILES
 	${OTHER_SYSTEM_SOURCES}
 	sc_man_scanner.h
 	sc_man_scanner.re
-	g_shared/sbarinfo_commands.cpp
+	g_statusbar/sbarinfo_commands.cpp
 	xlat/xlat_parser.y
 	xlat_parser.c
 	xlat_parser.h
@@ -855,6 +865,7 @@ set( FASTMATH_PCH_SOURCES
 	swrenderer/line/r_walldraw.cpp
 	swrenderer/line/r_wallsetup.cpp
 	swrenderer/line/r_fogboundary.cpp
+	swrenderer/line/r_renderdrawsegment.cpp
 	swrenderer/segments/r_clipsegment.cpp
 	swrenderer/segments/r_drawsegment.cpp
 	swrenderer/segments/r_portalsegment.cpp
@@ -1213,7 +1224,6 @@ set (PCH_SOURCES
 	g_inventory/a_keys.cpp
 	g_inventory/a_pickups.cpp
 	g_inventory/a_weapons.cpp
-	g_strife/strife_sbar.cpp
 	g_shared/a_action.cpp
 	g_shared/a_decals.cpp
 	g_shared/a_flashfader.cpp
@@ -1222,10 +1232,11 @@ set (PCH_SOURCES
 	g_shared/a_quake.cpp
 	g_shared/a_specialspot.cpp
 	g_shared/hudmessages.cpp
-	g_shared/sbarinfo.cpp
-	g_shared/sbar_mugshot.cpp
 	g_shared/shared_hud.cpp
-	g_shared/shared_sbar.cpp
+	g_statusbar/sbarinfo.cpp
+	g_statusbar/sbar_mugshot.cpp
+	g_statusbar/shared_sbar.cpp
+	g_statusbar/strife_sbar.cpp
 	resourcefiles/ancientzip.cpp
 	resourcefiles/file_7z.cpp
 	resourcefiles/file_grp.cpp
@@ -1285,7 +1296,6 @@ set (PCH_SOURCES
 	scripting/vm/vmframe.cpp
 	scripting/zscript/ast.cpp
 	scripting/zscript/zcc_compile.cpp
-	scripting/zscript/zcc_expr.cpp
 	scripting/zscript/zcc_parser.cpp
 	sfmt/SFMT.cpp
 )
@@ -1357,7 +1367,7 @@ endif()
 target_link_libraries( zdoom ${ZDOOM_LIBS} gdtoa dumb lzma )
 
 include_directories( .
-	g_strife
+	g_statusbar
 	g_shared
 	g_inventory
 	oplsynth
@@ -1486,7 +1496,6 @@ source_group("External\\Math" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/m
 source_group("External\\RapidJSON" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/.+")
 source_group("External\\SFMT" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/sfmt/.+")
 source_group("FraggleScript" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/fragglescript/.+")
-source_group("Games\\Strife Game" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/g_strife/.+")
 source_group("Intermission" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/intermission/.+")
 source_group("Inventory" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/g_inventory/.+")
 source_group("Menu" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/menu/.+")
@@ -1534,6 +1543,7 @@ source_group("Scripting\\Code Generation" REGULAR_EXPRESSION "^${CMAKE_CURRENT_S
 source_group("Scripting\\VM" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/scripting/vm/.+")
 source_group("Scripting" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/scripting/.+")
 source_group("Shared Game" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/g_shared/.+")
+source_group("Statusbar" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/g_statusbar/.+")
 source_group("Versioning" FILES version.h win32/zdoom.rc)
 source_group("Xlat" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/xlat/.+" FILES ${CMAKE_CURRENT_BINARY_DIR}/xlat_parser.c ${CMAKE_CURRENT_BINARY_DIR}/xlat_parser.h)
 source_group("Source Files" FILES ${CMAKE_CURRENT_BINARY_DIR}/sc_man_scanner.h sc_man_scanner.re)

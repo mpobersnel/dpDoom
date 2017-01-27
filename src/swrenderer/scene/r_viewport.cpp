@@ -113,16 +113,14 @@ namespace swrenderer
 
 		WallTMapScale2 = IYaspectMul / CenterX;
 
-		// psprite scales
-		RenderPlayerSprite::SetupSpriteScale();
-
 		// thing clipping
 		fillshort(screenheightarray, viewwidth, (short)viewheight);
 
 		InitTextureMapping();
 
 		// Reset r_*Visibility vars
-		R_SetVisibility(R_GetVisibility());
+		LightVisibility *visibility = LightVisibility::Instance();
+		visibility->SetVisibility(visibility->GetVisibility());
 
 		SetupBuffer();
 	}

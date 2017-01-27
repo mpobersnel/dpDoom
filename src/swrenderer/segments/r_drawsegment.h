@@ -17,7 +17,7 @@
 
 namespace swrenderer
 {
-	struct drawseg_t
+	struct DrawSegment
 	{
 		seg_t *curline;
 		float light, lightstep;
@@ -46,20 +46,25 @@ namespace swrenderer
 		int fake; // ident fake drawseg, don't draw and clip sprites backups
 		int CurrentPortalUniq; // [ZZ] to identify the portal that this drawseg is in. used for sprite clipping.
 	};
-	
-	extern drawseg_t *firstdrawseg;
-	extern drawseg_t *ds_p;
-	extern drawseg_t *drawsegs;
 
-	extern TArray<size_t> InterestingDrawsegs; // drawsegs that have something drawn on them
-	extern size_t FirstInterestingDrawseg;
-	
-	void R_ClearDrawSegs();
-	void R_FreeDrawSegs();
+	class DrawSegmentList
+	{
+	public:
+		static DrawSegmentList *Instance();
 
-	drawseg_t *R_AddDrawSegment();
-	void ClipMidtex(int x1, int x2);
-	void R_RenderMaskedSegRange(drawseg_t *ds, int x1, int x2);
-	void R_RenderFakeWall(drawseg_t *ds, int x1, int x2, F3DFloor *rover, int wallshade, FDynamicColormap *basecolormap);
-	void R_RenderFakeWallRange(drawseg_t *ds, int x1, int x2, int wallshade);
+		DrawSegment *firstdrawseg = nullptr;
+		DrawSegment *ds_p = nullptr;
+		DrawSegment *drawsegs = nullptr;
+
+		TArray<size_t> InterestingDrawsegs; // drawsegs that have something drawn on them
+		size_t FirstInterestingDrawseg = 0;
+
+		void Clear();
+		void Deinit();
+
+		DrawSegment *Add();
+
+	private:
+		size_t MaxDrawSegs = 0;
+	};
 }
