@@ -32,6 +32,7 @@
 #include "r_utility.h"
 #include "d_player.h"
 #include "r_sky.h"
+#include "g_levellocals.h"
 
 void LevelMeshBuilder::Generate()
 {
@@ -79,10 +80,10 @@ void LevelMeshBuilder::Upload()
 
 void LevelMeshBuilder::ProcessBSP()
 {
-	if (numnodes == 0)
-		ProcessSubsector(subsectors);
+	if (level.nodes.Size() == 0)
+		ProcessSubsector(&level.subsectors[0]);
 	else
-		ProcessNode(nodes + numnodes - 1);	// The head node is the last node output.
+		ProcessNode(level.HeadNode());	// The head node is the last node output.
 }
 
 void LevelMeshBuilder::ProcessNode(void *node)
@@ -95,7 +96,7 @@ void LevelMeshBuilder::ProcessNode(void *node)
 		node = bsp->children[1];
 	}
 
-	subsector_t *sub = (subsector_t *)((BYTE *)node - 1);
+	subsector_t *sub = (subsector_t *)((uint8_t *)node - 1);
 	ProcessSubsector(sub);
 }
 

@@ -25,6 +25,7 @@
 #include "gpu_program.h"
 #include "gl/system/gl_system.h"
 #include "w_wad.h"
+#include "i_system.h"
 
 GPUProgram::GPUProgram()
 {

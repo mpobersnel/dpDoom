@@ -29,6 +29,7 @@ namespace swrenderer
 {
 	struct FWallCoords;
 	struct FWallTmapVals;
+	class RenderViewport;
 
 	enum class ProjectedWallCull
 	{

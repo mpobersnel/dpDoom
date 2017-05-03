@@ -24,6 +24,7 @@
 #include "r_utility.h"
 #include "gpu_framebuffer.h"
 #include "gl/system/gl_system.h"
+#include "i_system.h"
 
 GPUFrameBuffer::GPUFrameBuffer(const std::vector<GPUTexture2DPtr> &color, const GPUTexture2DPtr &depthstencil)
 {

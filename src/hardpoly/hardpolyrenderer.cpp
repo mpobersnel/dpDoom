@@ -66,7 +66,7 @@ void HardpolyRenderer::RenderView(player_t *player)
 {
 	P_FindParticleSubsectors();
 	PO_LinkToSubsectors();
-	R_SetupFrame(player->mo);
+	R_SetupFrame(r_viewpoint, r_viewwindow, player->mo);
 
 	mContext->Begin();
 
@@ -286,23 +286,23 @@ void HardpolyRenderer::SetupPerspectiveMatrix(float meshId)
 		bDidSetup = true;
 	}
 
-	double radPitch = ViewPitch.Normalized180().Radians();
+	double radPitch = r_viewpoint.Angles.Pitch.Normalized180().Radians();
 	double angx = cos(radPitch);
-	double angy = sin(radPitch) * glset.pixelstretch;
+	double angy = sin(radPitch) * level.info->pixelstretch;
 	double alen = sqrt(angx*angx + angy*angy);
 	float adjustedPitch = (float)asin(angy / alen);
-	float adjustedViewAngle = (float)(ViewAngle - 90).Radians();
+	float adjustedViewAngle = (float)(r_viewpoint.Angles.Yaw - 90).Radians();
 
-	float ratio = WidescreenRatio;
-	float fovratio = (WidescreenRatio >= 1.3f) ? 1.333333f : ratio;
-	float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(FieldOfView.Radians() / 2) / fovratio)).Degrees);
+	float ratio = r_viewwindow.WidescreenRatio;
+	float fovratio = (r_viewwindow.WidescreenRatio >= 1.3f) ? 1.333333f : ratio;
+	float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(r_viewpoint.FieldOfView.Radians() / 2) / fovratio)).Degrees);
 
 	Mat4f worldToView =
 		Mat4f::Rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
 		Mat4f::Rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
-		Mat4f::Scale(1.0f, glset.pixelstretch, 1.0f) *
+		Mat4f::Scale(1.0f, level.info->pixelstretch, 1.0f) *
 		Mat4f::SwapYZ() *
-		Mat4f::Translate((float)-ViewPos.X, (float)-ViewPos.Y, (float)-ViewPos.Z);
+		Mat4f::Translate((float)-r_viewpoint.Pos.X, (float)-r_viewpoint.Pos.Y, (float)-r_viewpoint.Pos.Z);
 
 	Mat4f viewToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f);
 	
