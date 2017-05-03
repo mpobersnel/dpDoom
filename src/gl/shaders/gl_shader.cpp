@@ -85,8 +85,11 @@ bool FShader::Load(const char * name, const char * vert_prog_lump, const char * 
 	unsigned int lightbuffersize = GLRenderer->mLights->GetBlockSize();
 	if (lightbuffertype == GL_UNIFORM_BUFFER)
 	{
-		// This differentiation is for some Intel drivers which fail on #extension, so use of #version 140 is necessary
-		if (gl.glslversion < 1.4f)
+		if (gl.es)
+		{
+			vp_comb.Format("#version 300 es\n#define NUM_UBO_LIGHTS %d\n", lightbuffersize);
+		}
+		else if (gl.glslversion < 1.4f) // This differentiation is for some Intel drivers which fail on #extension, so use of #version 140 is necessary
 		{
 			vp_comb.Format("#version 130\n#extension GL_ARB_uniform_buffer_object : require\n#define NUM_UBO_LIGHTS %d\n", lightbuffersize);
 		}
@@ -97,12 +100,21 @@ bool FShader::Load(const char * name, const char * vert_prog_lump, const char * 
 	}
 	else
 	{
-		vp_comb = "#version 400 core\n#extension GL_ARB_shader_storage_buffer_object : require\n#define SHADER_STORAGE_LIGHTS\n";
+		// This differentiation is for Intel which do not seem to expose the full extension, even if marked as required.
+		if (gl.glslversion < 4.3f)
+			vp_comb = "#version 400 core\n#extension GL_ARB_shader_storage_buffer_object : require\n#define SHADER_STORAGE_LIGHTS\n";
+		else
+			vp_comb = "#version 430 core\n#define SHADER_STORAGE_LIGHTS\n";
 	}
 
 	if (gl.buffermethod == BM_DEFERRED)
 	{
 		vp_comb << "#define USE_QUAD_DRAWER\n";
+	}
+
+	if (!!(gl.flags & RFL_SHADER_STORAGE_BUFFER))
+	{
+		vp_comb << "#define SUPPORTS_SHADOWMAPS\n";
 	}
 
 	vp_comb << defines << i_data.GetString().GetChars();
@@ -225,6 +237,7 @@ bool FShader::Load(const char * name, const char * vert_prog_lump, const char * 
 	muFogColor.Init(hShader, "uFogColor");
 	muDynLightColor.Init(hShader, "uDynLightColor");
 	muObjectColor.Init(hShader, "uObjectColor");
+	muObjectColor2.Init(hShader, "uObjectColor2");
 	muGlowBottomColor.Init(hShader, "uGlowBottomColor");
 	muGlowTopColor.Init(hShader, "uGlowTopColor");
 	muGlowBottomPlane.Init(hShader, "uGlowBottomPlane");
@@ -268,6 +281,9 @@ bool FShader::Load(const char * name, const char * vert_prog_lump, const char * 
 		int tempindex = glGetUniformLocation(hShader, stringbuf);
 		if (tempindex > 0) glUniform1i(tempindex, i - 1);
 	}
+
+	int shadowmapindex = glGetUniformLocation(hShader, "ShadowMap");
+	if (shadowmapindex > 0) glUniform1i(shadowmapindex, 16);
 
 	glUseProgram(0);
 	return !!linked;
@@ -398,8 +414,15 @@ FShaderManager::FShaderManager()
 {
 	if (!gl.legacyMode)
 	{
-		for (int passType = 0; passType < MAX_PASS_TYPES; passType++)
-			mPassShaders.Push(new FShaderCollection((EPassType)passType));
+		if (gl.es) // OpenGL ES does not support multiple fragment shader outputs. As a result, no GBUFFER passes are possible.
+		{
+			mPassShaders.Push(new FShaderCollection(NORMAL_PASS));
+		}
+		else
+		{
+			for (int passType = 0; passType < MAX_PASS_TYPES; passType++)
+				mPassShaders.Push(new FShaderCollection((EPassType)passType));
+		}
 	}
 }
 

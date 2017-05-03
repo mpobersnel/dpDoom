@@ -31,13 +31,19 @@
 #include "scene/poly_portal.h"
 #include "scene/poly_playersprite.h"
 #include "scene/poly_sky.h"
+#include "scene/poly_light.h"
+#include "swrenderer/r_memory.h"
 
 class AActor;
 class DCanvas;
+class DrawerCommandQueue;
+typedef std::shared_ptr<DrawerCommandQueue> DrawerCommandQueuePtr;
 
 class PolyRenderer
 {
 public:
+	PolyRenderer();
+	
 	void RenderView(player_t *player);
 	void RenderViewToCanvas(AActor *actor, DCanvas *canvas, int x, int y, int width, int height, bool dontmaplines);
 	void RenderRemainingPlayerSprites();
@@ -50,6 +56,13 @@ public:
 	bool InsertSeenMirror(line_t *mirrorLine);
 
 	bool DontMapLines = false;
+	
+	RenderMemory FrameMemory;
+	DrawerCommandQueuePtr DrawQueue;
+	DCanvas *RenderTarget = nullptr;
+	FViewWindow Viewwindow;
+	FRenderViewpoint Viewpoint;
+	PolyLightVisibility Light;
 
 private:
 	void RenderActorView(AActor *actor, bool dontmaplines);

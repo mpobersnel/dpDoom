@@ -1,14 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #include <stdlib.h>
@@ -28,7 +37,7 @@
 #include "g_level.h"
 #include "v_palette.h"
 #include "r_data/colormaps.h"
-#include "gl/dynlights/gl_dynlight.h"
+#include "a_dynlight.h"
 #include "swrenderer/drawers/r_draw_rgba.h"
 #include "swrenderer/scene/r_opaque_pass.h"
 #include "swrenderer/scene/r_3dfloors.h"
@@ -45,7 +54,7 @@
 
 namespace swrenderer
 {
-	void RenderFogBoundary::Render(int x1, int x2, short *uclip, short *dclip, int wallshade, float lightleft, float lightstep, FDynamicColormap *basecolormap)
+	void RenderFogBoundary::Render(RenderThread *thread, int x1, int x2, short *uclip, short *dclip, int wallshade, float lightleft, float lightstep, FDynamicColormap *basecolormap)
 	{
 		// This is essentially the same as R_MapVisPlane but with an extra step
 		// to create new horizontal spans whenever the light changes enough that
@@ -64,7 +73,7 @@ namespace swrenderer
 			fillshort(spanend + t2, b2 - t2, x);
 		}
 
-		R_SetColorMapLight(basecolormap, (float)light, wallshade);
+		drawerargs.SetLight(basecolormap, (float)light, wallshade);
 
 		uint8_t *fake_dc_colormap = basecolormap->Maps + (GETPALOOKUP(light, wallshade) << COLORMAPSHIFT);
 
@@ -82,7 +91,7 @@ namespace swrenderer
 				if (t2 < b2 && rcolormap != 0)
 				{ // Colormap 0 is always the identity map, so rendering it is
 				  // just a waste of time.
-					RenderSection(t2, b2, xr);
+					RenderSection(thread, t2, b2, xr);
 				}
 				if (t1 < t2) t2 = t1;
 				if (b1 > b2) b2 = b1;
@@ -91,7 +100,7 @@ namespace swrenderer
 					fillshort(spanend + t2, b2 - t2, x);
 				}
 				rcolormap = lcolormap;
-				R_SetColorMapLight(basecolormap, (float)light, wallshade);
+				drawerargs.SetLight(basecolormap, (float)light, wallshade);
 				fake_dc_colormap = basecolormap->Maps + (GETPALOOKUP(light, wallshade) << COLORMAPSHIFT);
 			}
 			else
@@ -102,13 +111,13 @@ namespace swrenderer
 					while (t2 < stop)
 					{
 						int y = t2++;
-						R_Drawers()->DrawFogBoundaryLine(y, xr, spanend[y]);
+						drawerargs.DrawFogBoundaryLine(thread, y, xr, spanend[y]);
 					}
 					stop = MAX(b1, t2);
 					while (b2 > stop)
 					{
 						int y = --b2;
-						R_Drawers()->DrawFogBoundaryLine(y, xr, spanend[y]);
+						drawerargs.DrawFogBoundaryLine(thread, y, xr, spanend[y]);
 					}
 				}
 				else
@@ -134,15 +143,15 @@ namespace swrenderer
 		}
 		if (t2 < b2 && rcolormap != 0)
 		{
-			RenderSection(t2, b2, x1);
+			RenderSection(thread, t2, b2, x1);
 		}
 	}
 
-	void RenderFogBoundary::RenderSection(int y, int y2, int x1)
+	void RenderFogBoundary::RenderSection(RenderThread *thread, int y, int y2, int x1)
 	{
 		for (; y < y2; ++y)
 		{
-			R_Drawers()->DrawFogBoundaryLine(y, x1, spanend[y]);
+			drawerargs.DrawFogBoundaryLine(thread, y, x1, spanend[y]);
 		}
 	}
 }

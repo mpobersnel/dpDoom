@@ -1,14 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #include <stdlib.h>
@@ -26,63 +35,71 @@
 #include "cmdlib.h"
 #include "d_net.h"
 #include "g_level.h"
+#include "g_levellocals.h"
 #include "swrenderer/scene/r_opaque_pass.h"
 #include "r_flatplane.h"
 #include "swrenderer/scene/r_3dfloors.h"
 #include "v_palette.h"
 #include "r_data/colormaps.h"
 #include "swrenderer/drawers/r_draw_rgba.h"
-#include "gl/dynlights/gl_dynlight.h"
+#include "a_dynlight.h"
 #include "swrenderer/segments/r_clipsegment.h"
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
 #include "swrenderer/plane/r_visibleplane.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
 
 namespace swrenderer
 {
-	void RenderFlatPlane::Render(VisiblePlane *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *colormap)
+	RenderFlatPlane::RenderFlatPlane(RenderThread *thread)
 	{
-		using namespace drawerargs;
+		Thread = thread;
+	}
 
+	void RenderFlatPlane::Render(VisiblePlane *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *colormap, FTexture *texture)
+	{
 		if (alpha <= 0)
 		{
 			return;
 		}
 
+		drawerargs.SetSolidColor(3);
+		drawerargs.SetTexture(Thread, texture);
+
 		double planeang = (pl->xform.Angle + pl->xform.baseAngle).Radians();
 		double xstep, ystep, leftxfrac, leftyfrac, rightxfrac, rightyfrac;
 		double x;
 
-		xscale = xs_ToFixed(32 - ds_xbits, _xscale);
-		yscale = xs_ToFixed(32 - ds_ybits, _yscale);
 		if (planeang != 0)
 		{
 			double cosine = cos(planeang), sine = sin(planeang);
-			pviewx = FLOAT2FIXED(pl->xform.xOffs + ViewPos.X * cosine - ViewPos.Y * sine);
-			pviewy = FLOAT2FIXED(pl->xform.yOffs - ViewPos.X * sine - ViewPos.Y * cosine);
+			pviewx = pl->xform.xOffs + Thread->Viewport->viewpoint.Pos.X * cosine - Thread->Viewport->viewpoint.Pos.Y * sine;
+			pviewy = pl->xform.yOffs + pl->xform.baseyOffs - Thread->Viewport->viewpoint.Pos.X * sine - Thread->Viewport->viewpoint.Pos.Y * cosine;
 		}
 		else
 		{
-			pviewx = FLOAT2FIXED(pl->xform.xOffs + ViewPos.X);
-			pviewy = FLOAT2FIXED(pl->xform.yOffs - ViewPos.Y);
+			pviewx = pl->xform.xOffs + Thread->Viewport->viewpoint.Pos.X;
+			pviewy = pl->xform.yOffs - Thread->Viewport->viewpoint.Pos.Y;
 		}
 
-		pviewx = FixedMul(xscale, pviewx);
-		pviewy = FixedMul(yscale, pviewy);
+		pviewx = _xscale * pviewx;
+		pviewy = _yscale * pviewy;
 
 		// left to right mapping
-		planeang += (ViewAngle - 90).Radians();
+		planeang += (Thread->Viewport->viewpoint.Angles.Yaw - 90).Radians();
+
+		auto viewport = Thread->Viewport.get();
 
 		// Scale will be unit scale at FocalLengthX (normally SCREENWIDTH/2) distance
-		xstep = cos(planeang) / FocalLengthX;
-		ystep = -sin(planeang) / FocalLengthX;
+		xstep = cos(planeang) / viewport->FocalLengthX;
+		ystep = -sin(planeang) / viewport->FocalLengthX;
 
 		// [RH] flip for mirrors
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = Thread->Portal.get();
 		if (renderportal->MirrorFlags & RF_XFLIP)
 		{
 			xstep = -xstep;
@@ -91,95 +108,47 @@ namespace swrenderer
 
 		planeang += M_PI / 2;
 		double cosine = cos(planeang), sine = -sin(planeang);
-		x = pl->right - centerx - 0.5;
+		x = pl->right - viewport->CenterX - 0.5;
 		rightxfrac = _xscale * (cosine + x * xstep);
 		rightyfrac = _yscale * (sine + x * ystep);
-		x = pl->left - centerx - 0.5;
+		x = pl->left - viewport->CenterX + 0.5;
 		leftxfrac = _xscale * (cosine + x * xstep);
 		leftyfrac = _yscale * (sine + x * ystep);
 
-		basexfrac = rightxfrac;
-		baseyfrac = rightyfrac;
-		xstepscale = (rightxfrac - leftxfrac) / (pl->right - pl->left);
-		ystepscale = (rightyfrac - leftyfrac) / (pl->right - pl->left);
+		basexfrac = leftxfrac;
+		baseyfrac = leftyfrac;
+		xstepscale = (rightxfrac - leftxfrac) / (pl->right - pl->left + 1);
+		ystepscale = (rightyfrac - leftyfrac) / (pl->right - pl->left + 1);
 
-		planeheight = fabs(pl->height.Zat0() - ViewPos.Z);
+		minx = pl->left;
+
+		planeheight = fabs(pl->height.Zat0() - Thread->Viewport->viewpoint.Pos.Z);
 
 		basecolormap = colormap;
-		GlobVis = LightVisibility::Instance()->FlatPlaneGlobVis() / planeheight;
-		ds_light = 0;
+
+		// [RH] set foggy flag
+		bool foggy = (level.fadeto || basecolormap->Fade || (level.flags & LEVEL_HASFADETABLE));
+
+		GlobVis = Thread->Light->FlatPlaneGlobVis(foggy) / planeheight;
+
 		CameraLight *cameraLight = CameraLight::Instance();
-		if (cameraLight->fixedlightlev >= 0)
+		if (cameraLight->FixedLightLevel() >= 0)
 		{
-			R_SetDSColorMapLight(basecolormap, 0, FIXEDLIGHT2SHADE(cameraLight->fixedlightlev));
+			drawerargs.SetLight(basecolormap, 0, cameraLight->FixedLightLevelShade());
 			plane_shade = false;
 		}
-		else if (cameraLight->fixedcolormap)
+		else if (cameraLight->FixedColormap())
 		{
-			R_SetDSColorMapLight(cameraLight->fixedcolormap, 0, 0);
+			drawerargs.SetLight(cameraLight->FixedColormap(), 0, 0);
 			plane_shade = false;
 		}
 		else
 		{
 			plane_shade = true;
-			planeshade = LIGHT2SHADE(pl->lightlevel);
+			planeshade = LightVisibility::LightLevelToShade(pl->lightlevel, foggy);
 		}
 
-		if (spanfunc != &SWPixelFormatDrawers::FillSpan)
-		{
-			if (masked)
-			{
-				if (alpha < OPAQUE || additive)
-				{
-					if (!additive)
-					{
-						spanfunc = &SWPixelFormatDrawers::DrawSpanMaskedTranslucent;
-						dc_srcblend = Col2RGB8[alpha >> 10];
-						dc_destblend = Col2RGB8[(OPAQUE - alpha) >> 10];
-						dc_srcalpha = alpha;
-						dc_destalpha = OPAQUE - alpha;
-					}
-					else
-					{
-						spanfunc = &SWPixelFormatDrawers::DrawSpanMaskedAddClamp;
-						dc_srcblend = Col2RGB8_LessPrecision[alpha >> 10];
-						dc_destblend = Col2RGB8_LessPrecision[FRACUNIT >> 10];
-						dc_srcalpha = alpha;
-						dc_destalpha = FRACUNIT;
-					}
-				}
-				else
-				{
-					spanfunc = &SWPixelFormatDrawers::DrawSpanMasked;
-				}
-			}
-			else
-			{
-				if (alpha < OPAQUE || additive)
-				{
-					if (!additive)
-					{
-						spanfunc = &SWPixelFormatDrawers::DrawSpanTranslucent;
-						dc_srcblend = Col2RGB8[alpha >> 10];
-						dc_destblend = Col2RGB8[(OPAQUE - alpha) >> 10];
-						dc_srcalpha = alpha;
-						dc_destalpha = OPAQUE - alpha;
-					}
-					else
-					{
-						spanfunc = &SWPixelFormatDrawers::DrawSpanAddClamp;
-						dc_srcblend = Col2RGB8_LessPrecision[alpha >> 10];
-						dc_destblend = Col2RGB8_LessPrecision[FRACUNIT >> 10];
-						dc_srcalpha = alpha;
-						dc_destalpha = FRACUNIT;
-					}
-				}
-				else
-				{
-					spanfunc = &SWPixelFormatDrawers::DrawSpan;
-				}
-			}
-		}
+		drawerargs.SetStyle(masked, additive, alpha);
 
 		light_list = pl->lights;
 
@@ -188,94 +157,101 @@ namespace swrenderer
 
 	void RenderFlatPlane::RenderLine(int y, int x1, int x2)
 	{
-		using namespace drawerargs;
-
-		double distance;
-
 #ifdef RANGECHECK
 		if (x2 < x1 || x1<0 || x2 >= viewwidth || (unsigned)y >= (unsigned)viewheight)
 		{
-			I_FatalError("R_MapPlane: %i, %i at %i", x1, x2, y);
+			I_Error("R_MapPlane: %i, %i at %i", x1, x2, y);
 		}
 #endif
 
-		// [RH] Notice that I dumped the caching scheme used by Doom.
-		// It did not offer any appreciable speedup.
+		auto viewport = Thread->Viewport.get();
 
-		distance = planeheight * yslope[y];
+		double curxfrac = basexfrac + xstepscale * (x1 + 0.5 - minx);
+		double curyfrac = baseyfrac + ystepscale * (x1 + 0.5 - minx);
 
-		if (ds_xbits != 0)
+		double distance = viewport->PlaneDepth(y, planeheight);
+
+		if (drawerargs.TextureWidthBits() != 0)
 		{
-			ds_xstep = xs_ToFixed(32 - ds_xbits, distance * xstepscale);
-			ds_xfrac = xs_ToFixed(32 - ds_xbits, distance * basexfrac) + pviewx;
+			drawerargs.SetTextureUStep(xs_ToFixed(32 - drawerargs.TextureWidthBits(), distance * xstepscale));
+			drawerargs.SetTextureUPos(xs_ToFixed(32 - drawerargs.TextureWidthBits(), distance * curxfrac + pviewx));
 		}
 		else
 		{
-			ds_xstep = 0;
-			ds_xfrac = 0;
+			drawerargs.SetTextureUStep(0);
+			drawerargs.SetTextureUPos(0);
 		}
-		if (ds_ybits != 0)
+
+		if (drawerargs.TextureHeightBits() != 0)
 		{
-			ds_ystep = xs_ToFixed(32 - ds_ybits, distance * ystepscale);
-			ds_yfrac = xs_ToFixed(32 - ds_ybits, distance * baseyfrac) + pviewy;
+			drawerargs.SetTextureVStep(xs_ToFixed(32 - drawerargs.TextureHeightBits(), distance * ystepscale));
+			drawerargs.SetTextureVPos(xs_ToFixed(32 - drawerargs.TextureHeightBits(), distance * curyfrac + pviewy));
 		}
 		else
 		{
-			ds_ystep = 0;
-			ds_yfrac = 0;
+			drawerargs.SetTextureVStep(0);
+			drawerargs.SetTextureVPos(0);
 		}
-
-		if (r_swtruecolor)
+		
+		if (viewport->RenderTarget->IsBgra())
 		{
-			double distance2 = planeheight * yslope[(y + 1 < viewheight) ? y + 1 : y - 1];
-			double xmagnitude = fabs(ystepscale * (distance2 - distance) * FocalLengthX);
-			double ymagnitude = fabs(xstepscale * (distance2 - distance) * FocalLengthX);
+			double distance2 = viewport->PlaneDepth(y + 1, planeheight);
+			double xmagnitude = fabs(ystepscale * (distance2 - distance) * viewport->FocalLengthX);
+			double ymagnitude = fabs(xstepscale * (distance2 - distance) * viewport->FocalLengthX);
 			double magnitude = MAX(ymagnitude, xmagnitude);
 			double min_lod = -1000.0;
-			ds_lod = MAX(log2(magnitude) + r_lod_bias, min_lod);
+			drawerargs.SetTextureLOD(MAX(log2(magnitude) + r_lod_bias, min_lod));
 		}
 
 		if (plane_shade)
 		{
 			// Determine lighting based on the span's distance from the viewer.
-			R_SetDSColorMapLight(basecolormap, (float)(GlobVis * fabs(CenterY - y)), planeshade);
+			drawerargs.SetLight(basecolormap, (float)(GlobVis * fabs(viewport->CenterY - y)), planeshade);
 		}
 
 		if (r_dynlights)
 		{
 			// Find row position in view space
-			float zspan = (float)(planeheight / (fabs(y + 0.5 - CenterY) / InvZtoScale));
-			dc_viewpos.X = (float)((x1 + 0.5 - CenterX) / CenterX * zspan);
-			dc_viewpos.Y = zspan;
-			dc_viewpos.Z = (float)((CenterY - y - 0.5) / InvZtoScale * zspan);
-			dc_viewpos_step.X = (float)(zspan / CenterX);
+			float zspan = (float)(planeheight / (fabs(y + 0.5 - viewport->CenterY) / viewport->InvZtoScale));
+			drawerargs.dc_viewpos.X = (float)((x1 + 0.5 - viewport->CenterX) / viewport->CenterX * zspan);
+			drawerargs.dc_viewpos.Y = zspan;
+			drawerargs.dc_viewpos.Z = (float)((viewport->CenterY - y - 0.5) / viewport->InvZtoScale * zspan);
+			drawerargs.dc_viewpos_step.X = (float)(zspan / viewport->CenterX);
 
-			static TriLight lightbuffer[64 * 1024];
-			static int nextlightindex = 0;
-			
 			// Plane normal
-			dc_normal.X = 0.0f;
-			dc_normal.Y = 0.0f;
-			dc_normal.Z = (y >= CenterY) ? 1.0f : -1.0f;
+			drawerargs.dc_normal.X = 0.0f;
+			drawerargs.dc_normal.Y = 0.0f;
+			drawerargs.dc_normal.Z = (y >= viewport->CenterY) ? 1.0f : -1.0f;
+
+			// Calculate max lights that can touch the row so we can allocate memory for the list
+			int max_lights = 0;
+			VisiblePlaneLight *cur_node = light_list;
+			while (cur_node)
+			{
+				if (!(cur_node->lightsource->flags2&MF2_DORMANT))
+					max_lights++;
+				cur_node = cur_node->next;
+			}
+
+			drawerargs.dc_num_lights = 0;
+			drawerargs.dc_lights = Thread->FrameMemory->AllocMemory<DrawerLight>(max_lights);
 
 			// Setup lights for row
-			dc_num_lights = 0;
-			dc_lights = lightbuffer + nextlightindex;
-			VisiblePlaneLight *cur_node = light_list;
-			while (cur_node && nextlightindex < 64 * 1024)
+			cur_node = light_list;
+			while (cur_node)
 			{
-				double lightX = cur_node->lightsource->X() - ViewPos.X;
-				double lightY = cur_node->lightsource->Y() - ViewPos.Y;
-				double lightZ = cur_node->lightsource->Z() - ViewPos.Z;
+				double lightX = cur_node->lightsource->X() - Thread->Viewport->viewpoint.Pos.X;
+				double lightY = cur_node->lightsource->Y() - Thread->Viewport->viewpoint.Pos.Y;
+				double lightZ = cur_node->lightsource->Z() - Thread->Viewport->viewpoint.Pos.Z;
 
-				float lx = (float)(lightX * ViewSin - lightY * ViewCos);
-				float ly = (float)(lightX * ViewTanCos + lightY * ViewTanSin) - dc_viewpos.Y;
-				float lz = (float)lightZ - dc_viewpos.Z;
+				float lx = (float)(lightX * Thread->Viewport->viewpoint.Sin - lightY * Thread->Viewport->viewpoint.Cos);
+				float ly = (float)(lightX * Thread->Viewport->viewpoint.TanCos + lightY * Thread->Viewport->viewpoint.TanSin) - drawerargs.dc_viewpos.Y;
+				float lz = (float)lightZ - drawerargs.dc_viewpos.Z;
 
 				// Precalculate the constant part of the dot here so the drawer doesn't have to.
 				bool is_point_light = (cur_node->lightsource->flags4 & MF4_ATTENUATE) != 0;
 				float lconstant = ly * ly + lz * lz;
-				float nlconstant = is_point_light ? lz * dc_normal.Z : 0.0f;
+				float nlconstant = is_point_light ? lz * drawerargs.dc_normal.Z : 0.0f;
 
 				// Include light only if it touches this row
 				float radius = cur_node->lightsource->GetRadius();
@@ -285,8 +261,7 @@ namespace swrenderer
 					uint32_t green = cur_node->lightsource->GetGreen();
 					uint32_t blue = cur_node->lightsource->GetBlue();
 
-					nextlightindex++;
-					auto &light = dc_lights[dc_num_lights++];
+					auto &light = drawerargs.dc_lights[drawerargs.dc_num_lights++];
 					light.x = lx;
 					light.y = lconstant;
 					light.z = nlconstant;
@@ -296,73 +271,25 @@ namespace swrenderer
 
 				cur_node = cur_node->next;
 			}
-
-			if (nextlightindex == 64 * 1024)
-				nextlightindex = 0;
 		}
 		else
 		{
-			dc_num_lights = 0;
+			drawerargs.dc_num_lights = 0;
 		}
 
-		ds_y = y;
-		ds_x1 = x1;
-		ds_x2 = x2;
+		drawerargs.SetDestY(viewport, y);
+		drawerargs.SetDestX1(x1);
+		drawerargs.SetDestX2(x2);
 
-		(R_Drawers()->*spanfunc)();
+		drawerargs.DrawSpan(Thread);
 	}
-
-	void RenderFlatPlane::StepColumn()
-	{
-		basexfrac -= xstepscale;
-		baseyfrac -= ystepscale;
-	}
-
-	void RenderFlatPlane::SetupSlope()
-	{
-		int e, i;
-
-		i = 0;
-		e = viewheight;
-		float focus = float(FocalLengthY);
-		float den;
-		float cy = float(CenterY);
-		if (i < centery)
-		{
-			den = cy - i - 0.5f;
-			if (e <= centery)
-			{
-				do {
-					yslope[i] = focus / den;
-					den -= 1;
-				} while (++i < e);
-			}
-			else
-			{
-				do {
-					yslope[i] = focus / den;
-					den -= 1;
-				} while (++i < centery);
-				den = i - cy + 0.5f;
-				do {
-					yslope[i] = focus / den;
-					den += 1;
-				} while (++i < e);
-			}
-		}
-		else
-		{
-			den = i - cy + 0.5f;
-			do {
-				yslope[i] = focus / den;
-				den += 1;
-			} while (++i < e);
-		}
-	}
-
-	float RenderFlatPlane::yslope[MAXHEIGHT];
 
 	/////////////////////////////////////////////////////////////////////////
+	
+	RenderColoredPlane::RenderColoredPlane(RenderThread *thread)
+	{
+		Thread = thread;
+	}
 
 	void RenderColoredPlane::Render(VisiblePlane *pl)
 	{
@@ -371,6 +298,6 @@ namespace swrenderer
 
 	void RenderColoredPlane::RenderLine(int y, int x1, int x2)
 	{
-		R_Drawers()->DrawColoredSpan(y, x1, x2);
+		drawerargs.DrawColoredSpan(Thread, y, x1, x2);
 	}
 }

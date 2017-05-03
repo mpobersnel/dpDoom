@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #pragma once
 
@@ -22,13 +30,15 @@
 
 namespace swrenderer
 {
+	class RenderThread;
+
 	class VisibleSprite
 	{
 	public:
 		VisibleSprite() { RenderStyle = STYLE_Normal; }
 		virtual ~VisibleSprite() { }
 		
-		void Render();
+		void Render(RenderThread *thread);
 
 		bool IsCurrentPortalUniq(int portalUniq) const { return CurrentPortalUniq == portalUniq; }
 		const FVector3 &WorldPos() const { return gpos; }
@@ -41,7 +51,7 @@ namespace swrenderer
 		virtual bool IsVoxel() const { return false; }
 		virtual bool IsWallSprite() const { return false; }
 
-		virtual void Render(short *cliptop, short *clipbottom, int minZ, int maxZ) = 0;
+		virtual void Render(RenderThread *thread, short *cliptop, short *clipbottom, int minZ, int maxZ) = 0;
 
 		FTexture *pic = nullptr;
 

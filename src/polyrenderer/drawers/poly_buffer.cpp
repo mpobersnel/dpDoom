@@ -34,7 +34,7 @@
 #include "v_palette.h"
 #include "r_data/colormaps.h"
 #include "poly_buffer.h"
-#include "swrenderer/drawers/r_drawers.h"
+#include "screen_triangle.h"
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -48,7 +48,8 @@ void PolySubsectorGBuffer::Resize(int newwidth, int newheight)
 {
 	width = newwidth;
 	height = newheight;
-	values.resize(width * height);
+	int count = BlockWidth() * BlockHeight();
+	values.resize(count * 64);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -73,28 +74,4 @@ void PolyStencilBuffer::Clear(int newwidth, int newheight, uint8_t stencil_value
 	{
 		m[i] = 0xffffff00 | stencil_value;
 	}
-}
-
-/////////////////////////////////////////////////////////////////////////////
-
-namespace
-{
-	int NextBufferVertex = 0;
-}
-
-TriVertex *PolyVertexBuffer::GetVertices(int count)
-{
-	enum { VertexBufferSize = 256 * 1024 };
-	static TriVertex Vertex[VertexBufferSize];
-
-	if (NextBufferVertex + count > VertexBufferSize)
-		return nullptr;
-	TriVertex *v = Vertex + NextBufferVertex;
-	NextBufferVertex += count;
-	return v;
-}
-
-void PolyVertexBuffer::Clear()
-{
-	NextBufferVertex = 0;
 }

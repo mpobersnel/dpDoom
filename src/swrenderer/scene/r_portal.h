@@ -1,28 +1,38 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #pragma once
 
 #include "swrenderer/segments/r_portalsegment.h"
+#include <set>
 
 namespace swrenderer
 {
+	class RenderThread;
 	struct VisiblePlane;
 
 	class RenderPortal
 	{
 	public:
-		static RenderPortal *Instance();
+		RenderPortal(RenderThread *thread);
 		
 		void SetMainPortal();
 		void CopyStackedViewParameters();
@@ -31,6 +41,8 @@ namespace swrenderer
 		void RenderLinePortals();
 
 		void AddLinePortal(line_t *linedef, int x1, int x2, const short *topclip, const short *bottomclip);
+
+		RenderThread *Thread = nullptr;
 	
 		int WindowLeft = 0;
 		int WindowRight = 0;
@@ -47,18 +59,22 @@ namespace swrenderer
 		int stacked_extralight = 0;
 		double stacked_visibility = 0.0;
 		DVector3 stacked_viewpos;
-		DAngle stacked_angle;
+		DRotator stacked_angle;
 		
 		int numskyboxes = 0; // For ADD_STAT(skyboxes)
+
+		void SetInSkyBox(FSectorPortal *portal) { SectorPortalsInSkyBox.insert(portal); }
+		void ClearInSkyBox(FSectorPortal *portal) { SectorPortalsInSkyBox.erase(portal); }
+		bool InSkyBox(FSectorPortal *portal) const { return SectorPortalsInSkyBox.find(portal) != SectorPortalsInSkyBox.end(); }
 
 	private:
 		void RenderLinePortal(PortalDrawseg* pds, int depth);
 		void RenderLinePortalHighlight(PortalDrawseg* pds);
 		
-		TArray<size_t> interestingStack;
-		TArray<ptrdiff_t> drawsegStack;
 		TArray<DVector3> viewposStack;
 		TArray<VisiblePlane *> visplaneStack;
 		TArray<PortalDrawseg *> WallPortals;
+
+		std::set<FSectorPortal *> SectorPortalsInSkyBox; // Instead of portal->mFlags & PORTSF_INSKYBOX
 	};
 }

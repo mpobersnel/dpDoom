@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #include <stdlib.h>
 #include "templates.h"
@@ -39,50 +47,128 @@
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/things/r_visiblesprite.h"
 #include "swrenderer/scene/r_light.h"
-#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/viewport/r_viewport.h"
+#include "swrenderer/r_renderthread.h"
 
 namespace swrenderer
 {
-	DrawSegmentList *DrawSegmentList::Instance()
+	DrawSegmentList::DrawSegmentList(RenderThread *thread)
 	{
-		static DrawSegmentList instance;
-		return &instance;
-	}
-
-	void DrawSegmentList::Deinit()
-	{
-		if (drawsegs != nullptr)
-		{
-			M_Free(drawsegs);
-			drawsegs = nullptr;
-		}
+		Thread = thread;
 	}
 
 	void DrawSegmentList::Clear()
 	{
-		if (drawsegs == nullptr)
-		{
-			MaxDrawSegs = 256; // [RH] Default. Increased as needed.
-			firstdrawseg = drawsegs = (DrawSegment *)M_Malloc (MaxDrawSegs * sizeof(DrawSegment));
-		}
-		FirstInterestingDrawseg = 0;
-		InterestingDrawsegs.Clear ();
-		ds_p = drawsegs;
+		Segments.Clear();
+		StartIndices.Clear();
+		StartIndices.Push(0);
+
+		InterestingSegments.Clear();
+		StartInterestingIndices.Clear();
+		StartInterestingIndices.Push(0);
 	}
 
-	DrawSegment *DrawSegmentList::Add()
+	void DrawSegmentList::PushPortal()
 	{
-		if (ds_p == &drawsegs[MaxDrawSegs])
-		{ // [RH] Grab some more drawsegs
-			size_t newdrawsegs = MaxDrawSegs ? MaxDrawSegs * 2 : 32;
-			ptrdiff_t firstofs = firstdrawseg - drawsegs;
-			drawsegs = (DrawSegment *)M_Realloc(drawsegs, newdrawsegs * sizeof(DrawSegment));
-			firstdrawseg = drawsegs + firstofs;
-			ds_p = drawsegs + MaxDrawSegs;
-			MaxDrawSegs = newdrawsegs;
-			DPrintf(DMSG_NOTIFY, "MaxDrawSegs increased to %zu\n", MaxDrawSegs);
-		}
+		StartIndices.Push(Segments.Size());
+		StartInterestingIndices.Push(InterestingSegments.Size());
+	}
 
-		return ds_p++;
+	void DrawSegmentList::PopPortal()
+	{
+		Segments.Resize(StartIndices.Last());
+		StartIndices.Pop();
+
+		InterestingSegments.Resize(StartInterestingIndices.Last());
+		StartInterestingIndices.Pop();
+	}
+
+	void DrawSegmentList::Push(DrawSegment *segment)
+	{
+		Segments.Push(segment);
+	}
+
+	void DrawSegmentList::PushInteresting(DrawSegment *segment)
+	{
+		InterestingSegments.Push(segment);
+	}
+
+	void DrawSegmentList::BuildSegmentGroups()
+	{
+		SegmentGroups.Clear();
+
+		unsigned int groupSize = 100;
+		for (unsigned int index = 0; index < SegmentsCount(); index += groupSize)
+		{
+			auto ds = Segment(index);
+
+			DrawSegmentGroup group;
+			group.BeginIndex = index;
+			group.EndIndex = MIN(index + groupSize, SegmentsCount());
+			group.x1 = ds->x1;
+			group.x2 = ds->x2;
+			group.neardepth = MIN(ds->sz1, ds->sz2);
+			group.fardepth = MAX(ds->sz1, ds->sz2);
+
+			for (unsigned int groupIndex = group.BeginIndex + 1; groupIndex < group.EndIndex; groupIndex++)
+			{
+				ds = Segment(groupIndex);
+				group.x1 = MIN(group.x1, ds->x1);
+				group.x2 = MAX(group.x2, ds->x2);
+				group.neardepth = MIN(group.neardepth, ds->sz1);
+				group.neardepth = MIN(group.neardepth, ds->sz2);
+				group.fardepth = MAX(ds->sz1, group.fardepth);
+				group.fardepth = MAX(ds->sz2, group.fardepth);
+			}
+
+			for (int x = group.x1; x < group.x2; x++)
+			{
+				cliptop[x] = 0;
+				clipbottom[x] = viewheight;
+			}
+
+			for (unsigned int groupIndex = group.BeginIndex; groupIndex < group.EndIndex; groupIndex++)
+			{
+				ds = Segment(groupIndex);
+
+				// kg3D - no clipping on fake segs
+				if (ds->fake) continue;
+
+				if (ds->silhouette & SIL_BOTTOM)
+				{
+					short *clip1 = clipbottom + ds->x1;
+					const short *clip2 = ds->sprbottomclip;
+					int i = ds->x2 - ds->x1;
+					do
+					{
+						if (*clip1 > *clip2)
+							*clip1 = *clip2;
+						clip1++;
+						clip2++;
+					} while (--i);
+				}
+
+				if (ds->silhouette & SIL_TOP)
+				{
+					short *clip1 = cliptop + ds->x1;
+					const short *clip2 = ds->sprtopclip;
+					int i = ds->x2 - ds->x1;
+					do
+					{
+						if (*clip1 < *clip2)
+							*clip1 = *clip2;
+						clip1++;
+						clip2++;
+					} while (--i);
+				}
+			}
+
+			group.sprtopclip = Thread->FrameMemory->AllocMemory<short>(group.x2 - group.x1);
+			group.sprbottomclip = Thread->FrameMemory->AllocMemory<short>(group.x2 - group.x1);
+			memcpy(group.sprtopclip, cliptop + group.x1, (group.x2 - group.x1) * sizeof(short));
+			memcpy(group.sprbottomclip, clipbottom + group.x1, (group.x2 - group.x1) * sizeof(short));
+
+			SegmentGroups.Push(group);
+		}
 	}
 }

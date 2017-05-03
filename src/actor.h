@@ -1,18 +1,24 @@
-// Emacs style mode select	 -*- C++ -*- 
 //-----------------------------------------------------------------------------
 //
-// $Id:$
+// Copyright 1993-1996 id Software
+// Copyright 1994-1996 Raven Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2002-2016 Christoph Oelckers
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
-//
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 // DESCRIPTION:
 //		Map Objects, MObj, definition and handling.
@@ -33,7 +39,6 @@
 // States are tied to finite states are tied to animation frames.
 #include "info.h"
 
-#include <forward_list>
 #include "doomdef.h"
 #include "textures/textures.h"
 #include "r_data/renderstyle.h"
@@ -47,6 +52,7 @@ struct subsector_t;
 struct FBlockNode;
 struct FPortalGroupArray;
 struct visstyle_t;
+class FLightDefaults;
 //
 // NOTES: AActor
 //
@@ -387,6 +393,9 @@ enum ActorFlag7
 	MF7_SPRITEANGLE		= 0x02000000,	// [MC] Utilize the SpriteAngle property and lock the rotation to the degrees specified.
 	MF7_SMASHABLE		= 0x04000000,	// dies if hitting the floor.
 	MF7_NOSHIELDREFLECT = 0x08000000,	// will not be reflected by shields.
+	MF7_FORCEZERORADIUSDMG = 0x10000000,	// passes zero radius damage on to P_DamageMobj, this is necessary in some cases where DoSpecialDamage gets overrideen.
+	MF7_NOINFIGHTSPECIES = 0x20000000,	// don't start infights with one's own species.
+	MF7_FORCEINFIGHTING	= 0x40000000,	// overrides a map setting of 'no infighting'.
 };
 
 // --- mobj.renderflags ---
@@ -417,16 +426,17 @@ enum ActorRenderFlag
 	RF_FLATSPRITE		= 0x2000,	// Flat sprite
 	RF_VOXELSPRITE		= 0x3000,	// Voxel object
 	RF_INVISIBLE		= 0x8000,	// Don't bother drawing this actor
-	RF_MAYBEINVISIBLE	= 0x10000,
+	RF_FORCEYBILLBOARD	= 0x10000,	// [BB] OpenGL only: draw with y axis billboard, i.e. anchored to the floor (overrides gl_billboard_mode setting)
+	RF_FORCEXYBILLBOARD	= 0x20000,	// [BB] OpenGL only: draw with xy axis billboard, i.e. unanchored (overrides gl_billboard_mode setting)
 	RF_ROLLSPRITE		= 0x40000,	//[marrub]roll the sprite billboard
 	RF_DONTFLIP			= 0x80000,	// Don't flip it when viewed from behind.
 	RF_ROLLCENTER		= 0x00100000, // Rotate from the center of sprite instead of offsets
 	RF_MASKROTATION		= 0x00200000, // [MC] Only draw the actor when viewed from a certain angle range.
 	RF_ABSMASKANGLE		= 0x00400000, // [MC] The mask rotation does not offset by the actor's angle.
 	RF_ABSMASKPITCH		= 0x00800000, // [MC] The mask rotation does not offset by the actor's pitch.
-
-	RF_FORCEYBILLBOARD		= 0x10000,	// [BB] OpenGL only: draw with y axis billboard, i.e. anchored to the floor (overrides gl_billboard_mode setting)
-	RF_FORCEXYBILLBOARD		= 0x20000,	// [BB] OpenGL only: draw with xy axis billboard, i.e. unanchored (overrides gl_billboard_mode setting)
+	RF_INTERPOLATEANGLES		= 0x01000000, // [MC] Allow interpolation of the actor's angle, pitch and roll.
+	RF_MAYBEINVISIBLE	= 0x02000000,
+	RF_DONTINTERPOLATE	= 0x04000000,	// no render interpolation ever!
 };
 
 // This translucency value produces the closest match to Heretic's TINTTAB.
@@ -464,6 +474,7 @@ enum ActorBounceFlag
 	BOUNCE_MBF = 1<<12,			// This in itself is not a valid mode, but replaces MBF's MF_BOUNCE flag.
 	BOUNCE_AutoOffFloorOnly = 1<<13,		// like BOUNCE_AutoOff, but only on floors
 	BOUNCE_UseBounceState = 1<<14,	// Use Bounce[.*] states
+	BOUNCE_NotOnShootables = 1<<15,	// do not bounce off shootable actors if we are a projectile. Explode instead.
 
 	BOUNCE_TypeMask = BOUNCE_Walls | BOUNCE_Floors | BOUNCE_Ceilings | BOUNCE_Actors | BOUNCE_AutoOff | BOUNCE_HereticType | BOUNCE_MBF,
 
@@ -506,7 +517,7 @@ typedef TFlags<ActorFlag5> ActorFlags5;
 typedef TFlags<ActorFlag6> ActorFlags6;
 typedef TFlags<ActorFlag7> ActorFlags7;
 typedef TFlags<ActorRenderFlag> ActorRenderFlags;
-typedef TFlags<ActorBounceFlag, WORD> ActorBounceFlags;
+typedef TFlags<ActorBounceFlag, uint16_t> ActorBounceFlags;
 DEFINE_TFLAGS_OPERATORS (ActorFlags)
 DEFINE_TFLAGS_OPERATORS (ActorFlags2)
 DEFINE_TFLAGS_OPERATORS (ActorFlags3)
@@ -571,12 +582,9 @@ struct FLinkContext
 	msecnode_t *render_list = nullptr;
 };
 
-class DDropItem : public DObject
+struct FDropItem
 {
-	DECLARE_CLASS(DDropItem, DObject)
-	HAS_OBJECT_POINTERS
-public:
-	DDropItem *Next;
+	FDropItem *Next;
 	FName Name;
 	int Probability;
 	int Amount;
@@ -595,6 +603,7 @@ public:
 	AActor &operator= (const AActor &other);
 	~AActor ();
 
+	virtual void Finalize(FStateDefinitions &statedef);
 	virtual void OnDestroy() override;
 	virtual void Serialize(FSerializer &arc) override;
 	virtual void PostSerialize() override;
@@ -608,7 +617,13 @@ public:
 		return (AActor *)(this->GetClass()->Defaults);
 	}
 
-	DDropItem *GetDropItems() const;
+	FActorInfo *GetInfo() const
+	{
+		return static_cast<PClassActor*>(GetClass())->ActorInfo();
+	}
+
+
+	FDropItem *GetDropItems() const;
 
 	// Return true if the monster should use a missile attack, false for melee
 	bool SuggestMissileAttack (double dist);
@@ -626,6 +641,9 @@ public:
 
 	virtual void BeginPlay();			// Called immediately after the actor is created
 	void CallBeginPlay();
+
+	// [ZZ] custom postbeginplay (calls E_WorldThingSpawned)
+	void CallPostBeginPlay() override;
 
 	void LevelSpawned();				// Called after BeginPlay if this actor was spawned by the world
 	void HandleSpawnFlags();	// Translates SpawnFlags into in-game flags.
@@ -685,6 +703,7 @@ public:
 	int SpecialMissileHit (AActor *victim);
 
 	// Returns true if it's okay to switch target to "other" after being attacked by it.
+	bool CallOkayToSwitchTarget(AActor *other);
 	bool OkayToSwitchTarget (AActor *other);
 
 	// Note: Although some of the inventory functions are virtual, this
@@ -697,7 +716,7 @@ public:
 
 	// Give an item to the actor and pick it up.
 	// Returns true if the item pickup succeeded.
-	bool GiveInventory (PClassInventory *type, int amount, bool givecheat = false);
+	bool GiveInventory (PClassActor *type, int amount, bool givecheat = false);
 
 	// Removes the item from the inventory list.
 	virtual void RemoveInventory (AInventory *item);
@@ -707,11 +726,13 @@ public:
 	// Returns true if the initial item count is positive.
 	virtual bool TakeInventory (PClassActor *itemclass, int amount, bool fromdecorate = false, bool notakeinfinite = false);
 
+	bool SetInventory(PClassActor *itemclass, int amount, bool beyondMax);
+
 	// Uses an item and removes it from the inventory.
 	virtual bool UseInventory (AInventory *item);
 
 	// Tosses an item out of the inventory.
-	AInventory *DropInventory (AInventory *item);
+	AInventory *DropInventory (AInventory *item, int amt = -1);
 
 	// Removes all items from the inventory.
 	void ClearInventory();
@@ -724,7 +745,7 @@ public:
 	AInventory *FindInventory (FName type, bool subclass = false);
 	template<class T> T *FindInventory ()
 	{
-		return static_cast<T *> (FindInventory (RUNTIME_TEMPLATE_CLASS(T)));
+		return static_cast<T *> (FindInventory (RUNTIME_CLASS(T)));
 	}
 
 	// Adds one item of a particular type. Returns NULL if it could not be added.
@@ -734,13 +755,13 @@ public:
 	AInventory *FirstInv ();
 
 	// Tries to give the actor some ammo.
-	bool GiveAmmo (PClassInventory *type, int amount);
+	bool GiveAmmo (PClassActor *type, int amount);
 
 	// Destroys all the inventory the actor is holding.
 	void DestroyAllInventory ();
 
 	// Set the alphacolor field properly
-	void SetShade (DWORD rgb);
+	void SetShade (uint32_t rgb);
 	void SetShade (int r, int g, int b);
 
 	// Plays a conversation animation
@@ -801,42 +822,12 @@ public:
 		return (flags & MF_COUNTKILL) && !(flags & MF_FRIENDLY);
 	}
 
-	PalEntry GetBloodColor() const
-	{
-		return GetClass()->BloodColor;
-	}
-
 	// These also set CF_INTERPVIEW for players.
 	void SetPitch(DAngle p, bool interpolate, bool forceclamp = false);
 	void SetAngle(DAngle ang, bool interpolate);
 	void SetRoll(DAngle roll, bool interpolate);
 
-	PClassActor *GetBloodType(int type = 0) const
-	{
-		PClassActor *bloodcls;
-		if (type == 0)
-		{
-			bloodcls = PClass::FindActor(GetClass()->BloodType);
-		}
-		else if (type == 1)
-		{
-			bloodcls = PClass::FindActor(GetClass()->BloodType2);
-		}
-		else if (type == 2)
-		{
-			bloodcls = PClass::FindActor(GetClass()->BloodType3);
-		}
-		else
-		{
-			return NULL;
-		}
-
-		if (bloodcls != NULL)
-		{
-			bloodcls = bloodcls->GetReplacement();
-		}
-		return bloodcls;
-	}
+	PClassActor *GetBloodType(int type = 0) const;
 
 	double Distance2DSquared(AActor *other, bool absolute = false)
 	{
@@ -971,7 +962,7 @@ public:
 	{
 		SetOrigin(Pos() + vel, true);
 	}
-	void SetOrigin(double x, double y, double z, bool moving);
+	virtual void SetOrigin(double x, double y, double z, bool moving);
 	void SetOrigin(const DVector3 & npos, bool moving)
 	{
 		SetOrigin(npos.X, npos.Y, npos.Z, moving);
@@ -998,33 +989,50 @@ public:
 	void ClearRenderSectorList();
 	void ClearRenderLineList();
 
+	void AttachLight(unsigned int count, const FLightDefaults *lightdef);
+	void SetDynamicLights();
+
+
 // info for drawing
 // NOTE: The first member variable *must* be snext.
 	AActor			*snext, **sprev;	// links in sector (if needed)
 	DVector3		__Pos;		// double underscores so that it won't get used by accident. Access to this should be exclusively through the designated access functions.
-	DVector3		OldRenderPos;
 
 	DAngle			SpriteAngle;
 	DAngle			SpriteRotation;
-	DAngle			VisibleStartAngle;
-	DAngle			VisibleStartPitch;
-	DAngle			VisibleEndAngle;
-	DAngle			VisibleEndPitch;
 	DRotator		Angles;
-	DVector3		Vel;
-	double			Speed;
-	double			FloatSpeed;
+	DVector2		Scale;				// Scaling values; 1 is normal size
+	double			Alpha;				// Since P_CheckSight makes an alpha check this can't be a float. It has to be a double.
 
 	int				sprite;				// used to find patch_t and flip value
 	uint8_t			frame;				// sprite frame to draw
 	uint8_t			effects;			// [RH] see p_effect.h
 	uint8_t			fountaincolor;		// Split out of 'effect' to have easier access.
-	DVector2		Scale;				// Scaling values; 1 is normal size
 	FRenderStyle	RenderStyle;		// Style to draw this actor with
-	ActorRenderFlags	renderflags;		// Different rendering flags
 	FTextureID		picnum;				// Draw this instead of sprite if valid
-	double			Alpha;				// Since P_CheckSight makes an alpha check this can't be a float. It has to be a double.
-	DWORD			fillcolor;			// Color to draw when STYLE_Shaded
+	uint32_t			fillcolor;			// Color to draw when STYLE_Shaded
+	uint32_t			Translation;
+
+	ActorRenderFlags	renderflags;		// Different rendering flags
+	ActorFlags		flags;
+	ActorFlags2		flags2;			// Heretic flags
+	ActorFlags3		flags3;			// [RH] Hexen/Heretic actor-dependant behavior made flaggable
+	ActorFlags4		flags4;			// [RH] Even more flags!
+	ActorFlags5		flags5;			// OMG! We need another one.
+	ActorFlags6		flags6;			// Shit! Where did all the flags go?
+	ActorFlags7		flags7;			// WHO WANTS TO BET ON 8!?
+	double			Floorclip;		// value to use for floor clipping
+	double			radius, Height;		// for movement checking
+
+	DAngle			VisibleStartAngle;
+	DAngle			VisibleStartPitch;
+	DAngle			VisibleEndAngle;
+	DAngle			VisibleEndPitch;
+
+	DVector3		OldRenderPos;
+	DVector3		Vel;
+	double			Speed;
+	double			FloatSpeed;
 
 // interaction info
 	FBlockNode		*BlockNode;			// links in blocks (if needed)
@@ -1038,27 +1046,25 @@ public:
 	int				floorterrain;
 	struct sector_t	*ceilingsector;
 	FTextureID		ceilingpic;			// contacted sec ceilingpic
-	double			radius, Height;		// for movement checking
 	double			renderradius;
 
 	double			projectilepassheight;	// height for clipping projectile movement against this actor
-	
-	SDWORD			tics;				// state tic counter
+	double			CameraHeight;	// Height of camera when used as such
+
+	double			RadiusDamageFactor;		// Radius damage factor
+	double			SelfDamageFactor;
+	double			StealthAlpha;	// Minmum alpha for MF_STEALTH.
+	int				WoundHealth;		// Health needed to enter wound state
+
+	int32_t			tics;				// state tic counter
 	FState			*state;
 	//VMFunction		*Damage;			// For missiles and monster railgun
 	int				DamageVal;
 	VMFunction		*DamageFunc;
 	int				projectileKickback;
-	ActorFlags		flags;
-	ActorFlags2		flags2;			// Heretic flags
-	ActorFlags3		flags3;			// [RH] Hexen/Heretic actor-dependant behavior made flaggable
-	ActorFlags4		flags4;			// [RH] Even more flags!
-	ActorFlags5		flags5;			// OMG! We need another one.
-	ActorFlags6		flags6;			// Shit! Where did all the flags go?
-	ActorFlags7		flags7;			// WHO WANTS TO BET ON 8!?
 
 	// [BB] If 0, everybody can see the actor, if > 0, only members of team (VisibleToTeam-1) can see it.
-	DWORD			VisibleToTeam;
+	uint32_t			VisibleToTeam;
 
 	int				special1;		// Special info
 	int				special2;		// Special info
@@ -1067,33 +1073,32 @@ public:
 
 	int				weaponspecial;	// Special info for weapons.
 	int 			health;
-	BYTE			movedir;		// 0-7
-	SBYTE			visdir;
-	SWORD			movecount;		// when 0, select a new dir
-	SWORD			strafecount;	// for MF3_AVOIDMELEE
-	TObjPtr<AActor> target;			// thing being chased/attacked (or NULL)
+	uint8_t			movedir;		// 0-7
+	int8_t			visdir;
+	int16_t			movecount;		// when 0, select a new dir
+	int16_t			strafecount;	// for MF3_AVOIDMELEE
+	TObjPtr<AActor*> target;			// thing being chased/attacked (or NULL)
 									// also the originator for missiles
-	TObjPtr<AActor>	lastenemy;		// Last known enemy -- killough 2/15/98
-	TObjPtr<AActor> LastHeard;		// [RH] Last actor this one heard
-	SDWORD			reactiontime;	// if non 0, don't attack yet; used by
+	TObjPtr<AActor*>	lastenemy;		// Last known enemy -- killough 2/15/98
+	TObjPtr<AActor*> LastHeard;		// [RH] Last actor this one heard
+	int32_t			reactiontime;	// if non 0, don't attack yet; used by
 									// player to freeze a bit after teleporting
-	SDWORD			threshold;		// if > 0, the target will be chased
-	SDWORD			DefThreshold;	// [MC] Default threshold which the actor will reset its threshold to after switching targets
+	int32_t			threshold;		// if > 0, the target will be chased
+	int32_t			DefThreshold;	// [MC] Default threshold which the actor will reset its threshold to after switching targets
 									// no matter what (even if shot)
 	player_t		*player;		// only valid if type of APlayerPawn
-	TObjPtr<AActor>	LastLookActor;	// Actor last looked for (if TIDtoHate != 0)
+	TObjPtr<AActor*>	LastLookActor;	// Actor last looked for (if TIDtoHate != 0)
 	DVector3		SpawnPoint; 	// For nightmare respawn
-	WORD			SpawnAngle;
+	uint16_t			SpawnAngle;
 	int				StartHealth;
-	BYTE			WeaveIndexXY;	// Separated from special2 because it's used by globally accessible functions.
-	BYTE			WeaveIndexZ;
+	uint8_t			WeaveIndexXY;	// Separated from special2 because it's used by globally accessible functions.
+	uint8_t			WeaveIndexZ;
 	int				skillrespawncount;
 	int				TIDtoHate;			// TID of things to hate (0 if none)
 	FNameNoInit		Species;		// For monster families
-	TObjPtr<AActor>	alternative;	// (Un)Morphed actors stored here. Those with the MF_UNMORPHED flag are the originals.
-	TObjPtr<AActor>	tracer;			// Thing being chased/attacked for tracers
-	TObjPtr<AActor>	master;			// Thing which spawned this one (prevents mutual attacks)
-	double			Floorclip;		// value to use for floor clipping
+	TObjPtr<AActor*>	alternative;	// (Un)Morphed actors stored here. Those with the MF_UNMORPHED flag are the originals.
+	TObjPtr<AActor*>	tracer;			// Thing being chased/attacked for tracers
+	TObjPtr<AActor*>	master;			// Thing which spawned this one (prevents mutual attacks)
 
 	int				tid;			// thing identifier
 	int				special;		// special
@@ -1102,13 +1107,13 @@ public:
 	int		accuracy, stamina;		// [RH] Strife stats -- [XA] moved here for DECORATE/ACS access.
 
 	AActor			*inext, **iprev;// Links to other mobjs in same bucket
-	TObjPtr<AActor> goal;			// Monster's goal if not chasing anything
+	TObjPtr<AActor*> goal;			// Monster's goal if not chasing anything
 	int				waterlevel;		// 0=none, 1=feet, 2=waist, 3=eyes
-	BYTE			boomwaterlevel;	// splash information for non-swimmable water sectors
-	BYTE			MinMissileChance;// [RH] If a random # is > than this, then missile attack.
-	SBYTE			LastLookPlayerNumber;// Player number last looked for (if TIDtoHate == 0)
+	uint8_t			boomwaterlevel;	// splash information for non-swimmable water sectors
+	uint8_t			MinMissileChance;// [RH] If a random # is > than this, then missile attack.
+	int8_t			LastLookPlayerNumber;// Player number last looked for (if TIDtoHate == 0)
 	ActorBounceFlags	BounceFlags;	// which bouncing type?
-	DWORD			SpawnFlags;		// Increased to DWORD because of Doom 64
+	uint32_t			SpawnFlags;		// Increased to uint32_t because of Doom 64
 	double			meleerange;		// specifies how far a melee attack reaches.
 	double			meleethreshold;	// Distance below which a monster doesn't try to shoot missiles anynore
 									// but instead tries to come closer for a melee attack.
@@ -1140,7 +1145,7 @@ public:
 	FNameNoInit PoisonDamageTypeReceived; // Damage type received by poison.
 	int PoisonDurationReceived; // Duration left for receiving poison damage.
 	int PoisonPeriodReceived; // How often poison damage is applied. (Every X tics.)
-	TObjPtr<AActor> Poisoner; // Last source of received poison damage.
+	TObjPtr<AActor*> Poisoner; // Last source of received poison damage.
 
 	// a linked list of sectors where this object appears
 	struct msecnode_t	*touching_sectorlist;				// phares 3/14/98
@@ -1150,13 +1155,14 @@ public:
 	int validcount;
 
 
-	TObjPtr<AInventory>	Inventory;		// [RH] This actor's inventory
-	DWORD			InventoryID;	// A unique ID to keep track of inventory items
+	TObjPtr<AInventory*>	Inventory;		// [RH] This actor's inventory
+	uint32_t			InventoryID;	// A unique ID to keep track of inventory items
 
-	BYTE smokecounter;
-	BYTE FloatBobPhase;
-	BYTE FriendPlayer;				// [RH] Player # + 1 this friendly monster works for (so 0 is no player, 1 is player 0, etc)
-	DWORD Translation;
+	uint8_t smokecounter;
+	uint8_t FloatBobPhase;
+	uint8_t FriendPlayer;				// [RH] Player # + 1 this friendly monster works for (so 0 is no player, 1 is player 0, etc)
+	PalEntry BloodColor;
+	uint32_t BloodTranslation;
 
 	// [RH] Stuff that used to be part of an Actor Info
 	FSoundIDNoInit SeeSound;
@@ -1172,8 +1178,8 @@ public:
 	double MaxDropOffHeight;
 	double MaxStepHeight;
 
-	SDWORD Mass;
-	SWORD PainChance;
+	int32_t Mass;
+	int16_t PainChance;
 	int PainThreshold;
 	FNameNoInit DamageType;
 	FNameNoInit DamageTypeReceived;
@@ -1204,6 +1210,7 @@ public:
 	DVector3 Prev;
 	DRotator PrevAngles;
 	int PrevPortalGroup;
+	TArray<TObjPtr<AActor*> > AttachedLights;
 
 	// ThingIDs
 	static void ClearTIDHashes ();
@@ -1229,6 +1236,7 @@ public:
 	bool InStateSequence(FState * newstate, FState * basestate);
 	int GetTics(FState * newstate);
 	bool SetState (FState *newstate, bool nofunction=false);
+	virtual void SplashCheck();
 	virtual bool UpdateWaterLevel (bool splash=true);
 	bool isFast();
 	bool isSlow();
@@ -1316,7 +1324,30 @@ public:
 	}
 	DVector3 InterpolatedPosition(double ticFrac) const
 	{
-		return Prev + (ticFrac * (Pos() - Prev));
+		if (renderflags & RF_DONTINTERPOLATE) return Pos();
+		else return Prev + (ticFrac * (Pos() - Prev));
+	}
+	DRotator InterpolatedAngles(double ticFrac) const
+	{
+		DRotator result;
+		result.Yaw = PrevAngles.Yaw + deltaangle(PrevAngles.Yaw, Angles.Yaw) * ticFrac;
+		result.Pitch = PrevAngles.Pitch + deltaangle(PrevAngles.Pitch, Angles.Pitch) * ticFrac;
+		result.Roll = PrevAngles.Roll + deltaangle(PrevAngles.Roll, Angles.Roll) * ticFrac;
+		return result;
+	}
+	DAngle GetSpriteAngle(DAngle viewangle, double ticFrac)
+	{
+		if (flags7 & MF7_SPRITEANGLE)
+		{
+			return SpriteAngle;
+		}
+		else
+		{
+			DAngle thisang;
+			if (renderflags & RF_INTERPOLATEANGLES) thisang = PrevAngles.Yaw + deltaangle(PrevAngles.Yaw, Angles.Yaw) * ticFrac;
+			else thisang = Angles.Yaw;
+			return viewangle - (thisang + SpriteRotation);
+		}
 	}
 	DVector3 PosPlusZ(double zadd) const
 	{
@@ -1435,12 +1466,10 @@ public:
 	int ApplyDamageFactor(FName damagetype, int damage) const;
 	int GetModifiedDamage(FName damagetype, int damage, bool passive);
 
+	static void DeleteAllAttachedLights();
+	static void RecreateAllAttachedLights();
 
-	// begin of GZDoom specific additions
-	TArray<TObjPtr<AActor> >		dynamiclights;
-	void *				lightassociations;
 	bool				hasmodel;
-	// end of GZDoom specific additions
 
 	size_t PropagateMark();
 };
@@ -1472,6 +1501,7 @@ public:
 	{
 		base = nullptr;
 	}
+
 private:
 	AActor *base;
 	int id;
@@ -1488,7 +1518,7 @@ public:
 		do
 		{
 			actor = FActorIterator::Next ();
-		} while (actor && !actor->IsKindOf (RUNTIME_TEMPLATE_CLASS(T)));
+		} while (actor && !actor->IsKindOf (RUNTIME_CLASS(T)));
 		return static_cast<T *>(actor);
 	}
 };
@@ -1539,16 +1569,27 @@ inline AActor *Spawn(FName type, const DVector3 &pos, replace_t allowreplacement
 
 template<class T> inline T *Spawn(const DVector3 &pos, replace_t allowreplacement)
 {
-	return static_cast<T *>(AActor::StaticSpawn(RUNTIME_TEMPLATE_CLASS(T), pos, allowreplacement));
+	return static_cast<T *>(AActor::StaticSpawn(RUNTIME_CLASS(T), pos, allowreplacement));
 }
 
 template<class T> inline T *Spawn()	// for inventory items we do not need coordinates and replacement info.
 {
-	return static_cast<T *>(AActor::StaticSpawn(RUNTIME_TEMPLATE_CLASS(T), DVector3(0, 0, 0), NO_REPLACE));
+	return static_cast<T *>(AActor::StaticSpawn(RUNTIME_CLASS(T), DVector3(0, 0, 0), NO_REPLACE));
+}
+
+inline PClassActor *PClass::FindActor(FName name)
+{
+	auto cls = FindClass(name);
+	return cls && cls->IsDescendantOf(RUNTIME_CLASS(AActor)) ? static_cast<PClassActor*>(cls) : nullptr;
+}
+
+inline PClassActor *ValidateActor(PClass *cls)
+{
+	return cls && cls->IsDescendantOf(RUNTIME_CLASS(AActor)) ? static_cast<PClassActor*>(cls) : nullptr;
 }
 
 void PrintMiscActorInfo(AActor * query);
-AActor *P_LinePickActor(AActor *t1, DAngle angle, double distance, DAngle pitch, ActorFlags actorMask, DWORD wallMask);
+AActor *P_LinePickActor(AActor *t1, DAngle angle, double distance, DAngle pitch, ActorFlags actorMask, uint32_t wallMask);
 
 // If we want to make P_AimLineAttack capable of handling arbitrary portals, it needs to pass a lot more info than just the linetarget actor.
 struct FTranslatedLineTarget

@@ -33,19 +33,6 @@
 //
 //---------------------------------------------------------------------------
 //
-// FraggleScript is from SMMU which is under the GPL. Technically, 
-// therefore, combining the FraggleScript code with the non-free 
-// ZDoom code is a violation of the GPL.
-//
-// As this may be a problem for you, I hereby grant an exception to my 
-// copyright on the SMMU source (including FraggleScript). You may use 
-// any code from SMMU in (G)ZDoom, provided that:
-//
-//    * For any binary release of the port, the source code is also made 
-//      available.
-//    * The copyright notice is kept on any file containing my code.
-//
-//
 
 #include "templates.h"
 #include "p_local.h"
@@ -71,6 +58,7 @@
 #include "r_utility.h"
 #include "math/cmath.h"
 #include "g_levellocals.h"
+#include "actorinlines.h"
 
 static FRandom pr_script("FScript");
 
@@ -340,7 +328,7 @@ inline int T_FindFirstSectorFromTag(int tagnum)
 // Doom index is only supported for the 4 original ammo types
 //
 //==========================================================================
-static PClassInventory * T_GetAmmo(const svalue_t &t)
+static PClassActor * T_GetAmmo(const svalue_t &t)
 {
 	const char * p;
 
@@ -361,8 +349,8 @@ static PClassInventory * T_GetAmmo(const svalue_t &t)
 		}
 		p=DefAmmo[ammonum];
 	}
-	PClassInventory * am=dyn_cast<PClassInventory>(PClass::FindActor(p));
-	if (am == NULL)
+	auto am = PClass::FindActor(p);
+	if (am == NULL || !am->IsDescendantOf(PClass::FindClass(NAME_Ammo)))
 	{
 		script_error("unknown ammo type : %s", p);
 		return NULL;
@@ -479,7 +467,7 @@ DFsSection *FParser::looping_section()
 	int n;
 	
 	// check thru all the hashchains
-	SDWORD rover_index = Script->MakeIndex(Rover);
+	int32_t rover_index = Script->MakeIndex(Rover);
 	
 	for(n=0; n<SECTIONSLOTS; n++)
 	{
@@ -1218,7 +1206,7 @@ void FParser::SF_ObjFlag(void)
 			
 			if(mo && flagnum<26)          // nullptr check
 			{
-				DWORD tempflags = mo->flags;
+				uint32_t tempflags = mo->flags;
 
 				// remove old bit
 				tempflags &= ~(1 << flagnum);
@@ -1872,7 +1860,7 @@ void FParser::SF_FadeLight(void)
 		FSectorTagIterator it(sectag);
 		while ((i = it.Next()) >= 0)
 		{
-			if (!level.sectors[i].lightingdata) new DLightLevel(&level.sectors[i],destlevel,speed);
+			if (!level.sectors[i].lightingdata) Create<DLightLevel>(&level.sectors[i],destlevel,speed);
 		}
 	}
 }
@@ -1953,7 +1941,7 @@ void FParser::SF_SectorColormap(void)
 
 	if (t_argv[1].type==svt_string)
 	{
-		DWORD cm = R_ColormapNumForName(t_argv[1].value.s);
+		uint32_t cm = R_ColormapNumForName(t_argv[1].value.s);
 
 		FSSectorTagIterator itr(tagnum);
 		while ((i = itr.Next()) >= 0)
@@ -2434,8 +2422,8 @@ static void FS_GiveInventory (AActor *actor, const char * type, int amount)
 	{
 		type = "BasicArmorPickup";
 	}
-	PClassInventory * info = dyn_cast<PClassInventory>(PClass::FindActor (type));
-	if (info == NULL)
+	auto info = PClass::FindActor (type);
+	if (info == NULL || !info->IsDescendantOf(RUNTIME_CLASS(AInventory)))
 	{
 		Printf ("Unknown inventory item: %s\n", type);
 		return;
@@ -2564,7 +2552,7 @@ void FParser::SF_PlayerKeys(void)
 void FParser::SF_PlayerAmmo(void)
 {
 	int playernum, amount;
-	PClassInventory * ammotype;
+	PClassActor * ammotype;
 	
 	if (CheckArgs(2))
 	{
@@ -2600,7 +2588,7 @@ void FParser::SF_PlayerAmmo(void)
 void FParser::SF_MaxPlayerAmmo()
 {
 	int playernum, amount;
-	PClassInventory * ammotype;
+	PClassActor * ammotype;
 
 	if (CheckArgs(2))
 	{
@@ -2629,7 +2617,7 @@ void FParser::SF_MaxPlayerAmmo()
 
 			for (AInventory *item = players[playernum].mo->Inventory; item != NULL; item = item->Inventory)
 			{
-				if (item->IsKindOf(PClass::FindClass(NAME_BackpackItem)))
+				if (item->IsKindOf(NAME_BackpackItem))
 				{
 					if (t_argc>=4) amount = intvalue(t_argv[3]);
 					else amount*=2;
@@ -2675,8 +2663,8 @@ void FParser::SF_PlayerWeapon()
 			script_error("weaponnum out of range! %d\n", weaponnum);
 			return;
 		}
-		PClassWeapon * ti = static_cast<PClassWeapon *>(PClass::FindActor(WeaponNames[weaponnum]));
-		if (!ti)
+		auto ti = PClass::FindActor(WeaponNames[weaponnum]);
+		if (!ti || !ti->IsDescendantOf(NAME_Weapon))
 		{
 			script_error("incompatibility in playerweapon %d\n", weaponnum);
 			return;
@@ -2686,7 +2674,7 @@ void FParser::SF_PlayerWeapon()
 		{
 			AActor * wp = players[playernum].mo->FindInventory(ti);
 			t_return.type = svt_int;
-			t_return.value.i = wp!=NULL;;
+			t_return.value.i = wp!=NULL;
 			return;
 		}
 		else
@@ -2712,7 +2700,7 @@ void FParser::SF_PlayerWeapon()
 			{
 				if (!wp) 
 				{
-					AWeapon * pw=players[playernum].PendingWeapon;
+					auto pw=players[playernum].PendingWeapon;
 					players[playernum].mo->GiveInventoryType(ti);
 					players[playernum].PendingWeapon=pw;
 				}
@@ -2756,8 +2744,8 @@ void FParser::SF_PlayerSelectedWeapon()
 				script_error("weaponnum out of range! %d\n", weaponnum);
 				return;
 			}
-			PClassWeapon * ti = static_cast<PClassWeapon *>(PClass::FindActor(WeaponNames[weaponnum]));
-			if (!ti)
+			auto ti = PClass::FindActor(WeaponNames[weaponnum]);
+			if (!ti || !ti->IsDescendantOf(NAME_Weapon))
 			{
 				script_error("incompatibility in playerweapon %d\n", weaponnum);
 				return;
@@ -2862,7 +2850,7 @@ void FParser::SF_SetWeapon()
 		{
 			AInventory *item = players[playernum].mo->FindInventory (PClass::FindActor (stringvalue(t_argv[1])));
 
-			if (item == NULL || !item->IsKindOf (RUNTIME_CLASS(AWeapon)))
+			if (item == NULL || !item->IsKindOf(NAME_Weapon))
 			{
 			}
 			else if (players[playernum].ReadyWeapon == item)
@@ -2874,7 +2862,7 @@ void FParser::SF_SetWeapon()
 			}
 			else
 			{
-				AWeapon *weap = static_cast<AWeapon *> (item);
+				auto weap = static_cast<AWeapon *> (item);
 
 				if (weap->CheckAmmo (AWeapon::EitherFire, false))
 				{
@@ -3257,7 +3245,7 @@ void FParser::SF_SpawnMissile()
 
 void FParser::SF_MapThingNumExist()
 {
-	TArray<TObjPtr<AActor> > &SpawnedThings = DFraggleThinker::ActiveThinker->SpawnedThings;
+	auto &SpawnedThings = DFraggleThinker::ActiveThinker->SpawnedThings;
 
 	int intval;
 
@@ -3295,7 +3283,7 @@ void FParser::SF_MapThingNumExist()
 
 void FParser::SF_MapThings()
 {
-	TArray<TObjPtr<AActor> > &SpawnedThings = DFraggleThinker::ActiveThinker->SpawnedThings;
+	auto &SpawnedThings = DFraggleThinker::ActiveThinker->SpawnedThings;
 
 	t_return.type = svt_int;
 	t_return.value.i = SpawnedThings.Size();
@@ -3875,7 +3863,7 @@ void FParser::SF_SetColor(void)
 			color.r=intvalue(t_argv[1]);
 			color.g=intvalue(t_argv[2]);
 			color.b=intvalue(t_argv[3]);
-			color.a=0;
+			color.a = 0;
 		}
 		else return;
 
@@ -3883,7 +3871,19 @@ void FParser::SF_SetColor(void)
 		FSSectorTagIterator itr(tagnum);
 		while ((i = itr.Next()) >= 0)
 		{
-			level.sectors[i].ColorMap = GetSpecialLights (color, level.sectors[i].ColorMap->Fade, 0);
+			if (!DFraggleThinker::ActiveThinker->setcolormaterial)
+			{
+				level.sectors[i].SetColor(color.r, color.g, color.b, 0);
+			}
+			else
+			{
+				// little hack for testing the D64 color stuff.
+				for (int j = 0; j < 4; j++) level.sectors[i].SetSpecialColor(j, color);
+				// simulates 'nocoloredspritelighting' settings.
+				int v = (color.r + color.g + color.b) / 3;
+				v = (255 + v + v) / 3;
+				level.sectors[i].SetSpecialColor(sector_t::sprites, v, v, v);
+			}
 		}
 	}
 }
@@ -4023,7 +4023,7 @@ DRunningScript *FParser::SaveCurrentScript()
 	DFraggleThinker *th = DFraggleThinker::ActiveThinker;
 	if (th)
 	{
-		DRunningScript *runscr = new DRunningScript(Script->trigger, Script, Script->MakeIndex(Rover));
+		DRunningScript *runscr = Create<DRunningScript>(Script->trigger, Script, Script->MakeIndex(Rover));
 
 		// hook into chain at start
 		th->AddRunningScript(runscr);
@@ -4157,7 +4157,7 @@ void FParser::SF_StartScript()
 			script_error("script %i not defined\n", snum);
 		}
 		
-		DRunningScript *runscr = new DRunningScript(Script->trigger, script, 0);
+		DRunningScript *runscr = Create<DRunningScript>(Script->trigger, script, 0);
 		// hook into chain at start
 		th->AddRunningScript(runscr);
 	}

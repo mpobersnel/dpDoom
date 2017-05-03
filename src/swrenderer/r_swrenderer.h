@@ -2,17 +2,15 @@
 #pragma once
 
 #include "r_renderer.h"
+#include "swrenderer/scene/r_scene.h"
 
 struct FSoftwareRenderer : public FRenderer
 {
 	FSoftwareRenderer();
 	~FSoftwareRenderer();
 
-	// Can be overridden so that the colormaps for sector color/fade won't be built.
-	bool UsesColormap() const override;
-
 	// precache textures
-	void Precache(BYTE *texhitlist, TMap<PClassActor*, bool> &actorhitlist) override;
+	void Precache(uint8_t *texhitlist, TMap<PClassActor*, bool> &actorhitlist) override;
 
 	// render 3D view
 	void RenderView(player_t *player) override;
@@ -33,12 +31,15 @@ struct FSoftwareRenderer : public FRenderer
 	void SetClearColor(int color) override;
 	void Init() override;
 	void RenderTextureView (FCanvasTexture *tex, AActor *viewpoint, int fov) override;
-	sector_t *FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel) override;
 
-	void StateChanged(AActor *actor) override;
 	void PreprocessLevel() override;
 	void CleanLevelData() override;
 
+	double GetVisibility() override;
+	void SetVisibility(double vis) override;
+
 private:
 	void PrecacheTexture(FTexture *tex, int cache);
+
+	swrenderer::RenderScene mScene;
 };

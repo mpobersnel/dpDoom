@@ -1,14 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #include <stdlib.h>
@@ -27,13 +36,12 @@
 #include "cmdlib.h"
 #include "d_net.h"
 #include "g_level.h"
-#include "gl/dynlights/gl_dynlight.h"
+#include "a_dynlight.h"
 #include "swrenderer/r_memory.h"
 #include "swrenderer/scene/r_opaque_pass.h"
 #include "swrenderer/scene/r_3dfloors.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
 #include "swrenderer/plane/r_flatplane.h"
 #include "swrenderer/plane/r_slopeplane.h"
@@ -41,13 +49,14 @@
 #include "swrenderer/plane/r_visibleplane.h"
 #include "swrenderer/plane/r_visibleplanelist.h"
 #include "swrenderer/drawers/r_draw.h"
+#include "swrenderer/viewport/r_viewport.h"
+#include "swrenderer/r_renderthread.h"
 
 namespace swrenderer
 {
-	VisiblePlaneList *VisiblePlaneList::Instance()
+	VisiblePlaneList::VisiblePlaneList(RenderThread *thread)
 	{
-		static VisiblePlaneList instance;
-		return &instance;
+		Thread = thread;
 	}
 
 	VisiblePlaneList::VisiblePlaneList()
@@ -58,7 +67,7 @@ namespace swrenderer
 
 	VisiblePlane *VisiblePlaneList::Add(unsigned hash)
 	{
-		VisiblePlane *newplane = RenderMemory::NewObject<VisiblePlane>();
+		VisiblePlane *newplane = Thread->FrameMemory->NewObject<VisiblePlane>(Thread);
 		newplane->next = visplanes[hash];
 		visplanes[hash] = newplane;
 		return newplane;
@@ -102,6 +111,8 @@ namespace swrenderer
 
 		FTransform nulltransform;
 
+		RenderPortal *renderportal = Thread->Portal.get();
+
 		if (picnum == skyflatnum)	// killough 10/98
 		{ // most skies map together
 			lightlevel = 0;
@@ -115,9 +126,9 @@ namespace swrenderer
 			// same column but separated by a wall. If they both try to reside in the
 			// same visplane, then only the floor sky will be drawn.
 			plane.set(0., 0., height.fC(), 0.);
-			isskybox = portal != nullptr && !(portal->mFlags & PORTSF_INSKYBOX);
+			isskybox = portal != nullptr && !renderportal->InSkyBox(portal);
 		}
-		else if (portal != nullptr && !(portal->mFlags & PORTSF_INSKYBOX))
+		else if (portal != nullptr && !renderportal->InSkyBox(portal))
 		{
 			plane = height;
 			isskybox = true;
@@ -129,7 +140,7 @@ namespace swrenderer
 			// kg3D - hack, store alpha in sky
 			// i know there is ->alpha, but this also allows to identify fake plane
 			// and ->alpha is for stacked sectors
-			Clip3DFloors *clip3d = Clip3DFloors::Instance();
+			Clip3DFloors *clip3d = Thread->Clip3D.get();
 			if (clip3d->fake3D & (FAKE3D_FAKEFLOOR | FAKE3D_FAKECEILING)) sky = 0x80000000 | clip3d->fakeAlpha;
 			else sky = 0;	// not skyflatnum so it can't be a sky
 			portal = nullptr;
@@ -139,8 +150,6 @@ namespace swrenderer
 		// New visplane algorithm uses hash table -- killough
 		hash = isskybox ? ((unsigned)MAXVISPLANES) : CalcHash(picnum.GetIndex(), lightlevel, height);
 		
-		RenderPortal *renderportal = RenderPortal::Instance();
-
 		for (check = visplanes[hash]; check; check = check->next)	// killough
 		{
 			if (isskybox)
@@ -167,7 +176,7 @@ namespace swrenderer
 										*xform == check->xform
 										)
 										) &&
-									check->viewangle == renderportal->stacked_angle
+									check->viewangle == renderportal->stacked_angle.Yaw
 									)
 								)
 							)
@@ -190,8 +199,8 @@ namespace swrenderer
 					sky == check->sky &&
 					renderportal->CurrentPortalUniq == check->CurrentPortalUniq &&
 					renderportal->MirrorFlags == check->MirrorFlags &&
-					Clip3DFloors::Instance()->CurrentSkybox == check->CurrentSkybox &&
-					ViewPos == check->viewpos
+					Thread->Clip3D->CurrentSkybox == check->CurrentSkybox &&
+					Thread->Viewport->viewpoint.Pos == check->viewpos
 					)
 				{
 					return check;
@@ -210,12 +219,12 @@ namespace swrenderer
 		check->extralight = renderportal->stacked_extralight;
 		check->visibility = renderportal->stacked_visibility;
 		check->viewpos = renderportal->stacked_viewpos;
-		check->viewangle = renderportal->stacked_angle;
+		check->viewangle = renderportal->stacked_angle.Yaw;
 		check->Alpha = alpha;
 		check->Additive = additive;
 		check->CurrentPortalUniq = renderportal->CurrentPortalUniq;
 		check->MirrorFlags = renderportal->MirrorFlags;
-		check->CurrentSkybox = Clip3DFloors::Instance()->CurrentSkybox;
+		check->CurrentSkybox = Thread->Clip3D->CurrentSkybox;
 
 		return check;
 	}
@@ -265,7 +274,7 @@ namespace swrenderer
 			// make a new visplane
 			unsigned hash;
 
-			if (pl->portal != nullptr && !(pl->portal->mFlags & PORTSF_INSKYBOX) && viewactive)
+			if (pl->portal != nullptr && !Thread->Portal->InSkyBox(pl->portal) && viewactive)
 			{
 				hash = MAXVISPLANES;
 			}
@@ -326,21 +335,19 @@ namespace swrenderer
 		int i;
 		int vpcount = 0;
 
-		drawerargs::ds_color = 3;
-		
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = Thread->Portal.get();
 
 		for (i = 0; i < MAXVISPLANES; i++)
 		{
 			for (pl = visplanes[i]; pl; pl = pl->next)
 			{
 				// kg3D - draw only correct planes
-				if (pl->CurrentPortalUniq != renderportal->CurrentPortalUniq || pl->CurrentSkybox != Clip3DFloors::Instance()->CurrentSkybox)
+				if (pl->CurrentPortalUniq != renderportal->CurrentPortalUniq || pl->CurrentSkybox != Thread->Clip3D->CurrentSkybox)
 					continue;
 				// kg3D - draw only real planes now
 				if (pl->sky >= 0) {
 					vpcount++;
-					pl->Render(OPAQUE, false, false);
+					pl->Render(Thread, OPAQUE, false, false);
 				}
 			}
 		}
@@ -352,31 +359,29 @@ namespace swrenderer
 		VisiblePlane *pl;
 		int i;
 
-		drawerargs::ds_color = 3;
-
-		DVector3 oViewPos = ViewPos;
-		DAngle oViewAngle = ViewAngle;
+		DVector3 oViewPos = Thread->Viewport->viewpoint.Pos;
+		DAngle oViewAngle = Thread->Viewport->viewpoint.Angles.Yaw;
 		
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = Thread->Portal.get();
 
 		for (i = 0; i < MAXVISPLANES; i++)
 		{
 			for (pl = visplanes[i]; pl; pl = pl->next)
 			{
-				if (pl->CurrentSkybox != Clip3DFloors::Instance()->CurrentSkybox || pl->CurrentPortalUniq != renderportal->CurrentPortalUniq)
+				if (pl->CurrentSkybox != Thread->Clip3D->CurrentSkybox || pl->CurrentPortalUniq != renderportal->CurrentPortalUniq)
 					continue;
 
 				if (pl->sky < 0 && pl->height.Zat0() == height)
 				{
-					ViewPos = pl->viewpos;
-					ViewAngle = pl->viewangle;
+					Thread->Viewport->viewpoint.Pos = pl->viewpos;
+					Thread->Viewport->viewpoint.Angles.Yaw = pl->viewangle;
 					renderportal->MirrorFlags = pl->MirrorFlags;
 
-					pl->Render(pl->sky & 0x7FFFFFFF, pl->Additive, true);
+					pl->Render(Thread, pl->sky & 0x7FFFFFFF, pl->Additive, true);
 				}
 			}
 		}
-		ViewPos = oViewPos;
-		ViewAngle = oViewAngle;
+		Thread->Viewport->viewpoint.Pos = oViewPos;
+		Thread->Viewport->viewpoint.Angles.Yaw = oViewAngle;
 	}
 }

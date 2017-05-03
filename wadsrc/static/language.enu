@@ -1417,6 +1417,9 @@ TXT_KILLED_ORACLE = "You've Killed The Oracle!";
 TXT_KILLED_MACIL = "You Killed Macil!";
 TXT_KILLED_LOREMASTER = "You've Killed the Loremaster!";
 
+TXT_YOUFOOL = "You Fool!  You've set off the alarm.";
+TXT_YOUREDEAD = "You're dead!  You set off the alarm.";
+
 // Strife pickup messages
 
 TXT_METALARMOR = "You picked up the Metal Armor.";
@@ -1562,6 +1565,23 @@ TXT_GOAWAY			= "Go away!";
 TXT_COMM0			= "Incoming Message";
 TXT_COMM1			= "Incoming Message from BlackBird";
 
+
+AMMO_CLIP			= "Bullets";
+AMMO_SHELLS			= "Shotgun Shells";
+AMMO_ROCKETS		= "Rockets";
+AMMO_CELLS			= "Energy Cells";
+AMMO_GOLDWAND		= "Wand Crystals";
+AMMO_CROSSBOW		= "Ethereal Arrows";
+AMMO_BLASTER		= "Claw Orbs";
+AMMO_MACE			= "Mace Spheres";
+AMMO_SKULLROD		= "Hellstaff Runes";
+AMMO_PHOENIXROD		= "Flame Orbs";
+AMMO_MANA1			= "Blue Mana";
+AMMO_MANA2			= "Green Mana";
+$ifgame(chex) AMMO_CLIP = "Mini Zorch Charge";
+$ifgame(chex) AMMO_SHELLS = "Large Zorcher Charge";
+$ifgame(chex) AMMO_ROCKETS = "Propulsor Charge";
+$ifgame(chex) AMMO_CELLS = "Phasing Zorcher Charge";
 
 // Menu Strings
 
@@ -1757,6 +1777,7 @@ MOUSEMNU_LOOKSTRAFE			= "Lookstrafe";
 
 JOYMNU_CONFIG				= "CONFIGURE CONTROLLER";
 JOYMNU_OPTIONS				= "CONTROLLER OPTIONS";
+JOYMNU_NOMENU				= "Block controller input in menu";
 
 // Player Setup Menu
 MNU_PLAYERSETUP		= "PLAYER SETUP";
@@ -1811,6 +1832,7 @@ DSPLYMNU_DIMCOLOR				= "Dim color";
 DSPLYMNU_MOVEBOB 				= "View bob amount while moving";
 DSPLYMNU_STILLBOB 				= "View bob amount while not moving";
 DSPLYMNU_BOBSPEED				= "Weapon bob speed";
+DSPLYMNU_GPUSWITCH				= "Notebook Switchable GPU";
 
 // HUD Options
 HUDMNU_TITLE					= "HUD Options";
@@ -1825,18 +1847,30 @@ HUDMNU_CROSSHAIRHEALTH			= "Crosshair shows health";
 HUDMNU_CROSSHAIRSCALE			= "Scale crosshair";
 HUDMNU_NAMETAGS					= "Display nametags";
 HUDMNU_NAMETAGCOLOR				= "Nametag color";
-HUDMNU_SCALESTATBAR				= "Stretch status bar";
 HUDMNU_SCALEFULLSCREENHUD		= "Stretch Fullscreen HUD";
 HUDMNU_OLDOUCH					= "Use old ouch mug shot formula";
 HUDMNU_HEXENFLASHES				= "Hexen weapon flashes";
 HUDMNU_POISONFLASHES			= "Poison damage flashes";
 HUDMNU_ICEFLASHES				= "Ice death flashes";
 HUDMNU_HAZARDFLASHES			= "Poison Buildup flashes";
+HUDMNU_SCALEOPT					= "Scaling Options";
+
+// Scaling options
+SCALEMNU_TITLE					= "Scaling Options";
+SCALEMNU_OVERRIDE				= "Overrides for above setting";
+SCALEMNU_MESSAGES 				= "Messages";
+SCALEMNU_CONSOLE				= "Console";
+SCALEMNU_STATBAR				= "Status bar";
+SCALEMNU_HUD					= "Fullscreen HUD";
+SCALEMNU_ALTHUD					= "Alternative HUD";
+SCALEMNU_HUDASPECT				= "HUD preserves aspect ratio";
+SCALEMNU_USEUI					= "Use default scale";
+SCALEMNU_USEFS					= "Scale to fullscreen";
+SCALEMNU_ADAPT					= "Adapt to screen size";
 
 // AltHUD Options
 ALTHUDMNU_TITLE					= "Alternative HUD";
 ALTHUDMNU_ENABLE				= "Enable alternative HUD";
-ALTHUDMNU_SCALEHUD				= "Stretch alternative HUD";
 ALTHUDMNU_SHOWSECRETS			= "Show secret count";
 ALTHUDMNU_SHOWMONSTERS			= "Show monster count";
 ALTHUDMNU_SHOWITEMS				= "Show item count";
@@ -1880,7 +1914,7 @@ MISCMNU_DEHLOAD					= "Load *.deh/*.bex lumps";
 MISCMNU_CACHENODES				= "Cache nodes";
 MISCMNU_CACHETIME				= "Time threshold for node caching";
 MISCMNU_CLEARNODECACHE			= "Clear node cache";
-
+MISCMNU_INTERSCROLL				= "Allow skipping of intermission scrollers";
 // Automap Options
 AUTOMAPMNU_TITLE				= "AUTOMAP OPTIONS";
 AUTOMAPMNU_COLORSET				= "Map color set";
@@ -1955,8 +1989,6 @@ MSGMNU_TITLE				= "MESSAGES";
 MSGMNU_SHOWMESSAGES			= "Show messages";
 MSGMNU_SHOWOBITUARIES		= "Show obituaries";
 MSGMNU_SHOWSECRETS			= "Show secret notifications";
-MSGMNU_SCALETEXT			= "Scale text in high res";
-MSGMNU_SCALECONSOLE			= "Scale console";
 MSGMNU_MESSAGELEVEL			= "Minimum message level";
 MSGMNU_CENTERMESSAGES		= "Center messages";
 MSGMNU_MESSAGECOLORS		= "Message Colors";
@@ -2096,22 +2128,10 @@ SNDMNU_UNDERWATERREVERB	= "Underwater reverb";
 SNDMNU_RANDOMIZEPITCHES	= "Randomize pitches";
 SNDMNU_CHANNELS			= "Sound channels";
 SNDMNU_BACKEND			= "Sound backend";
-SNDMNU_FMOD				= "FMOD options";
 SNDMNU_OPENAL			= "OpenAL options";
 SNDMNU_RESTART			= "Restart sound";
 SNDMNU_ADVANCED			= "Advanced options";
 SNDMNU_MODREPLAYER		= "Module replayer options";
-
-// Fmod Options
-FMODMNU_TITLE			= "FMOD OPTIONS";
-FMODMNU_WATERCUTOFF		= "Underwater cutoff";
-FMODMNU_OUTPUTSYSTEM	= "Output system";
-FMODMNU_OUTPUTFORMAT	= "Output format";
-FMODMNU_SPEAKERMODE		= "Speaker mode";
-FMODMNU_RESAMPLER		= "Resampler";
-FMODMNU_HRTFFILTER		= "HRTF filter";
-FMODMNU_BUFFERSIZE		= "Buffer size";
-FMODMNU_BUFFERCOUNT		= "Buffer count";
 
 // OpenAL Options
 OPENALMNU_TITLE				= "OPENAL OPTIONS";
@@ -2121,6 +2141,7 @@ OPENALMNU_ENABLEEFX			= "Enable EFX";
 // Advanced Sound Options
 ADVSNDMNU_TITLE				= "ADVANCED SOUND OPTIONS";
 ADVSNDMNU_SAMPLERATE		= "Sample rate";
+ADVSNDMNU_HRTF				= "HRTF";
 ADVSNDMNU_OPLSYNTHESIS		= "OPL Synthesis";
 ADVSNDMNU_OPLNUMCHIPS		= "Number of emulated OPL chips";
 ADVSNDMNU_OPLFULLPAN		= "Full MIDI stereo panning";
@@ -2141,6 +2162,7 @@ ADVSNDMNU_TIMIDITYCHORUS	= "Chorus";
 ADVSNDMNU_TIMIDITYVOLUME	= "Relative volume";
 ADVSNDMNU_WILDMIDI			= "WildMidi";
 ADVSNDMNU_WILDMIDICONFIG	= "WildMidi config file";
+ADVSNDMNU_SELCONFIG			= "Select configuration";
 
 // Module Replayer Options
 MODMNU_TITLE			= "MODULE REPLAYER OPTIONS";
@@ -2179,9 +2201,27 @@ NETMNU_HOSTOPTIONS				= "Host options";
 NETMNU_EXTRATICS				= "Extra Tics";
 NETMNU_TICBALANCE				= "Latency balancing";
 
+// Joystick menu
+
+JOYMNU_ENABLE = "Enable controller support";
+JOYMNU_DINPUT = "Enable DirectInput controllers";
+JOYMNU_XINPUT = "Enable XInput controllers";
+JOYMNU_PS2 = "Enable raw PlayStation 2 adapters";
+JOYMNU_NOCON = "No controllers detected";
+JOYMNU_CONFIG = "Configure controllers:";
+JOYMNU_DISABLED1 = "Controller support must be";
+JOYMNU_DISABLED2 = "enabled to detect any";
+JOYMNU_INVALID = "Invalid controller specified for menu";
+JOYMNU_OVRSENS = "Overall sensitivity";
+JOYMNU_AXIS = "Axis Configuration";
+JOYMNU_INVERT = "Invert";
+JOYMNU_DEADZONE = "Dead zone";
+JOYMNU_NOAXES = "No configurable axes";
+
 // Option Values
 OPTVAL_OFF					= "Off";
 OPTVAL_ON					= "On";
+OPTVAL_AUTO					= "Auto";
 OPTVAL_MALE					= "Male";
 OPTVAL_FEMALE				= "Female";
 OPTVAL_OTHER				= "Other";
@@ -2259,6 +2299,7 @@ OPTVAL_FRONT				= "Front";
 OPTVAL_ANIMATED				= "Animated";
 OPTVAL_ROTATED				= "Rotated";
 OPTVAL_MAPDEFINEDCOLORSONLY = "Map defined colors only";
+OPTVAL_NODOORS				= "All except doors";
 OPTVAL_DOUBLE				= "Double";
 OPTVAL_TRIPLE				= "Triple";
 OPTVAL_QUADRUPLE			= "Quadruple";
@@ -2322,6 +2363,8 @@ OPTVAL_D3D					= "Direct3D";
 OPTVAL_GZGL					= "OpenGL Renderer";
 OPTVAL_HARDPOLY				= "Hardpoly Renderer"
 OPTVAL_SWDOOM				= "Doom Software Renderer";
+OPTVAL_DEDICATED			= "High-Performance";
+OPTVAL_INTEGRATED			= "Power-Saving";
 
 // Colors
 C_BRICK					= "\cabrick";
@@ -2377,7 +2420,6 @@ OPTSTR_5POINT1				= "5.1 speakers";
 OPTSTR_7POINT1				= "7.1 speakers";
 OPTSTR_NOINTERPOLATION		= "No interpolation";
 OPTSTR_SPLINE				= "Spline";
-OPTSTR_FMOD					= "FMOD Ex";
 OPTSTR_OPENAL				= "OpenAL";
 
 
@@ -2601,7 +2643,8 @@ MUSIC_DM2INT = "dm2int";
 
 // GZDoom exclusive:
 
-DSPLYMNU_GLOPT		= "OpenGL Options";
+DSPLYMNU_GLOPT		= "OpenGL Renderer";
+DSPLYMNU_SWOPT		= "Software Renderer";
 DSPLYMNU_GAMMA		= "Gamma correction";
 DSPLYMNU_CONTRAST 	="Contrast";
 DSPLYMNU_HWGAMMA	= "Hardware Gamma";
@@ -2629,12 +2672,12 @@ GLTEXMNU_SORTDRAWLIST 	= "Sort draw lists by texture";
 
 // Dynamic Light Options
 GLLIGHTMNU_TITLE 			= "DYNAMIC LIGHTS";
-GLLIGHTMNU_LIGHTSENABLED 	= "Dynamic Lights enabled";
+GLLIGHTMNU_LIGHTSENABLED 	= "Dynamic Lights (OpenGL)";
 GLLIGHTMNU_LIGHTDEFS		= "Enable light definitions";
 GLLIGHTMNU_CLIPLIGHTS 		= "Clip lights";
 GLLIGHTMNU_LIGHTSPRITES 	= "Lights affect sprites";
 GLLIGHTMNU_LIGHTPARTICLES 	= "Lights affect particles";
-GLLIGHTMNU_LIGHTMATH 		= "Light quality";
+GLLIGHTMNU_LIGHTSHADOWMAP 	= "Light shadowmaps";
 
 // OpenGL Preferences
 GLPREFMNU_TITLE 				= "OPENGL PREFERENCES";
@@ -2654,6 +2697,7 @@ GLPREFMNU_SPRBILLFACECAMERA 	= "Sprites face camera";
 GLPREFMNU_PARTICLESTYLE 		= "Particle style";
 GLPREFMNU_AMBLIGHT 				= "Ambient light level";
 GLPREFMNU_RENDERQUALITY 		= "Rendering quality";
+GLPREFMNU_MENUBLUR				= "Menu Blur";
 GLPREFMNU_VRMODE 				= "Stereo 3D VR";
 GLPREFMNU_VRQUADSTEREO 			= "Enable Quad Stereo";
 GLPREFMNU_MULTISAMPLE			= "Multisample";
@@ -2763,5 +2807,14 @@ TCMNU_TRUECOLOR				= "True color output";
 TCMNU_MINFILTER				= "Linear filter when downscaling";
 TCMNU_MAGFILTER				= "Linear filter when upscaling";
 TCMNU_MIPMAP					= "Use mipmapped textures";
-TCMNU_DYNLIGHTS				= "Dynamic lights";
+TCMNU_DYNLIGHTS				= "Dynamic lights (Software)";
 
+// SVE strings:
+
+TAG_TALISMANRED = "Red Talisman";
+TAG_TALISMANGREEN = "Green Talisman";
+TAG_TALISMANBLUE = "Blue Talisman";
+MSG_TALISMANRED = "You have a feeling that it wasn't to be touched...";
+MSG_TALISMANGREEN = "Whatever it is, it doesn't belong in this world...";
+MSG_TALISMANBLUE = "It must do something...";
+MSG_TALISMANPOWER = "You have super strength!";

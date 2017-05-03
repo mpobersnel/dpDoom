@@ -1,3 +1,38 @@
+/*
+** a_pickups.cpp
+** Inventory base class implementation
+**
+**---------------------------------------------------------------------------
+** Copyright 2005-2016 Randy Heit
+** Copyright 2005-2016 Cheistoph Oelckers
+** All rights reserved.
+**
+** Redistribution and use in source and binary forms, with or without
+** modification, are permitted provided that the following conditions
+** are met:
+**
+** 1. Redistributions of source code must retain the above copyright
+**    notice, this list of conditions and the following disclaimer.
+** 2. Redistributions in binary form must reproduce the above copyright
+**    notice, this list of conditions and the following disclaimer in the
+**    documentation and/or other materials provided with the distribution.
+** 3. The name of the author may not be used to endorse or promote products
+**    derived from this software without specific prior written permission.
+**
+** THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+** IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+** OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+** IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+** INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+** NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+** THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+**---------------------------------------------------------------------------
+**
+*/
+
 #include <assert.h>
 
 #include "info.h"
@@ -19,64 +54,17 @@
 #include "d_player.h"
 #include "p_spec.h"
 #include "serializer.h"
-#include "virtual.h"
+#include "vm.h"
 #include "c_functions.h"
 #include "g_levellocals.h"
+#include "vm.h"
 
 EXTERN_CVAR(Bool, sv_unlimited_pickup)
 
-IMPLEMENT_CLASS(PClassInventory, false, false)
-
-PClassInventory::PClassInventory()
-{
-	GiveQuest = 0;
-	AltHUDIcon.SetNull();
-}
-
-void PClassInventory::DeriveData(PClass *newclass)
-{
-	assert(newclass->IsKindOf(RUNTIME_CLASS(PClassInventory)));
-	Super::DeriveData(newclass);
-	PClassInventory *newc = static_cast<PClassInventory *>(newclass);
-
-	newc->PickupMsg = PickupMsg;
-	newc->GiveQuest = GiveQuest;
-	newc->AltHUDIcon = AltHUDIcon;
-	newc->ForbiddenToPlayerClass = ForbiddenToPlayerClass;
-	newc->RestrictedToPlayerClass = RestrictedToPlayerClass;
-}
-
-size_t PClassInventory::PointerSubstitution(DObject *oldclass, DObject *newclass)
-{
-	size_t changed = Super::PointerSubstitution(oldclass, newclass);
-	AInventory *def = (AInventory*)Defaults;
-	if (def != NULL)
-	{
-		if (def->PickupFlash == oldclass) def->PickupFlash = static_cast<PClassActor *>(newclass);
-		for (unsigned i = 0; i < ForbiddenToPlayerClass.Size(); i++)
-		{
-			if (ForbiddenToPlayerClass[i] == oldclass)
-			{
-				ForbiddenToPlayerClass[i] = static_cast<PClassPlayerPawn*>(newclass);
-				changed++;
-			}
-		}
-		for (unsigned i = 0; i < RestrictedToPlayerClass.Size(); i++)
-		{
-			if (RestrictedToPlayerClass[i] == oldclass)
-			{
-				RestrictedToPlayerClass[i] = static_cast<PClassPlayerPawn*>(newclass);
-				changed++;
-			}
-		}
-	}
-	return changed;
-}
-
-void PClassInventory::Finalize(FStateDefinitions &statedef)
+void AInventory::Finalize(FStateDefinitions &statedef)
 {
 	Super::Finalize(statedef);
-	((AActor*)Defaults)->flags |= MF_SPECIAL;
+	flags |= MF_SPECIAL;
 }
 
 IMPLEMENT_CLASS(AInventory, false, true)
@@ -98,8 +86,6 @@ DEFINE_FIELD(AInventory, DropTime)
 DEFINE_FIELD(AInventory, SpawnPointClass)
 DEFINE_FIELD(AInventory, PickupFlash)
 DEFINE_FIELD(AInventory, PickupSound)
-DEFINE_FIELD(PClassInventory, PickupMsg)
-DEFINE_FIELD(PClassInventory, GiveQuest)
 
 //===========================================================================
 //
@@ -287,7 +273,7 @@ double AInventory::GetSpeedFactor()
 			VMValue params[1] = { (DObject*)self };
 			double retval;
 			VMReturn ret(&retval);
-			GlobalVMStack.Call(func, params, 1, &ret, 1, nullptr);
+			VMCall(func, params, 1, &ret, 1);
 			factor *= retval;
 		}
 		self = self->Inventory;
@@ -311,7 +297,7 @@ bool AInventory::GetNoTeleportFreeze ()
 			VMValue params[1] = { (DObject*)self };
 			int retval;
 			VMReturn ret(&retval);
-			GlobalVMStack.Call(func, params, 1, &ret, 1, nullptr);
+			VMCall(func, params, 1, &ret, 1);
 			if (retval) return true;
 		}
 		self = self->Inventory;
@@ -332,7 +318,7 @@ bool AInventory::CallUse(bool pickup)
 		VMValue params[2] = { (DObject*)this, pickup };
 		int retval;
 		VMReturn ret(&retval);
-		GlobalVMStack.Call(func, params, 2, &ret, 1, nullptr);
+		VMCall(func, params, 2, &ret, 1);
 		return !!retval;
 	}
 	return false;
@@ -397,7 +383,7 @@ void AInventory::DepleteOrDestroy ()
 	IFVIRTUAL(AInventory, DepleteOrDestroy)
 	{
 		VMValue params[1] = { (DObject*)this };
-		GlobalVMStack.Call(func, params, 1, nullptr, 0, nullptr);
+		VMCall(func, params, 1, nullptr, 0);
 	}
 }
 
@@ -417,7 +403,7 @@ PalEntry AInventory::CallGetBlend()
 		VMValue params[1] = { (DObject*)this };
 		int retval;
 		VMReturn ret(&retval);
-		GlobalVMStack.Call(func, params, 1, &ret, 1, nullptr);
+		VMCall(func, params, 1, &ret, 1);
 		return retval;
 	}
 	else return 0;
@@ -522,53 +508,16 @@ DEFINE_ACTION_FUNCTION(AInventory, DoRespawn)
 bool AInventory::CallTryPickup(AActor *toucher, AActor **toucher_return)
 {
 	static VMFunction *func = nullptr;
-	if (func == nullptr) func = PClass::FindFunction(NAME_Inventory, NAME_CallTryPickup);
+	if (func == nullptr) PClass::FindFunction(&func, NAME_Inventory, NAME_CallTryPickup);
 	VMValue params[2] = { (DObject*)this, toucher };
 	VMReturn ret[2];
 	int res;
 	AActor *tret;
 	ret[0].IntAt(&res);
 	ret[1].PointerAt((void**)&tret);
-	GlobalVMStack.Call(func, params, 2, ret, 2);
+	VMCall(func, params, 2, ret, 2);
 	if (toucher_return) *toucher_return = tret;
 	return !!res;
-}
-
-//===========================================================================
-//
-// AInventory :: CanPickup
-//
-//===========================================================================
-
-DEFINE_ACTION_FUNCTION(AInventory, CanPickup)
-{
-	PARAM_SELF_PROLOGUE(AInventory);
-	PARAM_OBJECT(toucher, AActor);
-
-	if (!toucher)
-		ACTION_RETURN_BOOL(false);
-
-	PClassInventory *ai = self->GetClass();
-	// Is the item restricted to certain player classes?
-	if (ai->RestrictedToPlayerClass.Size() != 0)
-	{
-		for (unsigned i = 0; i < ai->RestrictedToPlayerClass.Size(); ++i)
-		{
-			if (toucher->IsKindOf(ai->RestrictedToPlayerClass[i]))
-				ACTION_RETURN_BOOL(true);
-		}
-		ACTION_RETURN_BOOL(false);
-	}
-	// Or is it forbidden to certain other classes?
-	else
-	{
-		for (unsigned i = 0; i < ai->ForbiddenToPlayerClass.Size(); ++i)
-		{
-			if (toucher->IsKindOf(ai->ForbiddenToPlayerClass[i]))
-				ACTION_RETURN_BOOL(false);
-		}
-	}
-	ACTION_RETURN_BOOL(true);
 }
 
 //===========================================================================

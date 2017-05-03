@@ -1,19 +1,28 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #pragma once
 
-#include "swrenderer/drawers/r_draw.h"
+#include "swrenderer/viewport/r_walldrawer.h"
 #include "r_line.h"
 
 class FTexture;
@@ -24,6 +33,7 @@ struct FDynamicColormap;
 
 namespace swrenderer
 {
+	class RenderThread;
 	struct DrawSegment;
 	struct FWallCoords;
 	class ProjectedWallLine;
@@ -33,7 +43,10 @@ namespace swrenderer
 	class RenderWallPart
 	{
 	public:
+		RenderWallPart(RenderThread *thread);
+
 		void Render(
+			const WallDrawerArgs &drawerargs,
 			sector_t *frontsector,
 			seg_t *curline,
 			const FWallCoords &WallC,
@@ -57,15 +70,15 @@ namespace swrenderer
 			bool foggy,
 			FDynamicColormap *basecolormap);
 
+		RenderThread *Thread = nullptr;
+
 	private:
 		void ProcessWallNP2(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal, double top, double bot);
 		void ProcessWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal);
 		void ProcessStripedWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal);
-		void ProcessTranslucentWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal);
-		void ProcessMaskedWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal);
 		void ProcessNormalWall(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal);
-		void ProcessWallWorker(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal, DrawerFunc drawcolumn);
-		void Draw1Column(int x, int y1, int y2, WallSampler &sampler, DrawerFunc draw1column);
+		void ProcessWallWorker(const short *uwal, const short *dwal, double texturemid, float *swal, fixed_t *lwal);
+		void Draw1Column(int x, int y1, int y2, WallSampler &sampler);
 
 		int x1 = 0;
 		int x2 = 0;
@@ -83,19 +96,21 @@ namespace swrenderer
 		FDynamicColormap *basecolormap = nullptr;
 		FLightNode *light_list = nullptr;
 		bool mask = false;
+
+		WallDrawerArgs drawerargs;
 	};
 
 	struct WallSampler
 	{
 		WallSampler() { }
-		WallSampler(int y1, double texturemid, float swal, double yrepeat, fixed_t xoffset, double xmagnitude, FTexture *texture);
+		WallSampler(RenderViewport *viewport, int y1, double texturemid, float swal, double yrepeat, fixed_t xoffset, double xmagnitude, FTexture *texture);
 
 		uint32_t uv_pos;
 		uint32_t uv_step;
 		uint32_t uv_max;
 
-		const BYTE *source;
-		const BYTE *source2;
+		const uint8_t *source;
+		const uint8_t *source2;
 		uint32_t texturefracx;
 		uint32_t height;
 	};

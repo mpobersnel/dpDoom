@@ -36,7 +36,6 @@
 
 #include "basictypes.h"
 #include "zstring.h"
-#include "s_sound.h"
 
 // Flags are not user configurable and only depend on the standard IWADs
 #define GI_MAPxx				0x00000001
@@ -55,8 +54,8 @@ extern const char *GameNames[17];
 
 struct staticgameborder_t
 {
-	BYTE offset;
-	BYTE size;
+	uint8_t offset;
+	uint8_t size;
 	char tl[8];
 	char t[8];
 	char tr[8];
@@ -69,8 +68,8 @@ struct staticgameborder_t
 
 struct gameborder_t
 {
-	BYTE offset;
-	BYTE size;
+	uint8_t offset;
+	uint8_t size;
 	FString tl;
 	FString t;
 	FString tr;
@@ -123,7 +122,8 @@ struct gameinfo_t
 
 	TArray<FName> PrecachedClasses;
 	TArray<FString> PrecachedTextures;
-	TArray<FSoundID> PrecachedSounds;
+	TArray<int> PrecachedSounds;
+	TArray<FString> EventHandlers;
 
 	FString titleMusic;
 	int titleOrder;
@@ -146,19 +146,24 @@ struct gameinfo_t
 	double telefogheight;
 	int defKickback;
 	FString translator;
-	DWORD defaultbloodcolor;
-	DWORD defaultbloodparticlecolor;
-	FName backpacktype;
+	uint32_t defaultbloodcolor;
+	uint32_t defaultbloodparticlecolor;
 	FString statusbar;
+	int statusbarfile = -1;
+	FName statusbarclass;
+	int statusbarclassfile = -1;
+	FName MessageBoxClass;
+	FName backpacktype;
 	FString intermissionMusic;
 	int intermissionOrder;
 	FString CursorPic;
-	DWORD dimcolor;
+	uint32_t dimcolor;
 	float dimamount;
+	float bluramount;
 	int definventorymaxamount;
 	int defaultrespawntime;
 	int defaultdropstyle;
-	DWORD pickupcolor;
+	uint32_t pickupcolor;
 	TArray<FString> quitmessages;
 	FName mTitleColor;
 	FName mFontColor;
@@ -171,14 +176,19 @@ struct gameinfo_t
 	double gibfactor;
 	int TextScreenX;
 	int TextScreenY;
+	FName DefaultConversationMenuClass;
 	FName DefaultEndSequence;
 	FString mMapArrow, mCheatMapArrow;
 	FString mEasyKey, mCheatKey;
+	FString Dialogue;
 	FGIFont mStatscreenMapNameFont;
 	FGIFont mStatscreenFinishedFont;
 	FGIFont mStatscreenEnteringFont;
 	bool norandomplayerclass;
 	bool forcekillscripts;
+	FName statusscreen_single;
+	FName statusscreen_coop;
+	FName statusscreen_dm;
 
 	const char *GetFinalePage(unsigned int num) const;
 };

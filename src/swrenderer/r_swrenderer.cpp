@@ -33,10 +33,9 @@
 */
 
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/things/r_playersprite.h"
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
 #include "v_palette.h"
 #include "v_video.h"
@@ -48,15 +47,17 @@
 #include "textures/textures.h"
 #include "r_data/voxels.h"
 #include "drawers/r_draw_rgba.h"
-#include "drawers/r_drawers.h"
 #include "polyrenderer/poly_renderer.h"
 #include "p_setup.h"
+#include "g_levellocals.h"
 
-void gl_ParseDefs();
-void gl_InitData();
-void gl_SetActorLights(AActor *);
-void gl_PreprocessLevel();
-void gl_CleanLevelData();
+// [BB] Use ZDoom's freelook limit for the sotfware renderer.
+// Note: ZDoom's limit is chosen such that the sky is rendered properly.
+CUSTOM_CVAR (Bool, cl_oldfreelooklimit, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	if (usergame) // [SP] Update pitch limits to the netgame/gamesim.
+		players[consoleplayer].SendPitchLimits();
+}
 
 EXTERN_CVAR(Bool, r_shadercolormaps)
 EXTERN_CVAR(Float, maxviewpitch)	// [SP] CVAR from GZDoom
@@ -87,15 +88,8 @@ FSoftwareRenderer::~FSoftwareRenderer()
 
 void FSoftwareRenderer::Init()
 {
-	gl_ParseDefs();
-
-	r_swtruecolor = screen->IsBgra();
-	RenderScene::Instance()->Init();
-}
-
-bool FSoftwareRenderer::UsesColormap() const
-{
-	return true;
+	mScene.Init();
+	InitSWColorMaps();		
 }
 
 void FSoftwareRenderer::PrecacheTexture(FTexture *tex, int cache)
@@ -126,9 +120,9 @@ void FSoftwareRenderer::PrecacheTexture(FTexture *tex, int cache)
 	}
 }
 
-void FSoftwareRenderer::Precache(BYTE *texhitlist, TMap<PClassActor*, bool> &actorhitlist)
+void FSoftwareRenderer::Precache(uint8_t *texhitlist, TMap<PClassActor*, bool> &actorhitlist)
 {
-	BYTE *spritelist = new BYTE[sprites.Size()];
+	uint8_t *spritelist = new uint8_t[sprites.Size()];
 	TMap<PClassActor*, bool>::Iterator it(actorhitlist);
 	TMap<PClassActor*, bool>::Pair *pair;
 
@@ -138,9 +132,9 @@ void FSoftwareRenderer::Precache(BYTE *texhitlist, TMap<PClassActor*, bool> &act
 	{
 		PClassActor *cls = pair->Key;
 
-		for (int i = 0; i < cls->NumOwnedStates; i++)
+		for (unsigned i = 0; i < cls->GetStateCount(); i++)
 		{
-			spritelist[cls->OwnedStates[i].sprite] = true;
+			spritelist[cls->GetStates()[i].sprite] = true;
 		}
 	}
 
@@ -178,9 +172,21 @@ void FSoftwareRenderer::Precache(BYTE *texhitlist, TMap<PClassActor*, bool> &act
 void FSoftwareRenderer::RenderView(player_t *player)
 {
 	if (r_polyrenderer)
+	{
+		PolyRenderer::Instance()->Viewpoint = r_viewpoint;
+		PolyRenderer::Instance()->Viewwindow = r_viewwindow;
 		PolyRenderer::Instance()->RenderView(player);
+		r_viewpoint = PolyRenderer::Instance()->Viewpoint;
+		r_viewwindow = PolyRenderer::Instance()->Viewwindow;
+	}
 	else
-		RenderScene::Instance()->RenderView(player);
+	{
+		mScene.MainThread()->Viewport->viewpoint = r_viewpoint;
+		mScene.MainThread()->Viewport->viewwindow = r_viewwindow;
+		mScene.RenderView(player);
+		r_viewpoint = mScene.MainThread()->Viewport->viewpoint;
+		r_viewwindow = mScene.MainThread()->Viewport->viewwindow;
+	}
 
 	FCanvasTextureInfo::UpdateAll();
 }
@@ -189,6 +195,7 @@ void FSoftwareRenderer::RemapVoxels()
 {
 	for (unsigned i=0; i<Voxels.Size(); i++)
 	{
+		Voxels[i]->CreateBgraSlabData();
 		Voxels[i]->Remap();
 	}
 }
@@ -199,17 +206,26 @@ void FSoftwareRenderer::WriteSavePic (player_t *player, FileWriter *file, int wi
 	PalEntry palette[256];
 
 	// Take a snapshot of the player's view
-	pic->ObjectFlags |= OF_Fixed;
 	pic->Lock ();
 	if (r_polyrenderer)
+	{
+		PolyRenderer::Instance()->Viewpoint = r_viewpoint;
+		PolyRenderer::Instance()->Viewwindow = r_viewwindow;
 		PolyRenderer::Instance()->RenderViewToCanvas(player->mo, pic, 0, 0, width, height, true);
+		r_viewpoint = PolyRenderer::Instance()->Viewpoint;
+		r_viewwindow = PolyRenderer::Instance()->Viewwindow;
+	}
 	else
-		RenderScene::Instance()->RenderViewToCanvas (player->mo, pic, 0, 0, width, height);
+	{
+		mScene.MainThread()->Viewport->viewpoint = r_viewpoint;
+		mScene.MainThread()->Viewport->viewwindow = r_viewwindow;
+		mScene.RenderViewToCanvas(player->mo, pic, 0, 0, width, height);
+		r_viewpoint = mScene.MainThread()->Viewport->viewpoint;
+		r_viewwindow = mScene.MainThread()->Viewport->viewwindow;
+	}
 	screen->GetFlashedPalette (palette);
 	M_CreatePNG (file, pic->GetBuffer(), palette, SS_PAL, width, height, pic->GetPitch());
 	pic->Unlock ();
-	pic->Destroy();
-	pic->ObjectFlags |= OF_YesReallyDelete;
 	delete pic;
 }
 
@@ -217,11 +233,19 @@ void FSoftwareRenderer::DrawRemainingPlayerSprites()
 {
 	if (!r_polyrenderer)
 	{
-		RenderPlayerSprites::Instance()->RenderRemaining();
+		mScene.MainThread()->Viewport->viewpoint = r_viewpoint;
+		mScene.MainThread()->Viewport->viewwindow = r_viewwindow;
+		mScene.MainThread()->PlayerSprites->RenderRemaining();
+		r_viewpoint = mScene.MainThread()->Viewport->viewpoint;
+		r_viewwindow = mScene.MainThread()->Viewport->viewwindow;
 	}
 	else
 	{
+		PolyRenderer::Instance()->Viewpoint = r_viewpoint;
+		PolyRenderer::Instance()->Viewwindow = r_viewwindow;
 		PolyRenderer::Instance()->RenderRemainingPlayerSprites();
+		r_viewpoint = PolyRenderer::Instance()->Viewpoint;
+		r_viewwindow = PolyRenderer::Instance()->Viewwindow;
 	}
 }
 
@@ -229,7 +253,7 @@ int FSoftwareRenderer::GetMaxViewPitch(bool down)
 {
 	const int MAX_DN_ANGLE = 56; // Max looking down angle
 	const int MAX_UP_ANGLE = 32; // Max looking up angle
-	return (r_polyrenderer) ? int(maxviewpitch) : (down ? MAX_DN_ANGLE : MAX_UP_ANGLE);
+	return (r_polyrenderer) ? int(maxviewpitch) : (down ? MAX_DN_ANGLE : ((cl_oldfreelooklimit) ? MAX_UP_ANGLE : MAX_DN_ANGLE));
 }
 
 bool FSoftwareRenderer::RequireGLNodes()
@@ -239,32 +263,40 @@ bool FSoftwareRenderer::RequireGLNodes()
 
 void FSoftwareRenderer::OnModeSet ()
 {
-	RenderScene::Instance()->ScreenResized();
+	mScene.ScreenResized();
 }
 
 void FSoftwareRenderer::SetClearColor(int color)
 {
-	RenderScene::Instance()->SetClearColor(color);
+	mScene.SetClearColor(color);
 }
 
 void FSoftwareRenderer::RenderTextureView (FCanvasTexture *tex, AActor *viewpoint, int fov)
 {
-	BYTE *Pixels = r_swtruecolor ? (BYTE*)tex->GetPixelsBgra() : (BYTE*)tex->GetPixels();
-	DSimpleCanvas *Canvas = r_swtruecolor ? tex->GetCanvasBgra() : tex->GetCanvas();
+	auto renderTarget = r_polyrenderer ? PolyRenderer::Instance()->RenderTarget : mScene.MainThread()->Viewport->RenderTarget;
+	auto &cameraViewpoint = r_polyrenderer ? PolyRenderer::Instance()->Viewpoint : mScene.MainThread()->Viewport->viewpoint;
+	auto &cameraViewwindow = r_polyrenderer ? PolyRenderer::Instance()->Viewwindow : mScene.MainThread()->Viewport->viewwindow;
+
+	// Grab global state shared with rest of zdoom
+	cameraViewpoint = r_viewpoint;
+	cameraViewwindow = r_viewwindow;
+	
+	uint8_t *Pixels = renderTarget->IsBgra() ? (uint8_t*)tex->GetPixelsBgra() : (uint8_t*)tex->GetPixels();
+	DSimpleCanvas *Canvas = renderTarget->IsBgra() ? tex->GetCanvasBgra() : tex->GetCanvas();
 
 	// curse Doom's overuse of global variables in the renderer.
 	// These get clobbered by rendering to a camera texture but they need to be preserved so the final rendering can be done with the correct palette.
 	CameraLight savedCameraLight = *CameraLight::Instance();
 
-	DAngle savedfov = FieldOfView;
-	R_SetFOV ((double)fov);
+	DAngle savedfov = cameraViewpoint.FieldOfView;
+	R_SetFOV (cameraViewpoint, (double)fov);
 
 	if (r_polyrenderer)
 		PolyRenderer::Instance()->RenderViewToCanvas(viewpoint, Canvas, 0, 0, tex->GetWidth(), tex->GetHeight(), tex->bFirstUpdate);
 	else
-		RenderScene::Instance()->RenderViewToCanvas(viewpoint, Canvas, 0, 0, tex->GetWidth(), tex->GetHeight(), tex->bFirstUpdate);
+		mScene.RenderViewToCanvas(viewpoint, Canvas, 0, 0, tex->GetWidth(), tex->GetHeight(), tex->bFirstUpdate);
 
-	R_SetFOV (savedfov);
+	R_SetFOV (cameraViewpoint, savedfov);
 
 	if (Canvas->IsBgra())
 	{
@@ -289,13 +321,13 @@ void FSoftwareRenderer::RenderTextureView (FCanvasTexture *tex, AActor *viewpoin
 		}
 	}
 
-	if (r_swtruecolor)
+	if (renderTarget->IsBgra())
 	{
 		// True color render still sometimes uses palette textures (for sprites, mostly).
 		// We need to make sure that both pixel buffers contain data:
 		int width = tex->GetWidth();
 		int height = tex->GetHeight();
-		BYTE *palbuffer = (BYTE *)tex->GetPixels();
+		uint8_t *palbuffer = (uint8_t *)tex->GetPixels();
 		uint32_t *bgrabuffer = (uint32_t*)tex->GetPixelsBgra();
 		for (int x = 0; x < width; x++)
 		{
@@ -315,24 +347,45 @@ void FSoftwareRenderer::RenderTextureView (FCanvasTexture *tex, AActor *viewpoin
 	tex->SetUpdated();
 
 	*CameraLight::Instance() = savedCameraLight;
-}
 
-sector_t *FSoftwareRenderer::FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel)
-{
-	return RenderOpaquePass::Instance()->FakeFlat(sec, tempsec, floorlightlevel, ceilinglightlevel, nullptr, 0, 0, 0, 0);
-}
-
-void FSoftwareRenderer::StateChanged(AActor *actor)
-{
-	gl_SetActorLights(actor);
+	// Sync state back to zdoom
+	r_viewpoint = cameraViewpoint;
+	r_viewwindow = cameraViewwindow;
 }
 
 void FSoftwareRenderer::PreprocessLevel()
 {
-	gl_PreprocessLevel();
+	// This just sets the default colormap for the spftware renderer.
+	NormalLight.Maps = realcolormaps.Maps;
+	NormalLight.ChangeColor(PalEntry(255, 255, 255), 0);
+	NormalLight.ChangeFade(level.fadeto);
+
+	if (level.fadeto == 0)
+	{
+		SetDefaultColormap(level.info->FadeTable);
+		if (level.flags & LEVEL_HASFADETABLE)
+		{
+			// This should really be done differently.
+			level.fadeto = 0xff939393; //[SP] Hexen True-color compatibility, just use gray.
+			for (auto &s : level.sectors)
+			{
+				s.Colormap.FadeColor = level.fadeto;
+			}
+		}
+	}
 }
 
 void FSoftwareRenderer::CleanLevelData()
 {
-	gl_CleanLevelData();
 }
+
+double FSoftwareRenderer::GetVisibility()
+{
+	return mScene.MainThread()->Light->GetVisibility();
+}
+
+void FSoftwareRenderer::SetVisibility(double vis)
+{
+	mScene.MainThread()->Light->SetVisibility(mScene.MainThread()->Viewport.get(), vis);
+}
+

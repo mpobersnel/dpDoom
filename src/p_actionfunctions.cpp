@@ -79,12 +79,16 @@
 #include "thingdef.h"
 #include "math/cmath.h"
 #include "g_levellocals.h"
+#include "r_utility.h"
+#include "sbar.h"
+#include "actorinlines.h"
+#include "vm.h"
+#include "types.h"
 
 AActor *SingleActorFromTID(int tid, AActor *defactor);
 
 
 static FRandom pr_camissile ("CustomActorfire");
-static FRandom pr_camelee ("CustomMelee");
 static FRandom pr_cabullet ("CustomBullet");
 static FRandom pr_cajump ("CustomJump");
 static FRandom pr_cwbullet ("CustomWpBullet");
@@ -128,8 +132,7 @@ bool AStateProvider::CallStateChain (AActor *actor, FState *state)
 	{
 		if (!(state->UseFlags & SUF_ITEM))
 		{
-			auto so = FState::StaticFindStateOwner(state);
-			Printf(TEXTCOLOR_RED "State %s.%d not flagged for use in CustomInventory state chains.\n", so->TypeName.GetChars(), int(state - so->OwnedStates));
+			Printf(TEXTCOLOR_RED "State %s not flagged for use in CustomInventory state chains.\n", FState::StaticGetStateName(state).GetChars());
 			return false;
 		}
 
@@ -142,8 +145,8 @@ bool AStateProvider::CallStateChain (AActor *actor, FState *state)
 			{
 				// If an unsafe function (i.e. one that accesses user variables) is being detected, print a warning once and remove the bogus function. We may not call it because that would inevitably crash.
 				auto owner = FState::StaticFindStateOwner(state);
-				Printf(TEXTCOLOR_RED "Unsafe state call in state %s.%d to %s which accesses user variables. The action function has been removed from this state\n",
-					owner->TypeName.GetChars(), int(state - owner->OwnedStates), state->ActionFunc->PrintableName.GetChars());
+				Printf(TEXTCOLOR_RED "Unsafe state call in state %s to %s which accesses user variables. The action function has been removed from this state\n",
+					FState::StaticGetStateName(state).GetChars(), state->ActionFunc->PrintableName.GetChars());
 				state->ActionFunc = nullptr;
 			}
 
@@ -151,7 +154,7 @@ bool AStateProvider::CallStateChain (AActor *actor, FState *state)
 			VMReturn *wantret;
 			FStateParamInfo stp = { state, STATE_StateChain, PSP_WEAPON };
 
-			params[2] = VMValue(&stp, ATAG_GENERIC);
+			params[2] = VMValue(&stp);
 			retval = true;		// assume success
 			wantret = NULL;		// assume no return value wanted
 			numret = 0;
@@ -181,14 +184,12 @@ bool AStateProvider::CallStateChain (AActor *actor, FState *state)
 			}
 			try
 			{
-				GlobalVMStack.Call(state->ActionFunc, params, state->ActionFunc->ImplicitArgs, wantret, numret);
+				VMCall(state->ActionFunc, params, state->ActionFunc->ImplicitArgs, wantret, numret);
 			}
 			catch (CVMAbortException &err)
 			{
 				err.MaybePrintMessage();
-				auto owner = FState::StaticFindStateOwner(state);
-				int offs = int(state - owner->OwnedStates);
-				err.stacktrace.AppendFormat("Called from state %s.%d in inventory state chain in %s\n", owner->TypeName.GetChars(), offs, GetClass()->TypeName.GetChars());
+				err.stacktrace.AppendFormat("Called from state %s in inventory state chain in %s\n", FState::StaticGetStateName(state).GetChars(), GetClass()->TypeName.GetChars());
 				throw;
 			}
 
@@ -439,22 +440,6 @@ DEFINE_ACTION_FUNCTION(AActor, GetSpawnHealth)
 
 //==========================================================================
 //
-// GetGibHealth
-//
-//==========================================================================
-DEFINE_ACTION_FUNCTION(AActor, GetGibHealth)
-{
-	if (numret > 0)
-	{
-		PARAM_SELF_PROLOGUE(AActor);
-		ret->SetInt(self->GetGibHealth());
-		return 1;
-	}
-	return 0;
-}
-
-//==========================================================================
-//
 // GetSpriteAngle
 //
 // NON-ACTION function returns the sprite angle of a pointer.
@@ -662,6 +647,36 @@ DEFINE_ACTION_FUNCTION(AActor, GetCVar)
 		else
 		{
 			ret->SetFloat(cvar->GetGenericRep(CVAR_Float).Float);
+		}
+		return 1;
+	}
+	return 0;
+}
+
+//==========================================================================
+//
+// GetCVar
+//
+// NON-ACTION function that works like ACS's GetCVar.
+//
+//==========================================================================
+
+DEFINE_ACTION_FUNCTION(AActor, GetCVarString)
+{
+	if (numret > 0)
+	{
+		assert(ret != nullptr);
+		PARAM_SELF_PROLOGUE(AActor);
+		PARAM_STRING(cvarname);
+
+		FBaseCVar *cvar = GetCVar(self, cvarname);
+		if (cvar == nullptr)
+		{
+			ret->SetString("");
+		}
+		else
+		{
+			ret->SetString(cvar->GetGenericRep(CVAR_String).String);
 		}
 		return 1;
 	}
@@ -924,86 +939,6 @@ DEFINE_ACTION_FUNCTION(AActor, A_CopyFriendliness)
 
 //==========================================================================
 //
-// Customizable attack functions which use actor parameters.
-//
-//==========================================================================
-static void DoAttack (AActor *self, bool domelee, bool domissile,
-					  int MeleeDamage, FSoundID MeleeSound, PClassActor *MissileType,double MissileHeight)
-{
-	if (self->target == NULL) return;
-
-	A_FaceTarget (self);
-	if (domelee && MeleeDamage>0 && self->CheckMeleeRange ())
-	{
-		int damage = pr_camelee.HitDice(MeleeDamage);
-		if (MeleeSound) S_Sound (self, CHAN_WEAPON, MeleeSound, 1, ATTN_NORM);
-		int newdam = P_DamageMobj (self->target, self, self, damage, NAME_Melee);
-		P_TraceBleed (newdam > 0 ? newdam : damage, self->target, self);
-	}
-	else if (domissile && MissileType != NULL)
-	{
-		// This seemingly senseless code is needed for proper aiming.
-		double add = MissileHeight + self->GetBobOffset() - 32;
-		self->AddZ(add);
-		AActor *missile = P_SpawnMissileXYZ (self->PosPlusZ(32.), self, self->target, MissileType, false);
-		self->AddZ(-add);
-
-		if (missile)
-		{
-			// automatic handling of seeker missiles
-			if (missile->flags2&MF2_SEEKERMISSILE)
-			{
-				missile->tracer=self->target;
-			}
-			P_CheckMissileSpawn(missile, self->radius);
-		}
-	}
-}
-
-DEFINE_ACTION_FUNCTION(AActor, A_MeleeAttack)
-{
-	PARAM_SELF_PROLOGUE(AActor);
-	int MeleeDamage = self->GetClass()->MeleeDamage;
-	FSoundID MeleeSound = self->GetClass()->MeleeSound;
-	DoAttack(self, true, false, MeleeDamage, MeleeSound, NULL, 0);
-	return 0;
-}
-
-DEFINE_ACTION_FUNCTION(AActor, A_MissileAttack)
-{
-	PARAM_SELF_PROLOGUE(AActor);
-	PClassActor *MissileType = PClass::FindActor(self->GetClass()->MissileName);
-	DoAttack(self, false, true, 0, 0, MissileType, self->GetClass()->MissileHeight);
-	return 0;
-}
-
-DEFINE_ACTION_FUNCTION(AActor, A_ComboAttack)
-{
-	PARAM_SELF_PROLOGUE(AActor);
-	int MeleeDamage = self->GetClass()->MeleeDamage;
-	FSoundID MeleeSound = self->GetClass()->MeleeSound;
-	PClassActor *MissileType = PClass::FindActor(self->GetClass()->MissileName);
-	DoAttack(self, true, true, MeleeDamage, MeleeSound, MissileType, self->GetClass()->MissileHeight);
-	return 0;
-}
-
-DEFINE_ACTION_FUNCTION(AActor, A_BasicAttack)
-{
-	PARAM_SELF_PROLOGUE(AActor);
-	PARAM_INT	(melee_damage);
-	PARAM_SOUND	(melee_sound);
-	PARAM_CLASS	(missile_type, AActor);
-	PARAM_FLOAT	(missile_height);
-
-	if (missile_type != NULL)
-	{
-		DoAttack(self, true, true, melee_damage, melee_sound, missile_type, missile_height);
-	}
-	return 0;
-}
-
-//==========================================================================
-//
 // Custom sound functions. 
 //
 //==========================================================================
@@ -1020,7 +955,10 @@ DEFINE_ACTION_FUNCTION(AActor, A_PlaySound)
 
 	if (!looping)
 	{
-		S_PlaySound(self, channel, soundid, (float)volume, (float)attenuation, local);
+		if (!(channel & CHAN_NOSTOP) || !S_IsActorPlayingSomething(self, channel & 7, soundid))
+		{
+			S_PlaySound(self, channel, soundid, (float)volume, (float)attenuation, local);
+		}
 	}
 	else
 	{
@@ -1120,7 +1058,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SeekerMissile)
 	PARAM_INT_DEF(chance);
 	PARAM_INT_DEF(distance);
 
-	if ((flags & SMF_LOOK) && (self->tracer == 0) && (pr_seekermissile()<chance))
+	if ((flags & SMF_LOOK) && (self->tracer == nullptr) && (pr_seekermissile()<chance))
 	{
 		self->tracer = P_RoughMonsterSearch (self, distance, true);
 	}
@@ -1256,9 +1194,9 @@ DEFINE_ACTION_FUNCTION(AActor, A_Explode)
 
 	if (damage < 0)	// get parameters from metadata
 	{
-		damage = self->GetClass()->ExplosionDamage;
-		distance = self->GetClass()->ExplosionRadius;
-		flags = !self->GetClass()->DontHurtShooter;
+		damage = self->IntVar(NAME_ExplosionDamage);
+		distance = self->IntVar(NAME_ExplosionRadius);
+		flags = !self->BoolVar(NAME_DontHurtShooter);
 		alert = false;
 	}
 	if (distance <= 0) distance = damage;
@@ -1404,26 +1342,6 @@ DEFINE_ACTION_FUNCTION(AActor, A_RadiusDamageSelf)
 	}
 
 	return 0;
-}
-
-//==========================================================================
-//
-// Execute a line special / script
-//
-//==========================================================================
-DEFINE_ACTION_FUNCTION(AActor, A_CallSpecial)
-{
-	PARAM_SELF_PROLOGUE(AActor);
-	PARAM_INT		(special);
-	PARAM_INT_DEF	(arg1);
-	PARAM_INT_DEF	(arg2);
-	PARAM_INT_DEF	(arg3);
-	PARAM_INT_DEF	(arg4);
-	PARAM_INT_DEF	(arg5);
-
-	bool res = !!P_ExecuteSpecial(special, NULL, self, false, arg1, arg2, arg3, arg4, arg5);
-
-	ACTION_RETURN_BOOL(res);
 }
 
 //==========================================================================
@@ -2010,7 +1928,7 @@ DEFINE_ACTION_FUNCTION(AStateProvider, A_FireProjectile)
 
 		// Temporarily adjusts the pitch
 		DAngle saved_player_pitch = self->Angles.Pitch;
-		self->Angles.Pitch -= pitch;
+		self->Angles.Pitch += pitch;
 		AActor * misl=P_SpawnPlayerMissile (self, ofs.X, ofs.Y, spawnheight, ti, shootangle, &t, NULL, false, (flags & FPF_NOAUTOAIM) != 0);
 		self->Angles.Pitch = saved_player_pitch;
 
@@ -2386,7 +2304,7 @@ static bool DoGiveInventory(AActor *receiver, bool orresult, VM_ARGS)
 		{
 			return false;
 		}
-		if (item->IsKindOf(PClass::FindActor(NAME_Health)))
+		if (item->IsKindOf(NAME_Health))
 		{
 			item->Amount *= amount;
 		}
@@ -2493,63 +2411,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SetInventory)
 	{
 		mobj = mobj->player->mo;
 	}
-
-	AInventory *item = mobj->FindInventory(itemtype);
-
-	if (item != nullptr)
-	{
-		// A_SetInventory sets the absolute amount. 
-		// Subtract or set the appropriate amount as necessary.
-
-		if (amount == item->Amount)
-		{
-			// Nothing was changed.
-			ACTION_RETURN_BOOL(false);
-		}
-		else if (amount <= 0)
-		{
-			//Remove it all.
-			res = (mobj->TakeInventory(itemtype, item->Amount, true, false));
-			ACTION_RETURN_BOOL(res);
-		}
-		else if (amount < item->Amount)
-		{
-			int amt = abs(item->Amount - amount);
-			res = (mobj->TakeInventory(itemtype, amt, true, false));
-			ACTION_RETURN_BOOL(res);
-		}
-		else
-		{
-			item->Amount = (beyondMax ? amount : clamp(amount, 0, item->MaxAmount));
-			ACTION_RETURN_BOOL(true);
-		}
-	}
-	else
-	{
-		if (amount <= 0)
-		{
-			ACTION_RETURN_BOOL(false);
-		}
-		item = static_cast<AInventory *>(Spawn(itemtype));
-		if (item == nullptr)
-		{
-			ACTION_RETURN_BOOL(false);
-		}
-		else
-		{
-			item->Amount = amount;
-			item->flags |= MF_DROPPED;
-			item->ItemFlags |= IF_IGNORESKILL;
-			item->ClearCounters();
-			if (!item->CallTryPickup(mobj))
-			{
-				item->Destroy();
-				ACTION_RETURN_BOOL(false);
-			}
-			ACTION_RETURN_BOOL(true);
-		}
-	}
-	ACTION_RETURN_BOOL(false);
+	ACTION_RETURN_BOOL(mobj->SetInventory(itemtype, amount, beyondMax));
 }
 
 //===========================================================================
@@ -2692,8 +2554,7 @@ static bool InitSpawnedItem(AActor *self, AActor *mo, int flags)
 		else if (flags & SIXF_USEBLOODCOLOR)
 		{
 			// [XA] Use the spawning actor's BloodColor to translate the newly-spawned object.
-			PalEntry bloodcolor = self->GetBloodColor();
-			mo->Translation = TRANSLATION(TRANSLATION_Blood, bloodcolor.a);
+			mo->Translation = self->BloodTranslation;
 		}
 	}
 	if (flags & SIXF_TRANSFERPOINTERS)
@@ -2861,7 +2722,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SpawnItem)
 	PARAM_BOOL_DEF	(useammo)				
 	PARAM_BOOL_DEF	(transfer_translation);
 		
-	if (numret > 1) ret[1].SetPointer(nullptr, ATAG_OBJECT);
+	if (numret > 1) ret[1].SetObject(nullptr);
 
 	if (missile == NULL)
 	{
@@ -2898,7 +2759,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SpawnItem)
 	int flags = (transfer_translation ? SIXF_TRANSFERTRANSLATION : 0) + (useammo ? SIXF_SETMASTER : 0);
 	bool res = InitSpawnedItem(self, mo, flags);	// for an inventory item's use state
 	if (numret > 0) ret[0].SetInt(res);
-	if (numret > 1) ret[1].SetPointer(mo, ATAG_OBJECT);
+	if (numret > 1) ret[1].SetObject(mo);
 	return MIN(numret, 2);
 
 }
@@ -2925,7 +2786,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SpawnItemEx)
 	PARAM_INT_DEF	(chance)	
 	PARAM_INT_DEF	(tid)		
 
-	if (numret > 1) ret[1].SetPointer(nullptr, ATAG_OBJECT);
+	if (numret > 1) ret[1].SetObject(nullptr);
 
 	if (missile == NULL) 
 	{
@@ -2990,7 +2851,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SpawnItemEx)
 		mo->Angles.Yaw = angle;
 	}
 	if (numret > 0) ret[0].SetInt(res);
-	if (numret > 1) ret[1].SetPointer(mo, ATAG_OBJECT);
+	if (numret > 1) ret[1].SetObject(mo);
 	return MIN(numret, 2);
 }
 
@@ -3010,7 +2871,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_ThrowGrenade)
 		PARAM_FLOAT_DEF	(zvel)		
 		PARAM_BOOL_DEF	(useammo)	
 
-	if (numret > 1) ret[1].SetPointer(nullptr, ATAG_OBJECT);
+	if (numret > 1) ret[1].SetObject(nullptr);
 
 	if (missile == NULL)
 	{
@@ -3072,7 +2933,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_ThrowGrenade)
 		if (!P_CheckMissileSpawn(bo, self->radius)) bo = nullptr;
 
 		if (numret > 0) ret[0].SetInt(true);
-		if (numret > 1) ret[1].SetPointer(bo, ATAG_OBJECT);
+		if (numret > 1) ret[1].SetObject(bo);
 		return MIN(numret, 2);
 	} 
 	else
@@ -3122,7 +2983,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SelectWeapon)
 
 	AWeapon *weaponitem = static_cast<AWeapon*>(self->FindInventory(cls));
 
-	if (weaponitem != NULL && weaponitem->IsKindOf(RUNTIME_CLASS(AWeapon)))
+	if (weaponitem != NULL && weaponitem->IsKindOf(NAME_Weapon))
 	{
 		if (self->player->ReadyWeapon != weaponitem)
 		{
@@ -3458,9 +3319,9 @@ DEFINE_ACTION_FUNCTION(AActor, A_SpawnDebris)
 			{
 				mo->Translation = self->Translation;
 			}
-			if (i < mo->GetClass()->NumOwnedStates)
+			if (i < mo->GetInfo()->NumOwnedStates)
 			{
-				mo->SetState (mo->GetClass()->OwnedStates + i);
+				mo->SetState (mo->GetInfo()->OwnedStates + i);
 			}
 			mo->Vel.X = mult_h * pr_spawndebris.Random2() / 64.;
 			mo->Vel.Y = mult_h * pr_spawndebris.Random2() / 64.;
@@ -3679,13 +3540,14 @@ DEFINE_ACTION_FUNCTION(AActor, A_DropInventory)
 {
 	PARAM_SELF_PROLOGUE(AActor);
 	PARAM_CLASS(drop, AInventory);
+	PARAM_INT_DEF(amount);
 
 	if (drop)
 	{
 		AInventory *inv = self->FindInventory(drop);
 		if (inv)
 		{
-			self->DropInventory(inv);
+			self->DropInventory(inv, amount);
 		}
 	}
 	return 0;
@@ -3712,8 +3574,8 @@ DEFINE_ACTION_FUNCTION(AActor, A_SetBlend)
 	if (color2.a == 0)
 		color2 = color;
 
-	new DFlashFader(color.r/255.f, color.g/255.f, color.b/255.f, float(alpha),
-					color2.r/255.f, color2.g/255.f, color2.b/255.f, 0,
+	Create<DFlashFader>(color.r/255.f, color.g/255.f, color.b/255.f, float(alpha),
+					color2.r/255.f, color2.g/255.f, color2.b/255.f, 0.f,
 					float(tics)/TICRATE, self);
 	return 0;
 }
@@ -3935,7 +3797,7 @@ DEFINE_ACTION_FUNCTION(AActor, PlayerSkinCheck)
 	PARAM_SELF_PROLOGUE(AActor);
 
 	ACTION_RETURN_BOOL(self->player != NULL &&
-		skins[self->player->userinfo.GetSkin()].othergame);
+		Skins[self->player->userinfo.GetSkin()].othergame);
 }
 
 // [KS] *** Start of my modifications ***
@@ -4500,7 +4362,7 @@ DEFINE_ACTION_FUNCTION(AStateProvider, A_CheckForReload)
 
 	if (numret > 0)
 	{
-		ret->SetPointer(NULL, ATAG_STATE);
+		ret->SetPointer(NULL);
 		numret = 1;
 	}
 
@@ -4518,7 +4380,7 @@ DEFINE_ACTION_FUNCTION(AStateProvider, A_CheckForReload)
 		// Go back to the refire frames, instead of continuing on to the reload frames.
 		if (numret != 0)
 		{
-			ret->SetPointer(jump, ATAG_STATE);
+			ret->SetPointer(jump);
 		}
 	}
 	else
@@ -4617,6 +4479,13 @@ DEFINE_ACTION_FUNCTION(AActor, A_ChangeCountFlags)
 	return 0;
 }
 
+
+enum ERaise
+{
+	RF_TRANSFERFRIENDLINESS = 1,
+	RF_NOCHECKPOSITION = 2
+};
+
 //===========================================================================
 //
 // A_RaiseMaster
@@ -4625,11 +4494,12 @@ DEFINE_ACTION_FUNCTION(AActor, A_ChangeCountFlags)
 DEFINE_ACTION_FUNCTION(AActor, A_RaiseMaster)
 {
 	PARAM_SELF_PROLOGUE(AActor);
-	PARAM_BOOL_DEF(copy);
+	PARAM_INT_DEF(flags);
 
+	bool copy = !!(flags & RF_TRANSFERFRIENDLINESS);
 	if (self->master != NULL)
 	{
-		P_Thing_Raise(self->master, copy ? self : NULL);
+		P_Thing_Raise(self->master, copy ? self : NULL, (flags & RF_NOCHECKPOSITION));
 	}
 	return 0;
 }
@@ -4642,16 +4512,17 @@ DEFINE_ACTION_FUNCTION(AActor, A_RaiseMaster)
 DEFINE_ACTION_FUNCTION(AActor, A_RaiseChildren)
 {
 	PARAM_SELF_PROLOGUE(AActor);
-	PARAM_BOOL_DEF(copy);
+	PARAM_INT_DEF(flags);
 
 	TThinkerIterator<AActor> it;
 	AActor *mo;
 
+	bool copy = !!(flags & RF_TRANSFERFRIENDLINESS);
 	while ((mo = it.Next()) != NULL)
 	{
 		if (mo->master == self)
 		{
-			P_Thing_Raise(mo, copy ? self : NULL);
+			P_Thing_Raise(mo, copy ? self : NULL, (flags & RF_NOCHECKPOSITION));
 		}
 	}
 	return 0;
@@ -4665,18 +4536,19 @@ DEFINE_ACTION_FUNCTION(AActor, A_RaiseChildren)
 DEFINE_ACTION_FUNCTION(AActor, A_RaiseSiblings)
 {
 	PARAM_SELF_PROLOGUE(AActor);
-	PARAM_BOOL_DEF(copy);
+	PARAM_INT_DEF(flags);
 
 	TThinkerIterator<AActor> it;
 	AActor *mo;
 
+	bool copy = !!(flags & RF_TRANSFERFRIENDLINESS);
 	if (self->master != NULL)
 	{
 		while ((mo = it.Next()) != NULL)
 		{
 			if (mo->master == self->master && mo != self)
 			{
-				P_Thing_Raise(mo, copy ? self : NULL);
+				P_Thing_Raise(mo, copy ? self : NULL, (flags & RF_NOCHECKPOSITION));
 			}
 		}
 	}
@@ -4879,9 +4751,9 @@ DEFINE_ACTION_FUNCTION(AActor, A_ChangeVelocity)
 
 static PField *GetVar(DObject *self, FName varname)
 {
-	PField *var = dyn_cast<PField>(self->GetClass()->Symbols.FindSymbol(varname, true));
+	PField *var = dyn_cast<PField>(self->GetClass()->FindSymbol(varname, true));
 
-	if (var == NULL || (var->Flags & (VARF_Native | VARF_Private | VARF_Protected | VARF_Static)) || !var->Type->IsKindOf(RUNTIME_CLASS(PBasicType)))
+	if (var == NULL || (var->Flags & (VARF_Native | VARF_Private | VARF_Protected | VARF_Static)) || !var->Type->isScalar())
 	{
 		Printf("%s is not a user variable in class %s\n", varname.GetChars(),
 			self->GetClass()->TypeName.GetChars());
@@ -4900,7 +4772,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SetUserVar)
 	PField *var = GetVar(self, varname);
 	if (var != nullptr)
 	{
-		var->Type->SetValue(reinterpret_cast<BYTE *>(self) + var->Offset, value);
+		var->Type->SetValue(reinterpret_cast<uint8_t *>(self) + var->Offset, value);
 	}
 	return 0;
 }
@@ -4915,7 +4787,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SetUserVarFloat)
 	PField *var = GetVar(self, varname);
 	if (var != nullptr)
 	{
-		var->Type->SetValue(reinterpret_cast<BYTE *>(self) + var->Offset, value);
+		var->Type->SetValue(reinterpret_cast<uint8_t *>(self) + var->Offset, value);
 	}
 	return 0;
 }
@@ -4928,11 +4800,10 @@ DEFINE_ACTION_FUNCTION(AActor, A_SetUserVarFloat)
 
 static PField *GetArrayVar(DObject *self, FName varname, int pos)
 {
-	PField *var = dyn_cast<PField>(self->GetClass()->Symbols.FindSymbol(varname, true));
+	PField *var = dyn_cast<PField>(self->GetClass()->FindSymbol(varname, true));
 
 	if (var == NULL || (var->Flags & (VARF_Native | VARF_Private | VARF_Protected | VARF_Static)) ||
-		!var->Type->IsKindOf(RUNTIME_CLASS(PArray)) ||
-		!static_cast<PArray *>(var->Type)->ElementType->IsKindOf(RUNTIME_CLASS(PBasicType)))
+		!var->Type->isArray() || !static_cast<PArray *>(var->Type)->ElementType->isScalar())
 	{
 		Printf("%s is not a user array in class %s\n", varname.GetChars(),
 			self->GetClass()->TypeName.GetChars());
@@ -4959,7 +4830,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SetUserArray)
 	if (var != nullptr)
 	{
 		PArray *arraytype = static_cast<PArray *>(var->Type);
-		arraytype->ElementType->SetValue(reinterpret_cast<BYTE *>(self) + var->Offset + arraytype->ElementSize * pos, value);
+		arraytype->ElementType->SetValue(reinterpret_cast<uint8_t *>(self) + var->Offset + arraytype->ElementSize * pos, value);
 	}
 	return 0;
 }
@@ -4976,7 +4847,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_SetUserArrayFloat)
 	if (var != nullptr)
 	{
 		PArray *arraytype = static_cast<PArray *>(var->Type);
-		arraytype->ElementType->SetValue(reinterpret_cast<BYTE *>(self) + var->Offset + arraytype->ElementSize * pos, value);
+		arraytype->ElementType->SetValue(reinterpret_cast<uint8_t *>(self) + var->Offset + arraytype->ElementSize * pos, value);
 	}
 	return 0;
 }
@@ -5011,7 +4882,7 @@ enum T_Flags
 DEFINE_ACTION_FUNCTION(AActor, A_Teleport)
 {
 	PARAM_ACTION_PROLOGUE(AActor);
-	PARAM_STATE_DEF		(teleport_state)			
+	PARAM_STATE_ACTION_DEF	(teleport_state)			
 	PARAM_CLASS_DEF		(target_type, ASpecialSpot)	
 	PARAM_CLASS_DEF		(fog_type, AActor)			
 	PARAM_INT_DEF		(flags)						
@@ -5030,7 +4901,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Teleport)
 	}
 	if (numret > 0)
 	{
-		ret[0].SetPointer(NULL, ATAG_STATE);
+		ret[0].SetPointer(NULL);
 	}
 
 	if (!ref)
@@ -5166,7 +5037,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Teleport)
 			}
 			if (numret > 0)
 			{
-				ret[0].SetPointer(teleport_state, ATAG_STATE);
+				ret[0].SetPointer(teleport_state);
 			}
 			return numret;
 		}
@@ -5448,7 +5319,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Warp)
 	PARAM_FLOAT_DEF(zofs)				
 	PARAM_ANGLE_DEF(angle)				
 	PARAM_INT_DEF(flags)				
-	PARAM_STATE_DEF(success_state)		
+	PARAM_STATE_ACTION_DEF(success_state)		
 	PARAM_FLOAT_DEF(heightoffset)		
 	PARAM_FLOAT_DEF(radiusoffset)		
 	PARAM_ANGLE_DEF(pitch)				
@@ -5464,7 +5335,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Warp)
 	}
 	if (numret > 0)
 	{
-		ret[0].SetPointer(NULL, ATAG_STATE);
+		ret[0].SetPointer(NULL);
 	}
 
 	if ((flags & WARPF_USETID))
@@ -5490,7 +5361,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Warp)
 			// in this case, you have the statejump to help you handle all the success anyway.
 			if (numret > 0)
 			{
-				ret[0].SetPointer(success_state, ATAG_STATE);
+				ret[0].SetPointer(success_state);
 			}
 		}
 		else if (numret > 1)
@@ -5667,7 +5538,7 @@ static bool DoRadiusGive(AActor *self, AActor *thing, PClassActor *item, int amo
 		if ((flags & RGF_NOSIGHT) || P_CheckSight(thing, self, SF_IGNOREVISIBILITY | SF_IGNOREWATERBOUNDARY))
 		{ // OK to give; target is in direct path, or the monster doesn't care about it being in line of sight.
 			AInventory *gift = static_cast<AInventory *>(Spawn(item));
-			if (gift->IsKindOf(PClass::FindActor(NAME_Health)))
+			if (gift->IsKindOf(NAME_Health))
 			{
 				gift->Amount *= amount;
 			}
@@ -6912,4 +6783,58 @@ DEFINE_ACTION_FUNCTION(AActor, A_SetSize)
 	}
 
 	ACTION_RETURN_BOOL(true);
+}
+
+DEFINE_ACTION_FUNCTION(AActor, SetCamera)
+{
+	PARAM_ACTION_PROLOGUE(AActor);
+	PARAM_OBJECT(cam, AActor);
+	PARAM_BOOL_DEF(revert);
+
+	if (self->player == nullptr || self->player->mo != self) return 0;
+
+	if (cam == nullptr)
+	{
+		cam = self;
+		revert = false;
+	}
+	AActor *oldcamera = self->player->camera;
+	self->player->camera = cam;
+	if (revert) self->player->cheats |= CF_REVERTPLEASE;
+
+	if (oldcamera != cam)
+	{
+		R_ClearPastViewer(cam);
+	}
+	return 0;
+}
+
+DEFINE_ACTION_FUNCTION(AActor, A_SprayDecal)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	PARAM_STRING(name);
+	PARAM_FLOAT_DEF(dist);
+	SprayDecal(self, name, dist);
+	return 0;
+}
+
+DEFINE_ACTION_FUNCTION(AActor, A_SetMugshotState)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	PARAM_STRING(name);
+	if (self->CheckLocalView(consoleplayer))
+		StatusBar->SetMugShotState(name);
+	return 0;
+}
+
+// This needs to account for the fact that internally renderstyles are stored as a series of operations, 
+// but the script side only cares about symbolic constants.
+DEFINE_ACTION_FUNCTION(AActor, GetRenderStyle)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	for(unsigned i=0;i<STYLE_Count;i++)
+	{
+		if (self->RenderStyle == LegacyRenderStyles[i]) ACTION_RETURN_INT(i);
+	}
+	ACTION_RETURN_INT(-1);	// no symbolic constant exists to handle this style.
 }

@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #include <stdlib.h>
 #include "templates.h"
@@ -34,12 +42,6 @@
 
 namespace swrenderer
 {
-	RenderClipSegment *RenderClipSegment::Instance()
-	{
-		static RenderClipSegment instance;
-		return &instance;
-	}
-
 	void RenderClipSegment::Clear(short left, short right)
 	{
 		solidsegs[0].first = -0x7fff;
@@ -92,7 +94,7 @@ namespace swrenderer
 		return true;
 	}
 
-	bool RenderClipSegment::Clip(int first, int last, bool solid, VisibleSegmentCallback callback)
+	bool RenderClipSegment::Clip(int first, int last, bool solid, VisibleSegmentRenderer *visitor)
 	{
 		cliprange_t *next, *start;
 		int i, j;
@@ -110,7 +112,7 @@ namespace swrenderer
 			if (last <= start->first)
 			{
 				// Post is entirely visible (above start).
-				if (!callback(first, last))
+				if (!visitor->RenderWallSegment(first, last))
 					return true;
 
 				// Insert a new clippost for solid walls.
@@ -137,7 +139,7 @@ namespace swrenderer
 			}
 
 			// There is a fragment above *start.
-			if (callback(first, start->first) && solid)
+			if (visitor->RenderWallSegment(first, start->first) && solid)
 			{
 				start->first = first; // Adjust the clip size for solid walls
 			}
@@ -152,7 +154,7 @@ namespace swrenderer
 		while (last >= (next + 1)->first)
 		{
 			// There is a fragment between two posts.
-			clipsegment = callback(next->last, (next + 1)->first);
+			clipsegment = visitor->RenderWallSegment(next->last, (next + 1)->first);
 			next++;
 
 			if (last <= next->last)
@@ -164,7 +166,7 @@ namespace swrenderer
 		}
 
 		// There is a fragment after *next.
-		clipsegment = callback(next->last, last);
+		clipsegment = visitor->RenderWallSegment(next->last, last);
 
 	crunch:
 		if (!clipsegment)

@@ -35,7 +35,6 @@
 // HEADER FILES ------------------------------------------------------------
 
 #include "gl/system/gl_system.h"
-#include "files.h"
 #include "m_swap.h"
 #include "v_video.h"
 #include "doomstat.h"
@@ -49,7 +48,6 @@
 #include "templates.h"
 #include "i_system.h"
 #include "i_video.h"
-#include "i_input.h"
 #include "v_pfx.h"
 #include "stats.h"
 #include "doomerrors.h"
@@ -397,7 +395,7 @@ bool OpenGLSWFrameBuffer::Wiper_Melt::Run(int ticks, OpenGLSWFrameBuffer *fb)
 
 					BufferedTris *quad = &fb->QuadExtra[fb->QuadBatchPos];
 					FBVERTEX *vert = &fb->VertexData[fb->VertexPos];
-					WORD *index = &fb->IndexData[fb->IndexPos];
+					uint16_t *index = &fb->IndexData[fb->IndexPos];
 
 					quad->ClearSetup();
 					quad->Flags = BQF_DisableAlphaTest;

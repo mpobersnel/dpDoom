@@ -1,26 +1,61 @@
-// Emacs style mode select	 -*- C++ -*- 
 //-----------------------------------------------------------------------------
 //
-// $Id:$
+// Copyright 1993-1996 id Software
+// Copyright 1994-1996 Raven Software
+// Copyright 1998-1998 Chi Hoang, Lee Killough, Jim Flynn, Rand Phares, Ty Halderman
+// Copyright 1999-2016 Randy Heit
+// Copyright 2002-2017 Christoph Oelckers
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
-//
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
-// $Log:$
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 // DESCRIPTION:
 //		Movement, collision handling.
 //		Shooting and aiming.
 //
 //-----------------------------------------------------------------------------
+
+/* For code that originates from ZDoom the following applies:
+**
+**---------------------------------------------------------------------------
+**
+** Redistribution and use in source and binary forms, with or without
+** modification, are permitted provided that the following conditions
+** are met:
+**
+** 1. Redistributions of source code must retain the above copyright
+**    notice, this list of conditions and the following disclaimer.
+** 2. Redistributions in binary form must reproduce the above copyright
+**    notice, this list of conditions and the following disclaimer in the
+**    documentation and/or other materials provided with the distribution.
+** 3. The name of the author may not be used to endorse or promote products
+**    derived from this software without specific prior written permission.
+**
+** THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+** IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+** OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+** IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+** INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+** NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+** THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+**---------------------------------------------------------------------------
+**
+*/
 
 #include <stdlib.h>
 #include <math.h>
@@ -47,7 +82,7 @@
 #include "r_utility.h"
 #include "p_blockmap.h"
 #include "p_3dmidtex.h"
-#include "virtual.h"
+#include "vm.h"
 
 #include "s_sound.h"
 #include "decallib.h"
@@ -64,6 +99,7 @@
 #include "g_level.h"
 #include "r_sky.h"
 #include "g_levellocals.h"
+#include "actorinlines.h"
 
 CVAR(Bool, cl_bloodsplats, true, CVAR_ARCHIVE)
 CVAR(Int, sv_smartaim, 0, CVAR_ARCHIVE | CVAR_SERVERINFO)
@@ -153,7 +189,7 @@ bool P_CanCollideWith(AActor *tmthing, AActor *thing)
 	VMFunction *func = clss->Virtuals.Size() > VIndex ? clss->Virtuals[VIndex] : nullptr;
 	if (func != nullptr)
 	{
-		GlobalVMStack.Call(func, params, 3, &ret, 1, nullptr);
+		VMCall(func, params, 3, &ret, 1);
 		if (!retval) return false;
 	}
 	std::swap(params[0].a, params[1].a);
@@ -164,7 +200,7 @@ bool P_CanCollideWith(AActor *tmthing, AActor *thing)
 	func = clss->Virtuals.Size() > VIndex ? clss->Virtuals[VIndex] : nullptr;
 	if (func != nullptr)
 	{
-		GlobalVMStack.Call(func, params, 3, &ret, 1, nullptr);
+		VMCall(func, params, 3, &ret, 1);
 		if (!retval) return false;
 	}
 	return true;
@@ -1177,6 +1213,7 @@ static bool CanAttackHurt(AActor *victim, AActor *shooter)
 	if (!victim->player && !shooter->player)
 	{
 		int infight = G_SkillProperty(SKILLP_Infight);
+		if (infight < 0 && (victim->flags7 & MF7_FORCEINFIGHTING)) infight = 0;	// This must override the 'no infight' setting to take effect.
 
 		if (infight < 0)
 		{
@@ -2052,7 +2089,7 @@ DEFINE_ACTION_FUNCTION(AActor, TestMobjZ)
 	if (numret > 1)
 	{
 		numret = 2;
-		ret[1].SetPointer(on, ATAG_OBJECT);
+		ret[1].SetObject(on);
 	}
 	if (numret > 0)
 	{
@@ -2280,9 +2317,9 @@ bool P_TryMove(AActor *thing, const DVector2 &pos,
 			}
 #endif
 		}
-		if (!(thing->flags & MF_TELEPORT) && !(thing->flags3 & MF3_FLOORHUGGER))
+		if (!(thing->flags & MF_TELEPORT) && (!(thing->flags3 & MF3_FLOORHUGGER) || thing->flags5 & MF5_NODROPOFF))
 		{
-			if ((thing->flags & MF_MISSILE) && !(thing->flags6 & MF6_STEPMISSILE) && tm.floorz > thing->Z())
+			if ((thing->flags & MF_MISSILE) && !(thing->flags6 & MF6_STEPMISSILE) && tm.floorz > thing->Z() && !(thing->flags3 & MF3_FLOORHUGGER))
 			{ // [RH] Don't let normal missiles climb steps
 				goto pushline;
 			}
@@ -2771,13 +2808,13 @@ bool P_CheckMove(AActor *thing, const DVector2 &pos, int flags)
 			if (thing->Top() > tm.ceilingz)
 				return false;
 		}
-		if (!(thing->flags & MF_TELEPORT) && !(thing->flags3 & MF3_FLOORHUGGER))
+		if (!(thing->flags & MF_TELEPORT) && (!(thing->flags3 & MF3_FLOORHUGGER) || thing->flags5 & MF5_NODROPOFF))
 		{
 			if (tm.floorz - newz > thing->MaxStepHeight)
 			{ // too big a step up
 				return false;
 			}
-			else if ((thing->flags & MF_MISSILE) && !(thing->flags6 & MF6_STEPMISSILE) && tm.floorz > newz)
+			else if ((thing->flags & MF_MISSILE) && !(thing->flags6 & MF6_STEPMISSILE) && tm.floorz > newz && !(thing->flags3 & MF3_FLOORHUGGER))
 			{ // [RH] Don't let normal missiles climb steps
 				return false;
 			}
@@ -3532,7 +3569,23 @@ bool P_BounceActor(AActor *mo, AActor *BlockingMobj, bool ontop)
 		|| ((mo->flags6 & MF6_NOBOSSRIP) && (BlockingMobj->flags2 & MF2_BOSS))) && (BlockingMobj->flags2 & MF2_REFLECTIVE))
 		|| ((BlockingMobj->player == NULL) && (!(BlockingMobj->flags3 & MF3_ISMONSTER)))))
 	{
-		if (mo->bouncecount > 0 && --mo->bouncecount == 0) return false;
+		// Rippers should not bounce off shootable actors, since they rip through them.
+		if ((mo->flags & MF_MISSILE) && (mo->flags2 & MF2_RIP) && BlockingMobj->flags & MF_SHOOTABLE)
+			return true;
+
+		if (BlockingMobj->flags & MF_SHOOTABLE && mo->BounceFlags & BOUNCE_NotOnShootables)
+		{
+			mo->bouncecount = 1;	// let it explode now.
+		}
+
+		if (mo->bouncecount>0 && --mo->bouncecount == 0)
+		{
+			if (mo->flags & MF_MISSILE)
+				P_ExplodeMissile(mo, nullptr, BlockingMobj);
+			else
+				mo->CallDie(BlockingMobj, nullptr);
+			return true;
+		}
 
 		if (mo->flags7 & MF7_HITTARGET)	mo->target = BlockingMobj;
 		if (mo->flags7 & MF7_HITMASTER)	mo->master = BlockingMobj;
@@ -3542,6 +3595,7 @@ bool P_BounceActor(AActor *mo, AActor *BlockingMobj, bool ontop)
 		{
 			DAngle angle = BlockingMobj->AngleTo(mo) + ((pr_bounce() % 16) - 8);
 			double speed = mo->VelXYToSpeed() * mo->wallbouncefactor; // [GZ] was 0.75, using wallbouncefactor seems more consistent
+			if (fabs(speed) < EQUAL_EPSILON) speed = 0;
 			mo->Angles.Yaw = angle;
 			mo->VelFromAngle(speed);
 			mo->PlayBounceSound(true);
@@ -3568,7 +3622,7 @@ bool P_BounceActor(AActor *mo, AActor *BlockingMobj, bool ontop)
 
 			if (mo->BounceFlags & (BOUNCE_HereticType | BOUNCE_MBF))
 			{
-				mo->Vel.Z -= 2. / dot;
+				mo->Vel.Z -= 2. * dot;
 				if (!(mo->BounceFlags & BOUNCE_MBF)) // Heretic projectiles die, MBF projectiles don't.
 				{
 					mo->flags |= MF_INBOUNCE;
@@ -3584,7 +3638,7 @@ bool P_BounceActor(AActor *mo, AActor *BlockingMobj, bool ontop)
 			else // Don't run through this for MBF-style bounces
 			{
 				// The reflected velocity keeps only about 70% of its original speed
-				mo->Vel.Z = (mo->Vel.Z - 2. / dot) * mo->bouncefactor;
+				mo->Vel.Z = (mo->Vel.Z - 2. * dot) * mo->bouncefactor;
 			}
 
 			mo->PlayBounceSound(true);
@@ -4666,7 +4720,7 @@ DEFINE_ACTION_FUNCTION(AActor, LineAttack)
 	int acdmg;
 	if (puffType == nullptr) puffType = PClass::FindActor("BulletPuff");	// P_LineAttack does not work without a puff to take info from.
 	auto puff = P_LineAttack(self, angle, distance, pitch, damage, damageType, puffType, flags, victim, &acdmg);
-	if (numret > 0) ret[0].SetPointer(puff, ATAG_OBJECT);
+	if (numret > 0) ret[0].SetObject(puff);
 	if (numret > 1) ret[1].SetInt(acdmg), numret = 2;
 	return numret;
 }
@@ -4677,7 +4731,7 @@ DEFINE_ACTION_FUNCTION(AActor, LineAttack)
 //
 //==========================================================================
 
-AActor *P_LinePickActor(AActor *t1, DAngle angle, double distance, DAngle pitch, ActorFlags actorMask, DWORD wallMask) 
+AActor *P_LinePickActor(AActor *t1, DAngle angle, double distance, DAngle pitch, ActorFlags actorMask, uint32_t wallMask) 
 {
 	DVector3 direction;
 	double shootz;
@@ -4785,7 +4839,7 @@ void P_TraceBleed(int damage, const DVector3 &pos, AActor *actor, DAngle angle, 
 		{
 			if (bleedtrace.HitType == TRACE_HitWall)
 			{
-				PalEntry bloodcolor = actor->GetBloodColor();
+				PalEntry bloodcolor = actor->BloodColor;
 				if (bloodcolor != 0)
 				{
 					bloodcolor.r >>= 1;	// the full color is too bright for blood decals
@@ -5117,7 +5171,8 @@ void P_RailAttack(FRailParams *p)
 			if (puffDefaults->flags3 & MF3_FOILINVUL) dmgFlagPass |= DMG_FOILINVUL;
 			if (puffDefaults->flags7 & MF7_FOILBUDDHA) dmgFlagPass |= DMG_FOILBUDDHA;
 		}
-		int newdam = P_DamageMobj(hitactor, thepuff ? thepuff : source, source, p->damage, damagetype, dmgFlagPass|DMG_USEANGLE, hitangle);
+		// [RK] If the attack source is a player, send the DMG_PLAYERATTACK flag.
+		int newdam = P_DamageMobj(hitactor, thepuff ? thepuff : source, source, p->damage, damagetype, dmgFlagPass | DMG_USEANGLE | (source->player ? DMG_PLAYERATTACK : 0), hitangle);
 
 		if (bleed)
 		{
@@ -5264,16 +5319,26 @@ bool P_UseTraverse(AActor *usething, const DVector2 &start, const DVector2 &end,
 		// [RH] Check for things to talk with or use a puzzle item on
 		if (!in->isaline)
 		{
-			if (usething == in->d.thing)
+			AActor * const mobj = in->d.thing;
+
+			if (mobj == usething)
 				continue;
 			// Check thing
 
 			// Check for puzzle item use or USESPECIAL flag
 			// Extended to use the same activationtype mechanism as BUMPSPECIAL does
-			if (in->d.thing->flags5 & MF5_USESPECIAL || in->d.thing->special == UsePuzzleItem)
+			if (mobj->flags5 & MF5_USESPECIAL || mobj->special == UsePuzzleItem)
 			{
-				if (P_ActivateThingSpecial(in->d.thing, usething))
+				if (P_ActivateThingSpecial(mobj, usething))
 					return true;
+			}
+			IFVIRTUALPTR(mobj, AActor, Used)
+			{
+				VMValue params[] = { mobj, usething };
+				int ret;
+				VMReturn vret(&ret);
+				VMCall(func, params, 2, &vret, 1);
+				if (ret) return true;
 			}
 			continue;
 		}
@@ -5652,10 +5717,11 @@ int P_RadiusAttack(AActor *bombspot, AActor *bombsource, int bombdamage, int bom
 			{
 				points = points * splashfactor;
 			}
-			points *= thing->GetClass()->RDFactor;
+			points *= thing->RadiusDamageFactor;
 
+			double check = int(points) * bombdamage;
 			// points and bombdamage should be the same sign (the double cast of 'points' is needed to prevent overflows and incorrect values slipping through.)
-			if ((((double)int(points) * bombdamage) > 0) && P_CheckSight(thing, bombspot, SF_IGNOREVISIBILITY | SF_IGNOREWATERBOUNDARY))
+			if ((check > 0 || (check == 0 && bombspot->flags7 & MF7_FORCEZERORADIUSDMG)) && P_CheckSight(thing, bombspot, SF_IGNOREVISIBILITY | SF_IGNOREWATERBOUNDARY))
 			{ // OK to damage; target is in direct path
 				double vz;
 				double thrust;
@@ -5730,9 +5796,9 @@ int P_RadiusAttack(AActor *bombspot, AActor *bombsource, int bombdamage, int bom
 				dist = clamp<double>(dist - fulldamagedistance, 0, dist);
 				int damage = Scale(bombdamage, bombdistance - int(dist), bombdistance);
 
-				double factor = splashfactor * thing->GetClass()->RDFactor;
+				double factor = splashfactor * thing->RadiusDamageFactor;
 				damage = int(damage * factor);
-				if (damage > 0)
+				if (damage > 0 || (bombspot->flags7 & MF7_FORCEZERORADIUSDMG))
 				{
 					//[MC] Don't count actors saved by buddha if already at 1 health.
 					int prehealth = thing->health;
@@ -5965,7 +6031,6 @@ void P_DoCrunch(AActor *thing, FChangePosition *cpos)
 		{
 			if (!(thing->flags&MF_NOBLOOD))
 			{
-				PalEntry bloodcolor = thing->GetBloodColor();
 				PClassActor *bloodcls = thing->GetBloodType();
 				
 				P_TraceBleed (newdam > 0 ? newdam : cpos->crushchange, thing);
@@ -5977,9 +6042,9 @@ void P_DoCrunch(AActor *thing, FChangePosition *cpos)
 
 					mo->Vel.X = pr_crunch.Random2() / 16.;
 					mo->Vel.Y = pr_crunch.Random2() / 16.;
-					if (bloodcolor != 0 && !(mo->flags2 & MF2_DONTTRANSLATE))
+					if (thing->BloodTranslation != 0 && !(mo->flags2 & MF2_DONTTRANSLATE))
 					{
-						mo->Translation = TRANSLATION(TRANSLATION_Blood, bloodcolor.a);
+						mo->Translation = thing->BloodTranslation;
 					}
 
 					if (!(cl_bloodtype <= 1)) mo->renderflags |= RF_INVISIBLE;
@@ -5988,7 +6053,7 @@ void P_DoCrunch(AActor *thing, FChangePosition *cpos)
 				DAngle an = (M_Random() - 128) * (360./256);
 				if (cl_bloodtype >= 1)
 				{
-					P_DrawSplash2(32,  thing->PosPlusZ(thing->Height/2), an, 2, bloodcolor);
+					P_DrawSplash2(32,  thing->PosPlusZ(thing->Height/2), an, 2, thing->BloodColor);
 				}
 			}
 			if (thing->CrushPainSound != 0 && !S_GetSoundPlayingInfo(thing, thing->CrushPainSound))

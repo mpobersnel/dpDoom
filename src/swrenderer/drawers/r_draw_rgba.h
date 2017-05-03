@@ -25,11 +25,10 @@
 #include "r_draw.h"
 #include "v_palette.h"
 #include "r_thread.h"
-#include "r_drawers.h"
-
-#ifdef __arm__
-#define NO_SSE
-#endif
+#include "swrenderer/viewport/r_skydrawer.h"
+#include "swrenderer/viewport/r_spandrawer.h"
+#include "swrenderer/viewport/r_walldrawer.h"
+#include "swrenderer/viewport/r_spritedrawer.h"
 
 #ifndef NO_SSE
 #include <immintrin.h>
@@ -64,125 +63,12 @@ namespace swrenderer
 	#endif
 	#endif
 
-	#define DECLARE_DRAW_COMMAND(name, func, base) \
-	class name##LLVMCommand : public base \
-	{ \
-	public: \
-		using base::base; \
-		void Execute(DrawerThread *thread) override \
-		{ \
-			WorkerThreadData d = ThreadData(thread); \
-			Drawers::Instance()->func(&args, &d); \
-		} \
-	};
-
-	class DrawSpanLLVMCommand : public DrawerCommand
-	{
-	public:
-		DrawSpanLLVMCommand();
-
-		void Execute(DrawerThread *thread) override;
-		FString DebugInfo() override;
-
-	protected:
-		DrawSpanArgs args;
-
-	private:
-		inline static bool sampler_setup(const uint32_t * &source, int &xbits, int &ybits, bool mipmapped);
-	};
-
-	class DrawSpanMaskedLLVMCommand : public DrawSpanLLVMCommand
-	{
-	public:
-		void Execute(DrawerThread *thread) override;
-	};
-
-	class DrawSpanTranslucentLLVMCommand : public DrawSpanLLVMCommand
-	{
-	public:
-		void Execute(DrawerThread *thread) override;
-	};
-
-	class DrawSpanMaskedTranslucentLLVMCommand : public DrawSpanLLVMCommand
-	{
-	public:
-		void Execute(DrawerThread *thread) override;
-	};
-
-	class DrawSpanAddClampLLVMCommand : public DrawSpanLLVMCommand
-	{
-	public:
-		void Execute(DrawerThread *thread) override;
-	};
-
-	class DrawSpanMaskedAddClampLLVMCommand : public DrawSpanLLVMCommand
-	{
-	public:
-		void Execute(DrawerThread *thread) override;
-	};
-
-	class DrawWall1LLVMCommand : public DrawerCommand
-	{
-	protected:
-		DrawWallArgs args;
-
-		WorkerThreadData ThreadData(DrawerThread *thread);
-
-	public:
-		DrawWall1LLVMCommand();
-
-		void Execute(DrawerThread *thread) override;
-		FString DebugInfo() override;
-	};
-
-	class DrawColumnLLVMCommand : public DrawerCommand
-	{
-	protected:
-		DrawColumnArgs args;
-
-		WorkerThreadData ThreadData(DrawerThread *thread);
-		FString DebugInfo() override;
-
-	public:
-		DrawColumnLLVMCommand();
-
-		void Execute(DrawerThread *thread) override;
-	};
-
-	class DrawSkyLLVMCommand : public DrawerCommand
-	{
-	protected:
-		DrawSkyArgs args;
-
-		WorkerThreadData ThreadData(DrawerThread *thread);
-
-	public:
-		DrawSkyLLVMCommand(uint32_t solid_top, uint32_t solid_bottom, bool fadeSky);
-		FString DebugInfo() override;
-	};
-
-	DECLARE_DRAW_COMMAND(DrawWallMasked1, mvlinec1, DrawWall1LLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawWallAdd1, tmvline1_add, DrawWall1LLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawWallAddClamp1, tmvline1_addclamp, DrawWall1LLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawWallSubClamp1, tmvline1_subclamp, DrawWall1LLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawWallRevSubClamp1, tmvline1_revsubclamp, DrawWall1LLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnAdd, DrawColumnAdd, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnTranslated, DrawColumnTranslated, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnTlatedAdd, DrawColumnTlatedAdd, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnShaded, DrawColumnShaded, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnAddClamp, DrawColumnAddClamp, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnAddClampTranslated, DrawColumnAddClampTranslated, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnSubClamp, DrawColumnSubClamp, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnSubClampTranslated, DrawColumnSubClampTranslated, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnRevSubClamp, DrawColumnRevSubClamp, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawColumnRevSubClampTranslated, DrawColumnRevSubClampTranslated, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(FillColumn, FillColumn, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(FillColumnAdd, FillColumnAdd, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(FillColumnAddClamp, FillColumnAddClamp, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(FillColumnSubClamp, FillColumnSubClamp, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(FillColumnRevSubClamp, FillColumnRevSubClamp, DrawColumnLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawSingleSky1, DrawSky1, DrawSkyLLVMCommand);
-	DECLARE_DRAW_COMMAND(DrawDoubleSky1, DrawDoubleSky1, DrawSkyLLVMCommand);
+	// Force the compiler to use a calling convention that works for vector types
+	#if defined(_MSC_VER)
+	#define VECTORCALL __vectorcall
+	#else
+	#define VECTORCALL
+	#endif
 
 	class DrawFuzzColumnRGBACommand : public DrawerCommand
 	{
@@ -195,7 +81,7 @@ namespace swrenderer
 		int _fuzzviewheight;
 
 	public:
-		DrawFuzzColumnRGBACommand();
+		DrawFuzzColumnRGBACommand(const SpriteDrawerArgs &drawerargs);
 		void Execute(DrawerThread *thread) override;
 		FString DebugInfo() override;
 	};
@@ -205,12 +91,12 @@ namespace swrenderer
 		int _x1;
 		int _x2;
 		int _y;
-		uint8_t * RESTRICT _destorg;
+		uint8_t * RESTRICT _dest;
 		fixed_t _light;
 		int _color;
 
 	public:
-		FillSpanRGBACommand();
+		FillSpanRGBACommand(const SpanDrawerArgs &drawerargs);
 		void Execute(DrawerThread *thread) override;
 		FString DebugInfo() override;
 	};
@@ -220,12 +106,12 @@ namespace swrenderer
 		int _y;
 		int _x;
 		int _x2;
-		uint8_t * RESTRICT _destorg;
+		uint8_t * RESTRICT _line;
 		fixed_t _light;
 		ShadeConstants _shade_constants;
 
 	public:
-		DrawFogBoundaryLineRGBACommand(int y, int x, int x2);
+		DrawFogBoundaryLineRGBACommand(const SpanDrawerArgs &drawerargs);
 		void Execute(DrawerThread *thread) override;
 		FString DebugInfo() override;
 	};
@@ -235,7 +121,7 @@ namespace swrenderer
 		int _x1;
 		int _x2;
 		int _y;
-		uint8_t * RESTRICT _destorg;
+		uint8_t * RESTRICT _dest;
 		fixed_t _light;
 		ShadeConstants _shade_constants;
 		FVector3 _plane_sz;
@@ -249,9 +135,10 @@ namespace swrenderer
 		int _xbits;
 		int _ybits;
 		const uint32_t * RESTRICT _source;
+		RenderViewport *viewport;
 
 	public:
-		DrawTiltedSpanRGBACommand(int y, int x1, int x2, const FVector3 &plane_sz, const FVector3 &plane_su, const FVector3 &plane_sv, bool plane_shade, int planeshade, float planelightfloat, fixed_t pviewx, fixed_t pviewy);
+		DrawTiltedSpanRGBACommand(const SpanDrawerArgs &drawerargs, const FVector3 &plane_sz, const FVector3 &plane_su, const FVector3 &plane_sv, bool plane_shade, int planeshade, float planelightfloat, fixed_t pviewx, fixed_t pviewy);
 		void Execute(DrawerThread *thread) override;
 		FString DebugInfo() override;
 	};
@@ -261,30 +148,13 @@ namespace swrenderer
 		int _y;
 		int _x1;
 		int _x2;
-		uint8_t * RESTRICT _destorg;
+		uint8_t * RESTRICT _dest;
 		fixed_t _light;
 		int _color;
 
 	public:
-		DrawColoredSpanRGBACommand(int y, int x1, int x2);
+		DrawColoredSpanRGBACommand(const SpanDrawerArgs &drawerargs);
 
-		void Execute(DrawerThread *thread) override;
-		FString DebugInfo() override;
-	};
-
-	class FillTransColumnRGBACommand : public DrawerCommand
-	{
-		int _x;
-		int _y1;
-		int _y2;
-		int _color;
-		int _a;
-		uint8_t * RESTRICT _destorg;
-		int _pitch;
-		fixed_t _light;
-
-	public:
-		FillTransColumnRGBACommand(int x, int y1, int y2, int color, int a);
 		void Execute(DrawerThread *thread) override;
 		FString DebugInfo() override;
 	};
@@ -335,6 +205,7 @@ namespace swrenderer
 
 	private:
 		uint32_t *_dest;
+		int _dest_y;
 		int _pitch;
 		int _count;
 		uint32_t _fg;
@@ -347,46 +218,49 @@ namespace swrenderer
 	class SWTruecolorDrawers : public SWPixelFormatDrawers
 	{
 	public:
-		void DrawWallColumn() override { DrawerCommandQueue::QueueCommand<DrawWall1LLVMCommand>(); }
-		void DrawWallMaskedColumn() override { DrawerCommandQueue::QueueCommand<DrawWallMasked1LLVMCommand>(); }
-		void DrawWallAddColumn() override { DrawerCommandQueue::QueueCommand<DrawWallAdd1LLVMCommand>(); }
-		void DrawWallAddClampColumn() override { DrawerCommandQueue::QueueCommand<DrawWallAddClamp1LLVMCommand>(); }
-		void DrawWallSubClampColumn() override { DrawerCommandQueue::QueueCommand<DrawWallSubClamp1LLVMCommand>(); }
-		void DrawWallRevSubClampColumn() override { DrawerCommandQueue::QueueCommand<DrawWallRevSubClamp1LLVMCommand>(); }
-		void DrawSingleSkyColumn(uint32_t solid_top, uint32_t solid_bottom, bool skyFade) override { DrawerCommandQueue::QueueCommand<DrawSingleSky1LLVMCommand>(solid_top, solid_bottom, skyFade); }
-		void DrawDoubleSkyColumn(uint32_t solid_top, uint32_t solid_bottom, bool skyFade) override { DrawerCommandQueue::QueueCommand<DrawDoubleSky1LLVMCommand>(solid_top, solid_bottom, skyFade); }
-		void DrawColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnLLVMCommand>(); }
-		void FillColumn() override { DrawerCommandQueue::QueueCommand<FillColumnLLVMCommand>(); }
-		void FillAddColumn() override { DrawerCommandQueue::QueueCommand<FillColumnAddLLVMCommand>(); }
-		void FillAddClampColumn() override { DrawerCommandQueue::QueueCommand<FillColumnAddClampLLVMCommand>(); }
-		void FillSubClampColumn() override { DrawerCommandQueue::QueueCommand<FillColumnSubClampLLVMCommand>(); }
-		void FillRevSubClampColumn() override { DrawerCommandQueue::QueueCommand<FillColumnRevSubClampLLVMCommand>(); }
-		void DrawFuzzColumn() override { DrawerCommandQueue::QueueCommand<DrawFuzzColumnRGBACommand>(); R_UpdateFuzzPos(); }
-		void DrawAddColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnAddLLVMCommand>(); }
-		void DrawTranslatedColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnTranslatedLLVMCommand>(); }
-		void DrawTranslatedAddColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnTlatedAddLLVMCommand>(); }
-		void DrawShadedColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnShadedLLVMCommand>(); }
-		void DrawAddClampColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnAddClampLLVMCommand>(); }
-		void DrawAddClampTranslatedColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnAddClampTranslatedLLVMCommand>(); }
-		void DrawSubClampColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnSubClampLLVMCommand>(); }
-		void DrawSubClampTranslatedColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnSubClampTranslatedLLVMCommand>(); }
-		void DrawRevSubClampColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnRevSubClampLLVMCommand>(); }
-		void DrawRevSubClampTranslatedColumn() override { DrawerCommandQueue::QueueCommand<DrawColumnRevSubClampTranslatedLLVMCommand>(); }
-		void DrawSpan() override { DrawerCommandQueue::QueueCommand<DrawSpanLLVMCommand>(); }
-		void DrawSpanMasked() override { DrawerCommandQueue::QueueCommand<DrawSpanMaskedLLVMCommand>(); }
-		void DrawSpanTranslucent() override { DrawerCommandQueue::QueueCommand<DrawSpanTranslucentLLVMCommand>(); }
-		void DrawSpanMaskedTranslucent() override { DrawerCommandQueue::QueueCommand<DrawSpanMaskedTranslucentLLVMCommand>(); }
-		void DrawSpanAddClamp() override { DrawerCommandQueue::QueueCommand<DrawSpanAddClampLLVMCommand>(); }
-		void DrawSpanMaskedAddClamp() override { DrawerCommandQueue::QueueCommand<DrawSpanMaskedAddClampLLVMCommand>(); }
-		void FillSpan() override { DrawerCommandQueue::QueueCommand<FillSpanRGBACommand>(); }
+		using SWPixelFormatDrawers::SWPixelFormatDrawers;
+		
+		void DrawWallColumn(const WallDrawerArgs &args) override;
+		void DrawWallMaskedColumn(const WallDrawerArgs &args) override;
+		void DrawWallAddColumn(const WallDrawerArgs &args) override;
+		void DrawWallAddClampColumn(const WallDrawerArgs &args) override;
+		void DrawWallSubClampColumn(const WallDrawerArgs &args) override;
+		void DrawWallRevSubClampColumn(const WallDrawerArgs &args) override;
+		void DrawSingleSkyColumn(const SkyDrawerArgs &args) override;
+		void DrawDoubleSkyColumn(const SkyDrawerArgs &args) override;
+		void DrawColumn(const SpriteDrawerArgs &args) override;
+		void FillColumn(const SpriteDrawerArgs &args) override;
+		void FillAddColumn(const SpriteDrawerArgs &args) override;
+		void FillAddClampColumn(const SpriteDrawerArgs &args) override;
+		void FillSubClampColumn(const SpriteDrawerArgs &args) override;
+		void FillRevSubClampColumn(const SpriteDrawerArgs &args) override;
+		void DrawFuzzColumn(const SpriteDrawerArgs &args) override;
+		void DrawAddColumn(const SpriteDrawerArgs &args) override;
+		void DrawTranslatedColumn(const SpriteDrawerArgs &args) override;
+		void DrawTranslatedAddColumn(const SpriteDrawerArgs &args) override;
+		void DrawShadedColumn(const SpriteDrawerArgs &args) override;
+		void DrawAddClampShadedColumn(const SpriteDrawerArgs &args) override;
+		void DrawAddClampColumn(const SpriteDrawerArgs &args) override;
+		void DrawAddClampTranslatedColumn(const SpriteDrawerArgs &args) override;
+		void DrawSubClampColumn(const SpriteDrawerArgs &args) override;
+		void DrawSubClampTranslatedColumn(const SpriteDrawerArgs &args) override;
+		void DrawRevSubClampColumn(const SpriteDrawerArgs &args) override;
+		void DrawRevSubClampTranslatedColumn(const SpriteDrawerArgs &args) override;
+		void DrawSpan(const SpanDrawerArgs &args) override;
+		void DrawSpanMasked(const SpanDrawerArgs &args) override;
+		void DrawSpanTranslucent(const SpanDrawerArgs &args) override;
+		void DrawSpanMaskedTranslucent(const SpanDrawerArgs &args) override;
+		void DrawSpanAddClamp(const SpanDrawerArgs &args) override;
+		void DrawSpanMaskedAddClamp(const SpanDrawerArgs &args) override;
+		void FillSpan(const SpanDrawerArgs &args) override { Queue->Push<FillSpanRGBACommand>(args); }
 
-		void DrawTiltedSpan(int y, int x1, int x2, const FVector3 &plane_sz, const FVector3 &plane_su, const FVector3 &plane_sv, bool plane_shade, int planeshade, float planelightfloat, fixed_t pviewx, fixed_t pviewy, FDynamicColormap *basecolormap) override
+		void DrawTiltedSpan(const SpanDrawerArgs &args, const FVector3 &plane_sz, const FVector3 &plane_su, const FVector3 &plane_sv, bool plane_shade, int planeshade, float planelightfloat, fixed_t pviewx, fixed_t pviewy, FDynamicColormap *basecolormap) override
 		{
-			DrawerCommandQueue::QueueCommand<DrawTiltedSpanRGBACommand>(y, x1, x2, plane_sz, plane_su, plane_sv, plane_shade, planeshade, planelightfloat, pviewx, pviewy);
+			Queue->Push<DrawTiltedSpanRGBACommand>(args, plane_sz, plane_su, plane_sv, plane_shade, planeshade, planelightfloat, pviewx, pviewy);
 		}
 
-		void DrawColoredSpan(int y, int x1, int x2) override { DrawerCommandQueue::QueueCommand<DrawColoredSpanRGBACommand>(y, x1, x2); }
-		void DrawFogBoundaryLine(int y, int x1, int x2) override { DrawerCommandQueue::QueueCommand<DrawFogBoundaryLineRGBACommand>(y, x1, x2); }
+		void DrawColoredSpan(const SpanDrawerArgs &args) override { Queue->Push<DrawColoredSpanRGBACommand>(args); }
+		void DrawFogBoundaryLine(const SpanDrawerArgs &args) override { Queue->Push<DrawFogBoundaryLineRGBACommand>(args); }
 	};
 
 	/////////////////////////////////////////////////////////////////////////////
@@ -493,5 +367,14 @@ namespace swrenderer
 			}
 			return alpha | (red << 16) | (green << 8) | blue;
 		}
+	};
+
+	struct BgraColor
+	{
+		uint32_t b, g, r, a;
+		BgraColor() { }
+		BgraColor(uint32_t c) : b(BPART(c)), g(GPART(c)), r(RPART(c)), a(APART(c)) { }
+		BgraColor &operator=(uint32_t c) { b = BPART(c); g = GPART(c); r = RPART(c); a = APART(c); return *this; }
+		operator uint32_t() const { return MAKEARGB(a, r, g, b); }
 	};
 }

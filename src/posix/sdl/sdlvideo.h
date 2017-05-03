@@ -4,7 +4,7 @@
 
 class SDLFB : public SDLBaseFB
 {
-	DECLARE_CLASS(SDLFB, SDLBaseFB)
+	typedef SDLBaseFB Super;
 public:
 	SDLFB(int width, int height, bool bgra, bool fullscreen, SDL_Window *oldwin);
 	~SDLFB();
@@ -28,13 +28,13 @@ public:
 	friend class SDLGLVideo;
 
 	virtual void SetVSync(bool vsync);
-	virtual void ScaleCoordsFromWindow(SWORD &x, SWORD &y);
+	virtual void ScaleCoordsFromWindow(int16_t &x, int16_t &y);
 
 	SDL_Window *GetSDLWindow() override { return Screen; }
 
 private:
 	PalEntry SourcePalette[256];
-	BYTE GammaTable[3][256];
+	uint8_t GammaTable[3][256];
 	PalEntry Flash;
 	int FlashAmount;
 	float Gamma;

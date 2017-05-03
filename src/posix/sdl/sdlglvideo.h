@@ -37,7 +37,7 @@ private:
 
 class SDLBaseFB : public DFrameBuffer
 {
-	DECLARE_CLASS(SDLBaseFB, DFrameBuffer)
+	typedef DFrameBuffer Super;
 public:
 	using DFrameBuffer::DFrameBuffer;
 	virtual SDL_Window *GetSDLWindow() = 0;
@@ -47,7 +47,7 @@ public:
 
 class SDLGLFB : public SDLBaseFB
 {
-	DECLARE_CLASS(SDLGLFB, SDLBaseFB)
+	typedef SDLBaseFB Super;
 public:
 	// this must have the same parameters as the Windows version, even if they are not used!
 	SDLGLFB (void *hMonitor, int width, int height, int, int, bool fullscreen, bool bgra); 
@@ -76,12 +76,12 @@ public:
 
 protected:
 	bool CanUpdate();
-	void SetGammaTable(WORD *tbl);
+	void SetGammaTable(uint16_t *tbl);
 	void ResetGammaTable();
 	void InitializeState();
 
 	SDLGLFB () {}
-	BYTE GammaTable[3][256];
+	uint8_t GammaTable[3][256];
 	bool UpdatePending;
 
 	SDL_Window *Screen;

@@ -43,7 +43,7 @@
 
 
 FWarpTexture::FWarpTexture (FTexture *source, int warptype)
-: GenTime (0), Speed (1.f), SourcePic (source), Pixels (0), Spans (0)
+: GenTime (0), GenTimeBgra(0), Speed (1.f), SourcePic (source), Pixels (0), Spans (0)
 {
 	CopyInfo(source);
 	if (warptype == 2) SetupMultipliers(256, 128); 
@@ -80,12 +80,12 @@ void FWarpTexture::Unload ()
 
 bool FWarpTexture::CheckModified ()
 {
-	return r_FrameTime != GenTime;
+	return r_viewpoint.FrameTime != GenTime;
 }
 
-const BYTE *FWarpTexture::GetPixels ()
+const uint8_t *FWarpTexture::GetPixels ()
 {
-	DWORD time = r_FrameTime;
+	uint32_t time = r_viewpoint.FrameTime;
 
 	if (Pixels == NULL || time != GenTime)
 	{
@@ -96,10 +96,12 @@ const BYTE *FWarpTexture::GetPixels ()
 
 const uint32_t *FWarpTexture::GetPixelsBgra()
 {
-	DWORD time = r_FrameTime;
+	uint32_t time = r_viewpoint.FrameTime;
 	if (Pixels == NULL || time != GenTime)
-	{
 		MakeTexture(time);
+
+	if (PixelsBgra.empty() || time != GenTimeBgra)
+	{
 		CreatePixelsBgraWithMipmaps();
 		for (int i = 0; i < Width * Height; i++)
 		{
@@ -109,13 +111,14 @@ const uint32_t *FWarpTexture::GetPixelsBgra()
 				PixelsBgra[i] = 0;
 		}
 		GenerateBgraMipmapsFast();
+		GenTimeBgra = time;
 	}
 	return PixelsBgra.data();
 }
 
-const BYTE *FWarpTexture::GetColumn (unsigned int column, const Span **spans_out)
+const uint8_t *FWarpTexture::GetColumn (unsigned int column, const Span **spans_out)
 {
-	DWORD time = r_FrameTime;
+	uint32_t time = r_viewpoint.FrameTime;
 
 	if (Pixels == NULL || time != GenTime)
 	{
@@ -144,13 +147,13 @@ const BYTE *FWarpTexture::GetColumn (unsigned int column, const Span **spans_out
 }
 
 
-void FWarpTexture::MakeTexture(DWORD time)
+void FWarpTexture::MakeTexture(uint32_t time)
 {
-	const BYTE *otherpix = SourcePic->GetPixels();
+	const uint8_t *otherpix = SourcePic->GetPixels();
 
 	if (Pixels == NULL)
 	{
-		Pixels = new BYTE[Width * Height];
+		Pixels = new uint8_t[Width * Height];
 	}
 	if (Spans != NULL)
 	{

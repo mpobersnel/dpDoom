@@ -1,20 +1,22 @@
-// Emacs style mode select	 -*- C++ -*- 
 //-----------------------------------------------------------------------------
 //
-// $Id:$
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
-//
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
-// $Log:$
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 // DESCRIPTION:
 //		Mission begin melt/wipe screen special effect.
@@ -45,7 +47,7 @@ static int *y;
 // [RH] Fire Wipe
 #define FIREWIDTH	64
 #define FIREHEIGHT	64
-static BYTE *burnarray;
+static uint8_t *burnarray;
 static int density;
 static int burntime;
 
@@ -81,7 +83,7 @@ bool wipe_initMelt (int ticks)
 	int i, r;
 	
 	// copy start screen to main screen
-	screen->DrawBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (BYTE *)wipe_scr_start);
+	screen->DrawBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (uint8_t *)wipe_scr_start);
 	
 	// makes this wipe faster (in theory)
 	// to have stuff in column-major format
@@ -165,21 +167,21 @@ bool wipe_exitMelt (int ticks)
 
 bool wipe_initBurn (int ticks)
 {
-	burnarray = new BYTE[FIREWIDTH * (FIREHEIGHT+5)];
+	burnarray = new uint8_t[FIREWIDTH * (FIREHEIGHT+5)];
 	memset (burnarray, 0, FIREWIDTH * (FIREHEIGHT+5));
 	density = 4;
 	burntime = 0;
 	return 0;
 }
 
-int wipe_CalcBurn (BYTE *burnarray, int width, int height, int density)
+int wipe_CalcBurn (uint8_t *burnarray, int width, int height, int density)
 {
 	// This is a modified version of the fire that was once used
 	// on the player setup menu.
 	static int voop;
 
 	int a, b;
-	BYTE *from;
+	uint8_t *from;
 
 	// generator
 	from = &burnarray[width * height];
@@ -198,10 +200,10 @@ int wipe_CalcBurn (BYTE *burnarray, int width, int height, int density)
 	from = burnarray;
 	for (b = 0; b <= height; b += 2)
 	{
-		BYTE *pixel = from;
+		uint8_t *pixel = from;
 
 		// special case: first pixel on line
-		BYTE *p = pixel + (width << 1);
+		uint8_t *p = pixel + (width << 1);
 		unsigned int top = *p + *(p + width - 1) + *(p + 1);
 		unsigned int bottom = *(pixel + (width << 2));
 		unsigned int c1 = (top + bottom) >> 2;
@@ -274,14 +276,14 @@ bool wipe_doBurn (int ticks)
 	// Draw the screen
 	int xstep, ystep, firex, firey;
 	int x, y;
-	BYTE *to, *fromold, *fromnew;
+	uint8_t *to, *fromold, *fromnew;
 	const int SHIFT = 16;
 
 	xstep = (FIREWIDTH << SHIFT) / SCREENWIDTH;
 	ystep = (FIREHEIGHT << SHIFT) / SCREENHEIGHT;
 	to = screen->GetBuffer();
-	fromold = (BYTE *)wipe_scr_start;
-	fromnew = (BYTE *)wipe_scr_end;
+	fromold = (uint8_t *)wipe_scr_start;
+	fromnew = (uint8_t *)wipe_scr_end;
 
 	if (!r_blendmethod)
 	{
@@ -304,10 +306,10 @@ bool wipe_doBurn (int ticks)
 				else
 				{
 					int bglevel = 64-fglevel;
-					DWORD *fg2rgb = Col2RGB8[fglevel];
-					DWORD *bg2rgb = Col2RGB8[bglevel];
-					DWORD fg = fg2rgb[fromnew[x]];
-					DWORD bg = bg2rgb[fromold[x]];
+					uint32_t *fg2rgb = Col2RGB8[fglevel];
+					uint32_t *bg2rgb = Col2RGB8[bglevel];
+					uint32_t fg = fg2rgb[fromnew[x]];
+					uint32_t bg = bg2rgb[fromold[x]];
 					fg = (fg+bg) | 0x1f07c1f;
 					to[x] = RGB32k.All[fg & (fg>>15)];
 					done = false;
@@ -343,8 +345,8 @@ bool wipe_doBurn (int ticks)
 
 					const PalEntry* pal = GPalette.BaseColors;
 
-					DWORD fg = fromnew[x];
-					DWORD bg = fromold[x];
+					uint32_t fg = fromnew[x];
+					uint32_t bg = fromold[x];
 					int r = MIN((pal[fg].r * fglevel + pal[bg].r * bglevel) >> 8, 63);
 					int g = MIN((pal[fg].g * fglevel + pal[bg].g * bglevel) >> 8, 63);
 					int b = MIN((pal[fg].b * fglevel + pal[bg].b * bglevel) >> 8, 63);
@@ -379,18 +381,18 @@ bool wipe_doFade (int ticks)
 	fade += ticks * 2;
 	if (fade > 64)
 	{
-		screen->DrawBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (BYTE *)wipe_scr_end);
+		screen->DrawBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (uint8_t *)wipe_scr_end);
 		return true;
 	}
 	else
 	{
 		int x, y;
 		int bglevel = 64 - fade;
-		DWORD *fg2rgb = Col2RGB8[fade];
-		DWORD *bg2rgb = Col2RGB8[bglevel];
-		BYTE *fromnew = (BYTE *)wipe_scr_end;
-		BYTE *fromold = (BYTE *)wipe_scr_start;
-		BYTE *to = screen->GetBuffer();
+		uint32_t *fg2rgb = Col2RGB8[fade];
+		uint32_t *bg2rgb = Col2RGB8[bglevel];
+		uint8_t *fromnew = (uint8_t *)wipe_scr_end;
+		uint8_t *fromold = (uint8_t *)wipe_scr_start;
+		uint8_t *to = screen->GetBuffer();
 		const PalEntry *pal = GPalette.BaseColors;
 
 		if (!r_blendmethod)
@@ -399,8 +401,8 @@ bool wipe_doFade (int ticks)
 			{
 				for (x = 0; x < SCREENWIDTH; x++)
 				{
-					DWORD fg = fg2rgb[fromnew[x]];
-					DWORD bg = bg2rgb[fromold[x]];
+					uint32_t fg = fg2rgb[fromnew[x]];
+					uint32_t bg = bg2rgb[fromold[x]];
 					fg = (fg+bg) | 0x1f07c1f;
 					to[x] = RGB32k.All[fg & (fg>>15)];
 				}
@@ -415,8 +417,8 @@ bool wipe_doFade (int ticks)
 			{
 				for (x = 0; x < SCREENWIDTH; x++)
 				{
-					DWORD fg = fromnew[x];
-					DWORD bg = fromold[x];
+					uint32_t fg = fromnew[x];
+					uint32_t bg = fromold[x];
 					int r = MIN((pal[fg].r * (64-bglevel) + pal[bg].r * bglevel) >> 8, 63);
 					int g = MIN((pal[fg].g * (64-bglevel) + pal[bg].g * bglevel) >> 8, 63);
 					int b = MIN((pal[fg].b * (64-bglevel) + pal[bg].b * bglevel) >> 8, 63);
@@ -456,7 +458,7 @@ bool wipe_StartScreen (int type)
 	if (CurrentWipeType)
 	{
 		wipe_scr_start = new short[SCREENWIDTH * SCREENHEIGHT / 2];
-		screen->GetBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (BYTE *)wipe_scr_start);
+		screen->GetBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (uint8_t *)wipe_scr_start);
 		return true;
 	}
 	return false;
@@ -470,8 +472,8 @@ void wipe_EndScreen (void)
 	if (CurrentWipeType)
 	{
 		wipe_scr_end = new short[SCREENWIDTH * SCREENHEIGHT / 2];
-		screen->GetBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (BYTE *)wipe_scr_end);
-		screen->DrawBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (BYTE *)wipe_scr_start); // restore start scr.
+		screen->GetBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (uint8_t *)wipe_scr_end);
+		screen->DrawBlock (0, 0, SCREENWIDTH, SCREENHEIGHT, (uint8_t *)wipe_scr_start); // restore start scr.
 
 		// Initialize the wipe
 		(*wipes[(CurrentWipeType-1)*3])(0);
@@ -490,7 +492,6 @@ bool wipe_ScreenWipe (int ticks)
 		return true;
 
 	// do a piece of wipe-in
-	V_MarkRect(0, 0, SCREENWIDTH, SCREENHEIGHT);
 	rc = (*wipes[(CurrentWipeType-1)*3+1])(ticks);
 
 	return rc;

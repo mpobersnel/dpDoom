@@ -65,7 +65,7 @@ FCanvasTexture::~FCanvasTexture ()
 	Unload ();
 }
 
-const BYTE *FCanvasTexture::GetColumn (unsigned int column, const Span **spans_out)
+const uint8_t *FCanvasTexture::GetColumn (unsigned int column, const Span **spans_out)
 {
 	bNeedsUpdate = true;
 	if (Canvas == NULL)
@@ -90,7 +90,7 @@ const BYTE *FCanvasTexture::GetColumn (unsigned int column, const Span **spans_o
 	return Pixels + column*Height;
 }
 
-const BYTE *FCanvasTexture::GetPixels ()
+const uint8_t *FCanvasTexture::GetPixels ()
 {
 	bNeedsUpdate = true;
 	if (Canvas == NULL)
@@ -114,16 +114,15 @@ void FCanvasTexture::MakeTexture ()
 {
 	Canvas = new DSimpleCanvas (Width, Height, false);
 	Canvas->Lock ();
-	GC::AddSoftRoot(Canvas);
 
 	if (Width != Height || Width != Canvas->GetPitch())
 	{
-		Pixels = new BYTE[Width*Height];
+		Pixels = new uint8_t[Width*Height];
 		bPixelsAllocated = true;
 	}
 	else
 	{
-		Pixels = (BYTE*)Canvas->GetBuffer();
+		Pixels = (uint8_t*)Canvas->GetBuffer();
 		bPixelsAllocated = false;
 	}
 
@@ -136,7 +135,6 @@ void FCanvasTexture::MakeTextureBgra()
 {
 	CanvasBgra = new DSimpleCanvas(Width, Height, true);
 	CanvasBgra->Lock();
-	GC::AddSoftRoot(CanvasBgra);
 
 	if (Width != Height || Width != CanvasBgra->GetPitch())
 	{
@@ -172,16 +170,14 @@ void FCanvasTexture::Unload ()
 
 	if (Canvas != NULL)
 	{
-		GC::DelSoftRoot(Canvas);
-		Canvas->Destroy();
-		Canvas = NULL;
+		delete Canvas;
+		Canvas = nullptr;
 	}
 
 	if (CanvasBgra != NULL)
 	{
-		GC::DelSoftRoot(CanvasBgra);
-		CanvasBgra->Destroy();
-		CanvasBgra = NULL;
+		delete CanvasBgra;
+		CanvasBgra = nullptr;
 	}
 
 	FTexture::Unload();

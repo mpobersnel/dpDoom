@@ -1,20 +1,37 @@
-// Emacs style mode select	 -*- C++ -*- 
+/*
+**
+**
+**---------------------------------------------------------------------------
+** Copyright 1999-2016 Randy Heit
+** Copyright 2005-2016 Christoph Oelckers
+** All rights reserved.
+**
+** Redistribution and use in source and binary forms, with or without
+** modification, are permitted provided that the following conditions
+** are met:
+**
+** 1. Redistributions of source code must retain the above copyright
+**    notice, this list of conditions and the following disclaimer.
+** 2. Redistributions in binary form must reproduce the above copyright
+**    notice, this list of conditions and the following disclaimer in the
+**    documentation and/or other materials provided with the distribution.
+** 3. The name of the author may not be used to endorse or promote products
+**    derived from this software without specific prior written permission.
+**
+** THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+** IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+** OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+** IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+** INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+** NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+** THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+**---------------------------------------------------------------------------
+**
+*/
 //-----------------------------------------------------------------------------
-//
-// $Id:$
-//
-// Copyright (C) 1993-1996 by id Software, Inc.
-//
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
-//
-// The source is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
-//
-// $Log:$
 //
 // DESCRIPTION:
 //		Functions to draw patches (by post) directly to screen->
@@ -65,6 +82,7 @@
 #include "r_renderer.h"
 #include "menu/menu.h"
 #include "r_data/voxels.h"
+#include "vm.h"
 
 EXTERN_CVAR(Bool, r_blendmethod)
 
@@ -72,9 +90,8 @@ int active_con_scale();
 
 FRenderer *Renderer;
 
-IMPLEMENT_CLASS(DCanvas, true, false)
-IMPLEMENT_CLASS(DFrameBuffer, true, false)
 EXTERN_CVAR (Bool, swtruecolor)
+EXTERN_CVAR (Bool, fullscreen)
 
 #if defined(_DEBUG) && defined(_M_IX86) && !defined(__MINGW32__)
 #define DBGBREAK	{ __asm int 3 }
@@ -84,7 +101,7 @@ EXTERN_CVAR (Bool, swtruecolor)
 
 class DDummyFrameBuffer : public DFrameBuffer
 {
-	DECLARE_CLASS (DDummyFrameBuffer, DFrameBuffer);
+	typedef DFrameBuffer Super;
 public:
 	DDummyFrameBuffer (int width, int height)
 		: DFrameBuffer (0, 0, false)
@@ -110,24 +127,19 @@ public:
 
 	float Gamma;
 };
-IMPLEMENT_CLASS(DDummyFrameBuffer, true, false)
-
-// SimpleCanvas is not really abstract, but this macro does not
-// try to generate a CreateNew() function.
-IMPLEMENT_CLASS(DSimpleCanvas, true, false)
 
 class FPaletteTester : public FTexture
 {
 public:
 	FPaletteTester ();
 
-	const BYTE *GetColumn(unsigned int column, const Span **spans_out);
-	const BYTE *GetPixels();
+	const uint8_t *GetColumn(unsigned int column, const Span **spans_out);
+	const uint8_t *GetPixels();
 	bool CheckModified();
 	void SetTranslation(int num);
 
 protected:
-	BYTE Pixels[16*16];
+	uint8_t Pixels[16*16];
 	int CurTranslation;
 	int WantTranslation;
 	static const Span DummySpan[2];
@@ -141,16 +153,14 @@ int DisplayWidth, DisplayHeight, DisplayBits;
 
 FFont *SmallFont, *SmallFont2, *BigFont, *ConFont, *IntermissionFont;
 
-extern "C" {
-DWORD Col2RGB8[65][256];
-DWORD *Col2RGB8_LessPrecision[65];
-DWORD Col2RGB8_Inverse[65][256];
+uint32_t Col2RGB8[65][256];
+uint32_t *Col2RGB8_LessPrecision[65];
+uint32_t Col2RGB8_Inverse[65][256];
 ColorTable32k RGB32k;
 ColorTable256k RGB256k;
-}
 
 
-static DWORD Col2RGB8_2[63][256];
+static uint32_t Col2RGB8_2[63][256];
 
 // [RH] The framebuffer is no longer a mere byte array.
 // There's also only one, not four.
@@ -198,15 +208,6 @@ bool	setmodeneeded = false;
 int		NewWidth, NewHeight, NewBits;
 
 
-//
-// V_MarkRect 
-// 
-void V_MarkRect (int x, int y, int width, int height)
-{
-}
-
-DCanvas *DCanvas::CanvasChain = NULL;
-
 //==========================================================================
 //
 // DCanvas Constructor
@@ -221,10 +222,6 @@ DCanvas::DCanvas (int _width, int _height, bool _bgra)
 	Width = _width;
 	Height = _height;
 	Bgra = _bgra;
-
-	// Add to list of active canvases
-	Next = CanvasChain;
-	CanvasChain = this;
 }
 
 //==========================================================================
@@ -235,22 +232,6 @@ DCanvas::DCanvas (int _width, int _height, bool _bgra)
 
 DCanvas::~DCanvas ()
 {
-	// Remove from list of active canvases
-	DCanvas *probe = CanvasChain, **prev;
-
-	prev = &CanvasChain;
-	probe = CanvasChain;
-
-	while (probe != NULL)
-	{
-		if (probe == this)
-		{
-			*prev = probe->Next;
-			break;
-		}
-		prev = &probe->Next;
-		probe = probe->Next;
-	}
 }
 
 //==========================================================================
@@ -331,140 +312,10 @@ void DCanvas::Dim (PalEntry color)
 	{
 		float dim[4] = { color.r/255.f, color.g/255.f, color.b/255.f, color.a/255.f };
 		V_AddBlend (dimmer.r/255.f, dimmer.g/255.f, dimmer.b/255.f, amount, dim);
-		dimmer = PalEntry (BYTE(dim[0]*255), BYTE(dim[1]*255), BYTE(dim[2]*255));
+		dimmer = PalEntry (uint8_t(dim[0]*255), uint8_t(dim[1]*255), uint8_t(dim[2]*255));
 		amount = dim[3];
 	}
 	Dim (dimmer, amount, 0, 0, Width, Height);
-}
-
-//==========================================================================
-//
-// DCanvas :: Dim
-//
-// Applies a colored overlay to an area of the screen.
-//
-//==========================================================================
-
-void DCanvas::Dim (PalEntry color, float damount, int x1, int y1, int w, int h)
-{
-	if (damount == 0.f)
-		return;
-
-	int gap;
-	int x, y;
-
-	if (x1 >= Width || y1 >= Height)
-	{
-		return;
-	}
-	if (x1 + w > Width)
-	{
-		w = Width - x1;
-	}
-	if (y1 + h > Height)
-	{
-		h = Height - y1;
-	}
-	if (w <= 0 || h <= 0)
-	{
-		return;
-	}
-
-	gap = Pitch - w;
-
-	if (IsBgra())
-	{
-		uint32_t *spot = (uint32_t*)Buffer + x1 + y1*Pitch;
-
-		uint32_t fg = color.d;
-		uint32_t fg_red = (fg >> 16) & 0xff;
-		uint32_t fg_green = (fg >> 8) & 0xff;
-		uint32_t fg_blue = fg & 0xff;
-
-		uint32_t alpha = (uint32_t)clamp(damount * 256 + 0.5f, 0.0f, 256.0f);
-		uint32_t inv_alpha = 256 - alpha;
-
-		fg_red *= alpha;
-		fg_green *= alpha;
-		fg_blue *= alpha;
-
-		for (y = h; y != 0; y--)
-		{
-			for (x = w; x != 0; x--)
-			{
-				uint32_t bg_red = (*spot >> 16) & 0xff;
-				uint32_t bg_green = (*spot >> 8) & 0xff;
-				uint32_t bg_blue = (*spot) & 0xff;
-
-				uint32_t red = (fg_red + bg_red * inv_alpha) / 256;
-				uint32_t green = (fg_green + bg_green * inv_alpha) / 256;
-				uint32_t blue = (fg_blue + bg_blue * inv_alpha) / 256;
-
-				*spot = 0xff000000 | (red << 16) | (green << 8) | blue;
-				spot++;
-			}
-			spot += gap;
-		}
-	}
-	else
-	{
-		BYTE *spot = Buffer + x1 + y1*Pitch;
-
-		DWORD *bg2rgb;
-		DWORD fg;
-
-		spot = Buffer + x1 + y1*Pitch;
-		gap = Pitch - w;
-
-		int alpha = (int)((float)64 * damount);
-		int ialpha = 64 - alpha;
-		int dimmedcolor_r = color.r * alpha;
-		int dimmedcolor_g = color.g * alpha;
-		int dimmedcolor_b = color.b * alpha;
-
-		if (!r_blendmethod)
-		{
-			{
-				int amount;
-
-				amount = (int)(damount * 64);
-				bg2rgb = Col2RGB8[64 - amount];
-
-				fg = (((color.r * amount) >> 4) << 20) |
-					((color.g * amount) >> 4) |
-					(((color.b * amount) >> 4) << 10);
-			}
-
-			for (y = h; y != 0; y--)
-			{
-				for (x = w; x != 0; x--)
-				{
-					DWORD bg;
-
-					bg = bg2rgb[(*spot)&0xff];
-					bg = (fg+bg) | 0x1f07c1f;
-					*spot = RGB32k.All[bg&(bg>>15)];
-					spot++;
-				}
-				spot += gap;
-			}
-		}
-		else
-		{
-			for (y = h; y != 0; y--)
-			{
-				for (x = w; x != 0; x--)
-				{
-					uint32_t r = (dimmedcolor_r + GPalette.BaseColors[*spot].r * ialpha) >> 8;
-					uint32_t g = (dimmedcolor_g + GPalette.BaseColors[*spot].g * ialpha) >> 8;
-					uint32_t b = (dimmedcolor_b + GPalette.BaseColors[*spot].b * ialpha) >> 8;
-					*spot = (BYTE)RGB256k.RGB[r][g][b];
-					spot++;
-				}
-				spot += gap;
-			}
-		}
-	}
 }
 
 //==========================================================================
@@ -476,7 +327,7 @@ void DCanvas::Dim (PalEntry color, float damount, int x1, int y1, int w, int h)
 //
 //==========================================================================
 
-void DCanvas::GetScreenshotBuffer(const BYTE *&buffer, int &pitch, ESSType &color_type)
+void DCanvas::GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, ESSType &color_type)
 {
 	Lock(true);
 	buffer = GetBuffer();
@@ -509,7 +360,7 @@ void DCanvas::ReleaseScreenshotBuffer()
 //
 //==========================================================================
 
-int V_GetColorFromString (const DWORD *palette, const char *cstr, FScriptPosition *sc)
+int V_GetColorFromString (const uint32_t *palette, const char *cstr, FScriptPosition *sc)
 {
 	int c[3], i, p;
 	char val[3];
@@ -701,7 +552,7 @@ FString V_GetColorStringByName (const char *name, FScriptPosition *sc)
 //
 //==========================================================================
 
-int V_GetColor (const DWORD *palette, const char *str, FScriptPosition *sc)
+int V_GetColor (const uint32_t *palette, const char *str, FScriptPosition *sc)
 {
 	FString string = V_GetColorStringByName (str, sc);
 	int res;
@@ -717,7 +568,7 @@ int V_GetColor (const DWORD *palette, const char *str, FScriptPosition *sc)
 	return res;
 }
 
-int V_GetColor(const DWORD *palette, FScanner &sc)
+int V_GetColor(const uint32_t *palette, FScanner &sc)
 {
 	FScriptPosition scc = sc;
 	return V_GetColor(palette, sc.String, &scc);
@@ -784,7 +635,7 @@ static void BuildTransTable (const PalEntry *palette)
 //
 //==========================================================================
 
-void DCanvas::CalcGamma (float gamma, BYTE gammalookup[256])
+void DCanvas::CalcGamma (float gamma, uint8_t gammalookup[256])
 {
 	// I found this formula on the web at
 	// <http://panda.mostang.com/sane/sane-gamma.html>,
@@ -794,7 +645,7 @@ void DCanvas::CalcGamma (float gamma, BYTE gammalookup[256])
 
 	for (i = 0; i < 256; i++)
 	{
-		gammalookup[i] = (BYTE)(255.0 * pow (i / 255.0, invgamma) + 0.5);
+		gammalookup[i] = (uint8_t)(255.0 * pow (i / 255.0, invgamma) + 0.5);
 	}
 }
 
@@ -860,7 +711,7 @@ void DSimpleCanvas::Resize(int width, int height)
 		}
 	}
 	int bytes_per_pixel = Bgra ? 4 : 1;
-	MemBuffer = new BYTE[Pitch * height * bytes_per_pixel];
+	MemBuffer = new uint8_t[Pitch * height * bytes_per_pixel];
 	memset (MemBuffer, 0, Pitch * height * bytes_per_pixel);
 }
 
@@ -949,9 +800,9 @@ DFrameBuffer::DFrameBuffer (int width, int height, bool bgra)
 //
 //==========================================================================
 
-void DFrameBuffer::CopyWithGammaBgra(void *output, int pitch, const BYTE *gammared, const BYTE *gammagreen, const BYTE *gammablue, PalEntry flash, int flash_amount)
+void DFrameBuffer::CopyWithGammaBgra(void *output, int pitch, const uint8_t *gammared, const uint8_t *gammagreen, const uint8_t *gammablue, PalEntry flash, int flash_amount)
 {
-	const BYTE *gammatables[3] = { gammared, gammagreen, gammablue };
+	const uint8_t *gammatables[3] = { gammared, gammagreen, gammablue };
 
 	if (flash_amount > 0)
 	{
@@ -962,8 +813,8 @@ void DFrameBuffer::CopyWithGammaBgra(void *output, int pitch, const BYTE *gammar
 		
 		for (int y = 0; y < Height; y++)
 		{
-			BYTE *dest = (BYTE*)output + y * pitch;
-			BYTE *src = MemBuffer + y * Pitch * 4;
+			uint8_t *dest = (uint8_t*)output + y * pitch;
+			uint8_t *src = MemBuffer + y * Pitch * 4;
 			for (int x = 0;  x < Width; x++)
 			{
 				uint16_t fg_red = src[2];
@@ -987,8 +838,8 @@ void DFrameBuffer::CopyWithGammaBgra(void *output, int pitch, const BYTE *gammar
 	{
 		for (int y = 0; y < Height; y++)
 		{
-			BYTE *dest = (BYTE*)output + y * pitch;
-			BYTE *src = MemBuffer + y * Pitch * 4;
+			uint8_t *dest = (uint8_t*)output + y * pitch;
+			uint8_t *src = MemBuffer + y * Pitch * 4;
 			for (int x = 0;  x < Width; x++)
 			{
 				dest[0] = gammatables[2][src[0]];
@@ -1017,8 +868,8 @@ void DFrameBuffer::DrawRateStuff ()
 	// Draws frame time and cumulative fps
 	if (vid_fps)
 	{
-		DWORD ms = I_FPSTime();
-		DWORD howlong = ms - LastMS;
+		uint32_t ms = I_FPSTime();
+		uint32_t howlong = ms - LastMS;
 		if ((signed)howlong >= 0)
 		{
 			char fpsbuff[40];
@@ -1030,15 +881,12 @@ void DFrameBuffer::DrawRateStuff ()
 			chars = mysnprintf (fpsbuff, countof(fpsbuff), "%2u ms (%3u fps)", howlong, LastCount);
 			rate_x = Width / textScale - ConFont->StringWidth(&fpsbuff[0]);
 			Clear (rate_x * textScale, 0, Width, ConFont->GetHeight() * textScale, GPalette.BlackIndex, 0);
-			if (textScale == 1)
-				DrawText (ConFont, CR_WHITE, rate_x, 0, (char *)&fpsbuff[0], TAG_DONE);
-			else
-				DrawText (ConFont, CR_WHITE, rate_x, 0, (char *)&fpsbuff[0],
-					DTA_VirtualWidth, screen->GetWidth() / textScale,
-					DTA_VirtualHeight, screen->GetHeight() / textScale,
-					DTA_KeepRatio, true, TAG_DONE);
+			DrawText (ConFont, CR_WHITE, rate_x, 0, (char *)&fpsbuff[0],
+				DTA_VirtualWidth, screen->GetWidth() / textScale,
+				DTA_VirtualHeight, screen->GetHeight() / textScale,
+				DTA_KeepRatio, true, TAG_DONE);
 
-			DWORD thisSec = ms/1000;
+			uint32_t thisSec = ms/1000;
 			if (LastSec < thisSec)
 			{
 				LastCount = FrameCount / (thisSec - LastSec);
@@ -1055,7 +903,7 @@ void DFrameBuffer::DrawRateStuff ()
 	{
 		int i = I_GetTime(false);
 		int tics = i - LastTic;
-		BYTE *buffer = GetBuffer();
+		uint8_t *buffer = GetBuffer();
 
 		LastTic = i;
 		if (tics > 20) tics = 20;
@@ -1156,7 +1004,7 @@ void FPaletteTester::SetTranslation(int num)
 //
 //==========================================================================
 
-const BYTE *FPaletteTester::GetColumn (unsigned int column, const Span **spans_out)
+const uint8_t *FPaletteTester::GetColumn (unsigned int column, const Span **spans_out)
 {
 	if (CurTranslation != WantTranslation)
 	{
@@ -1176,7 +1024,7 @@ const BYTE *FPaletteTester::GetColumn (unsigned int column, const Span **spans_o
 //
 //==========================================================================
 
-const BYTE *FPaletteTester::GetPixels ()
+const uint8_t *FPaletteTester::GetPixels ()
 {
 	if (CurTranslation != WantTranslation)
 	{
@@ -1194,7 +1042,7 @@ const BYTE *FPaletteTester::GetPixels ()
 void FPaletteTester::MakeTexture()
 {
 	int i, j, k, t;
-	BYTE *p;
+	uint8_t *p;
 
 	t = WantTranslation;
 	p = Pixels;
@@ -1220,7 +1068,7 @@ void FPaletteTester::MakeTexture()
 //
 //==========================================================================
 
-void DFrameBuffer::CopyFromBuff (BYTE *src, int srcPitch, int width, int height, BYTE *dest)
+void DFrameBuffer::CopyFromBuff (uint8_t *src, int srcPitch, int width, int height, uint8_t *dest)
 {
 	if (Pitch == width && Pitch == Width && srcPitch == width)
 	{
@@ -1285,6 +1133,8 @@ void DFrameBuffer::SetBlendingRect (int x1, int y1, int x2, int y2)
 
 bool DFrameBuffer::Begin2D (bool copy3d)
 {
+	isIn2D = true;
+	ClearClipRect();
 	return false;
 }
 
@@ -1432,7 +1282,6 @@ bool V_DoModeSetup (int width, int height, int bits)
 	}
 
 	screen = buff;
-	GC::WriteBarrier(screen);
 	screen->SetGamma (Gamma);
 
 	// Load fonts now so they can be packed into textures straight away,
@@ -1501,7 +1350,7 @@ void V_OutputResized (int width, int height)
 	setsizeneeded = true;
 	if (StatusBar != NULL)
 	{
-		StatusBar->ScreenSizeChanged();
+		StatusBar->CallScreenSizeChanged();
 	}
 	C_NewModeAdjust();
 }
@@ -1512,6 +1361,12 @@ void V_CalcCleanFacs (int designwidth, int designheight, int realwidth, int real
 	int cwidth;
 	int cheight;
 	int cx1, cy1, cx2, cy2;
+
+	// For larger screems always use at least a 16:9 ratio for clean factor calculation, even if the actual ratio is narrower.
+	if (realwidth > 1280 && (double)realwidth / realheight < 16./9)
+	{
+		realheight = realwidth * 9 / 16;
+	}
 
 	ratio = ActiveRatio(realwidth, realheight);
 	if (AspectTallerThanWide(ratio))
@@ -1530,7 +1385,7 @@ void V_CalcCleanFacs (int designwidth, int designheight, int realwidth, int real
 	cy1 = MAX(cheight / designheight, 1);
 	cx2 = MAX(realwidth / designwidth, 1);
 	cy2 = MAX(realheight / designheight, 1);
-	if (abs(cx1 - cy1) <= abs(cx2 - cy2))
+	if (abs(cx1 - cy1) <= abs(cx2 - cy2) || MAX(cx1, cx2) >= 4)
 	{ // e.g. 640x360 looks better with this.
 		*cleanx = cx1;
 		*cleany = cy1;
@@ -1608,6 +1463,9 @@ CCMD (vid_setmode)
 	{
 		goodmode = true;
 	}
+
+	if (!fullscreen)
+		goodmode = true;
 
 	if (goodmode)
 	{
@@ -1695,7 +1553,6 @@ void V_Init (bool restart)
 
 void V_Init2()
 {
-	assert (screen->IsKindOf(RUNTIME_CLASS(DDummyFrameBuffer)));
 	int width = screen->GetWidth();
 	int height = screen->GetHeight();
 	float gamma = static_cast<DDummyFrameBuffer *>(screen)->Gamma;
@@ -1703,7 +1560,6 @@ void V_Init2()
 	{
 		DFrameBuffer *s = screen;
 		screen = NULL;
-		s->ObjectFlags |= OF_YesReallyDelete;
 		delete s;
 	}
 
@@ -1730,7 +1586,6 @@ void V_Shutdown()
 	{
 		DFrameBuffer *s = screen;
 		screen = NULL;
-		s->ObjectFlags |= OF_YesReallyDelete;
 		delete s;
 	}
 	V_ClearFonts();
@@ -1742,7 +1597,7 @@ CUSTOM_CVAR (Bool, vid_nowidescreen, false, CVAR_GLOBALCONFIG|CVAR_ARCHIVE)
 	setsizeneeded = true;
 	if (StatusBar != NULL)
 	{
-		StatusBar->ScreenSizeChanged();
+		StatusBar->CallScreenSizeChanged();
 	}
 }
 
@@ -1751,7 +1606,7 @@ CUSTOM_CVAR (Int, vid_aspect, 0, CVAR_GLOBALCONFIG|CVAR_ARCHIVE)
 	setsizeneeded = true;
 	if (StatusBar != NULL)
 	{
-		StatusBar->ScreenSizeChanged();
+		StatusBar->CallScreenSizeChanged();
 	}
 }
 
@@ -1806,6 +1661,11 @@ float ActiveRatio(int width, int height, float *trueratio)
 	if (trueratio)
 		*trueratio = ratio;
 	return (fakeratio != -1) ? forcedRatioTypes[fakeratio] : ratio;
+}
+
+DEFINE_ACTION_FUNCTION(_Screen, GetAspectRatio)
+{
+	ACTION_RETURN_FLOAT(ActiveRatio(screen->GetWidth(), screen->GetHeight(), nullptr));
 }
 
 // Tries to guess the physical dimensions of the screen based on the
@@ -1897,3 +1757,17 @@ CCMD(vid_listadapters)
 	if (Video != NULL)
 		Video->DumpAdapters();
 }
+
+DEFINE_GLOBAL(SmallFont)
+DEFINE_GLOBAL(SmallFont2)
+DEFINE_GLOBAL(BigFont)
+DEFINE_GLOBAL(ConFont)
+DEFINE_GLOBAL(IntermissionFont)
+DEFINE_GLOBAL(CleanXfac)
+DEFINE_GLOBAL(CleanYfac)
+DEFINE_GLOBAL(CleanWidth)
+DEFINE_GLOBAL(CleanHeight)
+DEFINE_GLOBAL(CleanXfac_1)
+DEFINE_GLOBAL(CleanYfac_1)
+DEFINE_GLOBAL(CleanWidth_1)
+DEFINE_GLOBAL(CleanHeight_1)

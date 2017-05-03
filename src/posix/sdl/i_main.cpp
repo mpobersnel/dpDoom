@@ -82,7 +82,7 @@ void Mac_I_FatalError(const char* errortext);
 // PUBLIC DATA DEFINITIONS -------------------------------------------------
 
 // The command line arguments.
-DArgs *Args;
+FArgs *Args;
 
 // PRIVATE DATA DEFINITIONS ------------------------------------------------
 
@@ -170,10 +170,10 @@ static int DoomSpecificInfo (char *buffer, char *end)
 		}
 		else
 		{
-			p += snprintf (buffer+p, size-p, "\n\nviewx = %f", ViewPos.X);
-			p += snprintf (buffer+p, size-p, "\nviewy = %f", ViewPos.Y);
-			p += snprintf (buffer+p, size-p, "\nviewz = %f", ViewPos.Z);
-			p += snprintf (buffer+p, size-p, "\nviewangle = %f", ViewAngle.Degrees);
+			p += snprintf (buffer+p, size-p, "\n\nviewx = %f", r_viewpoint.Pos.X);
+			p += snprintf (buffer+p, size-p, "\nviewy = %f", r_viewpoint.Pos.Y);
+			p += snprintf (buffer+p, size-p, "\nviewz = %f", r_viewpoint.Pos.Z);
+			p += snprintf (buffer+p, size-p, "\nviewangle = %f", r_viewpoint.Angles.Yaw.Degrees);
 		}
 	}
 	buffer[p++] = '\n';
@@ -218,7 +218,7 @@ int main (int argc, char **argv)
 	
     try
     {
-		Args = new DArgs(argc, argv);
+		Args = new FArgs(argc, argv);
 
 		/*
 		  killough 1/98:

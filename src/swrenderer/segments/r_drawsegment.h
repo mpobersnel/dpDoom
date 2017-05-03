@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #pragma once
 
@@ -47,24 +55,48 @@ namespace swrenderer
 		int CurrentPortalUniq; // [ZZ] to identify the portal that this drawseg is in. used for sprite clipping.
 	};
 
+	struct DrawSegmentGroup
+	{
+		short x1, x2;
+		float neardepth, fardepth;
+		short *sprtopclip;
+		short *sprbottomclip;
+		unsigned int BeginIndex;
+		unsigned int EndIndex;
+	};
+
 	class DrawSegmentList
 	{
 	public:
-		static DrawSegmentList *Instance();
+		DrawSegmentList(RenderThread *thread);
 
-		DrawSegment *firstdrawseg = nullptr;
-		DrawSegment *ds_p = nullptr;
-		DrawSegment *drawsegs = nullptr;
+		TArray<DrawSegmentGroup> SegmentGroups;
 
-		TArray<size_t> InterestingDrawsegs; // drawsegs that have something drawn on them
-		size_t FirstInterestingDrawseg = 0;
+		unsigned int SegmentsCount() const { return Segments.Size() - StartIndices.Last(); }
+		DrawSegment *Segment(unsigned int index) const { return Segments[Segments.Size() - 1 - index]; }
+
+		unsigned int InterestingSegmentsCount() const { return InterestingSegments.Size() - StartInterestingIndices.Last(); }
+		DrawSegment *InterestingSegment(unsigned int index) const { return InterestingSegments[InterestingSegments.Size() - 1 - index]; }
 
 		void Clear();
-		void Deinit();
+		void PushPortal();
+		void PopPortal();
+		void Push(DrawSegment *segment);
+		void PushInteresting(DrawSegment *segment);
 
-		DrawSegment *Add();
+		void BuildSegmentGroups();
+
+		RenderThread *Thread = nullptr;
 
 	private:
-		size_t MaxDrawSegs = 0;
+		TArray<DrawSegment *> Segments;
+		TArray<unsigned int> StartIndices;
+
+		TArray<DrawSegment *> InterestingSegments; // drawsegs that have something drawn on them
+		TArray<unsigned int> StartInterestingIndices;
+
+		// For building segment groups
+		short cliptop[MAXWIDTH];
+		short clipbottom[MAXWIDTH];
 	};
 }

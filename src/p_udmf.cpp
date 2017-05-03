@@ -49,6 +49,8 @@
 #include "p_tags.h"
 #include "p_terrain.h"
 #include "g_levellocals.h"
+#include "info.h"
+#include "vm.h"
 
 //===========================================================================
 //
@@ -253,6 +255,20 @@ double UDMFParserBase::CheckFloat(const char *key)
 	return sc.Float;
 }
 
+double UDMFParserBase::CheckCoordinate(const char *key)
+{
+	if (sc.TokenType != TK_IntConst && sc.TokenType != TK_FloatConst)
+	{
+		sc.ScriptMessage("Floating point value expected for key '%s'", key);
+	}
+	if (sc.Float < -32768 || sc.Float > 32768)
+	{
+		sc.ScriptMessage("Value %f out of range for a coordinate '%s'. Valid range is ]-32768 .. 32768]", sc.Float, key);
+		BadCoordinates = true;	// If this happens the map must not allowed to be started.
+	}
+	return sc.Float;
+}
+
 DAngle UDMFParserBase::CheckAngle(const char *key)
 {
 	return DAngle(CheckFloat(key)).Normalized360();
@@ -342,7 +358,7 @@ FUDMFKey *FUDMFKeys::Find(FName key)
 //
 //===========================================================================
 
-int GetUDMFInt(int type, int index, const char *key)
+int GetUDMFInt(int type, int index, FName key)
 {
 	assert(type >=0 && type <=3);
 
@@ -359,7 +375,16 @@ int GetUDMFInt(int type, int index, const char *key)
 	return 0;
 }
 
-double GetUDMFFloat(int type, int index, const char *key)
+DEFINE_ACTION_FUNCTION(FLevelLocals, GetUDMFInt)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals);
+	PARAM_INT(type);
+	PARAM_INT(index);
+	PARAM_NAME(key);
+	ACTION_RETURN_INT(GetUDMFInt(type, index, key));
+}
+
+double GetUDMFFloat(int type, int index, FName key)
 {
 	assert(type >=0 && type <=3);
 
@@ -374,6 +399,41 @@ double GetUDMFFloat(int type, int index, const char *key)
 		}
 	}
 	return 0;
+}
+
+DEFINE_ACTION_FUNCTION(FLevelLocals, GetUDMFFloat)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals);
+	PARAM_INT(type);
+	PARAM_INT(index);
+	PARAM_NAME(key);
+	ACTION_RETURN_FLOAT(GetUDMFFloat(type, index, key));
+}
+
+FString GetUDMFString(int type, int index, FName key)
+{
+	assert(type >= 0 && type <= 3);
+
+	FUDMFKeys *pKeys = UDMFKeys[type].CheckKey(index);
+
+	if (pKeys != NULL)
+	{
+		FUDMFKey *pKey = pKeys->Find(key);
+		if (pKey != NULL)
+		{
+			return pKey->StringVal;
+		}
+	}
+	return "";
+}
+
+DEFINE_ACTION_FUNCTION(FLevelLocals, GetUDMFString)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals);
+	PARAM_INT(type);
+	PARAM_INT(index);
+	PARAM_NAME(key);
+	ACTION_RETURN_STRING(GetUDMFString(type, index, key));
 }
 
 
@@ -474,7 +534,7 @@ public:
 		th->Gravity = 1;
 		th->RenderStyle = STYLE_Count;
 		th->Alpha = -1;
-		th->health = 1;
+		th->Health = 1;
 		th->FloatbobPhase = -1;
 		sc.MustGetToken('{');
 		while (!sc.CheckToken('}'))
@@ -487,15 +547,15 @@ public:
 				break;
 
 			case NAME_X:
-				th->pos.X = CheckFloat(key);
+				th->pos.X = CheckCoordinate(key);
 				break;
 
 			case NAME_Y:
-				th->pos.Y = CheckFloat(key);
+				th->pos.Y = CheckCoordinate(key);
 				break;
 
 			case NAME_Height:
-				th->pos.Z = CheckFloat(key);
+				th->pos.Z = CheckCoordinate(key);
 				break;
 
 			case NAME_Angle:
@@ -702,7 +762,7 @@ public:
 				break;
 
 			case NAME_Health:
-				th->health = CheckInt(key);
+				th->Health = CheckFloat(key);
 				break;
 
 			case NAME_Score:
@@ -1097,7 +1157,7 @@ public:
 		{
 			ld->alpha = 0.75;
 		}
-		if (strifetrans2 && ld->alpha == OPAQUE)
+		if (strifetrans2 && ld->alpha == 1.)
 		{
 			ld->alpha = 0.25;
 		}
@@ -1307,6 +1367,7 @@ public:
 		sec->sectornum = index;
 		sec->damageinterval = 32;
 		sec->terrainnum[sector_t::ceiling] = sec->terrainnum[sector_t::floor] = -1;
+		memset(sec->SpecialColors, -1, sizeof(sec->SpecialColors));
 		if (floordrop) sec->Flags = SECF_FLOORDROP;
 		// killough 3/7/98: end changes
 
@@ -1324,11 +1385,11 @@ public:
 			switch(key)
 			{
 			case NAME_Heightfloor:
-				sec->SetPlaneTexZ(sector_t::floor, CheckFloat(key));
+				sec->SetPlaneTexZ(sector_t::floor, CheckCoordinate(key));
 				continue;
 
 			case NAME_Heightceiling:
-				sec->SetPlaneTexZ(sector_t::ceiling, CheckFloat(key));
+				sec->SetPlaneTexZ(sector_t::ceiling, CheckCoordinate(key));
 				continue;
 
 			case NAME_Texturefloor:
@@ -1348,7 +1409,7 @@ public:
 				if (isTranslated) sec->special = P_TranslateSectorSpecial(sec->special);
 				else if (namespc == NAME_Hexen)
 				{
-					if (sec->special < 0 || sec->special > 255 || !HexenSectorSpecialOk[sec->special])
+					if (sec->special < 0 || sec->special > 140 || !HexenSectorSpecialOk[sec->special])
 						sec->special = 0;	// NULL all unknown specials
 				}
 				continue;
@@ -1459,12 +1520,32 @@ public:
 					fadecolor = CheckInt(key);
 					continue;
 
+				case NAME_Color_Floor:
+					sec->SpecialColors[sector_t::floor] = CheckInt(key) | 0xff000000;
+					break;
+
+				case NAME_Color_Ceiling:
+					sec->SpecialColors[sector_t::ceiling] = CheckInt(key) | 0xff000000;
+					break;
+
+				case NAME_Color_Walltop:
+					sec->SpecialColors[sector_t::walltop] = CheckInt(key) | 0xff000000;
+					break;
+
+				case NAME_Color_Wallbottom:
+					sec->SpecialColors[sector_t::wallbottom] = CheckInt(key) | 0xff000000;
+					break;
+
+				case NAME_Color_Sprites:
+					sec->SpecialColors[sector_t::sprites] = CheckInt(key) | 0xff000000;
+					break;
+
 				case NAME_Desaturation:
-					desaturation = int(255*CheckFloat(key));
+					desaturation = int(255*CheckFloat(key) + FLT_EPSILON);	// FLT_EPSILON to avoid rounding errors with numbers slightly below a full integer.
 					continue;
 
 				case NAME_fogdensity:
-					fogdensity = clamp(CheckInt(key), 0, 511);
+					fogdensity = CheckInt(key);
 					break;
 
 				case NAME_Silent:
@@ -1593,6 +1674,10 @@ public:
 					sec->planes[sector_t::ceiling].GlowHeight = (float)CheckFloat(key);
 					break;
 
+				case NAME_Noattack:
+					Flag(sec->Flags, SECF_NOATTACK, key);
+					break;
+
 				case NAME_MoreIds:
 					// delay parsing of the tag string until parsing of the sector is complete
 					// This ensures that the ID is always the first tag in the list.
@@ -1700,22 +1785,19 @@ public:
 		{
 			// [RH] Sectors default to white light with the default fade.
 			//		If they are outside (have a sky ceiling), they use the outside fog.
+			sec->Colormap.LightColor = PalEntry(255, 255, 255);
 			if (level.outsidefog != 0xff000000 && (sec->GetTexture(sector_t::ceiling) == skyflatnum || (sec->special & 0xff) == Sector_Outside))
 			{
-				if (fogMap == NULL)
-					fogMap = GetSpecialLights(PalEntry(255, 255, 255), level.outsidefog, 0);
-				sec->ColorMap = fogMap;
+				sec->Colormap.FadeColor.SetRGB(level.outsidefog);
 			}
 			else
 			{
-				if (normMap == NULL)
-					normMap = GetSpecialLights (PalEntry (255,255,255), level.fadeto, NormalLight.Desaturate);
-				sec->ColorMap = normMap;
+				sec->Colormap.FadeColor.SetRGB(level.fadeto);
 			}
 		}
 		else
 		{
-			if (lightcolor == ~0u) lightcolor = PalEntry(255,255,255);
+			sec->Colormap.LightColor.SetRGB(lightcolor);
 			if (fadecolor == ~0u)
 			{
 				if (level.outsidefog != 0xff000000 && (sec->GetTexture(sector_t::ceiling) == skyflatnum || (sec->special & 0xff) == Sector_Outside))
@@ -1723,11 +1805,9 @@ public:
 				else
 					fadecolor = level.fadeto;
 			}
-			if (desaturation == -1) desaturation = NormalLight.Desaturate;
-			if (fogdensity != -1) fadecolor.a = fogdensity / 2;
-			else fadecolor.a = 0;
-
-			sec->ColorMap = GetSpecialLights (lightcolor, fadecolor, desaturation);
+			sec->Colormap.FadeColor.SetRGB(fadecolor);
+			sec->Colormap.Desaturation = clamp(desaturation, 0, 255);
+			sec->Colormap.FogDensity = clamp(fogdensity, 0, 512) / 2;
 		}
 	}
 
@@ -1743,27 +1823,27 @@ public:
 		vd->zCeiling = vd->zFloor = vd->flags = 0;
 
 		sc.MustGetToken('{');
-		double x, y;
+		double x = 0, y = 0;
 		while (!sc.CheckToken('}'))
 		{
 			FName key = ParseKey();
 			switch (key)
 			{
 			case NAME_X:
-				x = CheckFloat(key);
+				x = CheckCoordinate(key);
 				break;
 
 			case NAME_Y:
-				y = CheckFloat(key);
+				y = CheckCoordinate(key);
 				break;
 
 			case NAME_ZCeiling:
-				vd->zCeiling = CheckFloat(key);
+				vd->zCeiling = CheckCoordinate(key);
 				vd->flags |= VERTEXFLAG_ZCeilingEnabled;
 				break;
 
 			case NAME_ZFloor:
-				vd->zFloor = CheckFloat(key);
+				vd->zFloor = CheckCoordinate(key);
 				vd->flags |= VERTEXFLAG_ZFloorEnabled;
 				break;
 
@@ -1789,7 +1869,7 @@ public:
 			intptr_t v1i = intptr_t(ParsedLines[i].v1);
 			intptr_t v2i = intptr_t(ParsedLines[i].v2);
 
-			if (v1i >= level.vertexes.Size() || v2i >= level.vertexes.Size() || v1i < 0 || v2i < 0)
+			if ((unsigned)v1i >= level.vertexes.Size() || (unsigned)v2i >= level.vertexes.Size())
 			{
 				I_Error ("Line %d has invalid vertices: %zd and/or %zd.\nThe map only contains %u vertices.", i+skipped, v1i, v2i, level.vertexes.Size());
 			}
@@ -1854,10 +1934,17 @@ public:
 			P_AdjustLine(&lines[line]);
 			P_FinishLoadingLineDef(&lines[line], tempalpha[0]);
 		}
-		assert((unsigned)side <= level.sides.Size());
-		if ((unsigned)side > level.sides.Size())
+
+		const int sideDelta = level.sides.Size() - side;
+		assert(sideDelta >= 0);
+
+		if (sideDelta < 0)
 		{
-			Printf("Map had %d invalid side references\n", (int)level.sides.Size() - side);
+			Printf("Map had %d invalid side references\n", abs(sideDelta));
+		}
+		else if (sideDelta > 0)
+		{
+			level.sides.Resize(side);
 		}
 	}
 
@@ -1986,6 +2073,7 @@ public:
 			else if (sc.Compare("sector"))
 			{
 				sector_t sec;
+				memset(&sec, 0, sizeof(sector_t));
 				ParseSector(&sec, ParsedSectors.Size());
 				ParsedSectors.Push(sec);
 			}
@@ -2004,10 +2092,11 @@ public:
 		}
 
 		// Catch bogus maps here rather than during nodebuilding
-		if (ParsedVertices.Size() == 0)	I_Error("Map has no vertices.\n");
-		if (ParsedSectors.Size() == 0)	I_Error("Map has no sectors. \n");
-		if (ParsedLines.Size() == 0)	I_Error("Map has no linedefs.\n");
-		if (ParsedSides.Size() == 0)	I_Error("Map has no sidedefs.\n");
+		if (ParsedVertices.Size() == 0)	I_Error("Map has no vertices.");
+		if (ParsedSectors.Size() == 0)	I_Error("Map has no sectors. ");
+		if (ParsedLines.Size() == 0)	I_Error("Map has no linedefs.");
+		if (ParsedSides.Size() == 0)	I_Error("Map has no sidedefs.");
+		if (BadCoordinates)				I_Error("Map has out of range coordinates");
 
 		// Create the real vertices
 		level.vertexes.Alloc(ParsedVertices.Size());

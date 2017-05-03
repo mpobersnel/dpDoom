@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,16 +36,16 @@
 #include "swrenderer/things/r_particle.h"
 #include "swrenderer/things/r_sprite.h"
 #include "swrenderer/things/r_wallsprite.h"
-#include "swrenderer/things/r_playersprite.h"
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_translucent_pass.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
 #include "swrenderer/plane/r_visibleplane.h"
 #include "swrenderer/plane/r_visibleplanelist.h"
 #include "swrenderer/line/r_renderdrawsegment.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
 
 EXTERN_CVAR(Int, r_drawfuzz)
 EXTERN_CVAR(Bool, r_drawvoxels)
@@ -47,10 +55,9 @@ CVAR(Bool, r_fullbrightignoresectorcolor, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG
 
 namespace swrenderer
 {
-	RenderTranslucentPass *RenderTranslucentPass::Instance()
+	RenderTranslucentPass::RenderTranslucentPass(RenderThread *thread)
 	{
-		static RenderTranslucentPass instance;
-		return &instance;
+		Thread = thread;
 	}
 
 	void RenderTranslucentPass::Deinit()
@@ -60,7 +67,7 @@ namespace swrenderer
 
 	void RenderTranslucentPass::Clear()
 	{
-		VisibleSpriteList::Instance()->Clear();
+		Thread->SpriteList->Clear();
 	}
 
 	void RenderTranslucentPass::CollectPortals()
@@ -71,9 +78,11 @@ namespace swrenderer
 		// a) exit early if no relevant info is found and
 		// b) skip most of the collected drawsegs which have no portal attached.
 		portaldrawsegs.Clear();
-		DrawSegmentList *drawseglist = DrawSegmentList::Instance();
-		for (DrawSegment* seg = drawseglist->ds_p; seg-- > drawseglist->firstdrawseg; )
+		DrawSegmentList *drawseglist = Thread->DrawSegments.get();
+		for (unsigned int index = 0; index != drawseglist->SegmentsCount(); index++)
 		{
+			DrawSegment *seg = drawseglist->Segment(index);
+
 			// I don't know what makes this happen (some old top-down portal code or possibly skybox code? something adds null lines...)
 			// crashes at the first frame of the first map of Action2.wad
 			if (!seg->curline) continue;
@@ -96,7 +105,7 @@ namespace swrenderer
 
 	bool RenderTranslucentPass::ClipSpriteColumnWithPortals(int x, VisibleSprite *spr)
 	{
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = Thread->Portal.get();
 
 		// [ZZ] 10.01.2016: don't clip sprites from the root of a skybox.
 		if (renderportal->CurrentPortalInSkybox)
@@ -124,14 +133,14 @@ namespace swrenderer
 
 	void RenderTranslucentPass::DrawMaskedSingle(bool renew)
 	{
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = Thread->Portal.get();
 
-		auto &sortedSprites = VisibleSpriteList::Instance()->SortedSprites;
+		auto &sortedSprites = Thread->SpriteList->SortedSprites;
 		for (int i = sortedSprites.Size(); i > 0; i--)
 		{
 			if (sortedSprites[i - 1]->IsCurrentPortalUniq(renderportal->CurrentPortalUniq))
 			{
-				sortedSprites[i - 1]->Render();
+				sortedSprites[i - 1]->Render(Thread);
 			}
 		}
 
@@ -139,11 +148,14 @@ namespace swrenderer
 
 		if (renew)
 		{
-			Clip3DFloors::Instance()->fake3D |= FAKE3D_REFRESHCLIP;
+			Thread->Clip3D->fake3D |= FAKE3D_REFRESHCLIP;
 		}
-		DrawSegmentList *drawseglist = DrawSegmentList::Instance();
-		for (DrawSegment *ds = drawseglist->ds_p; ds-- > drawseglist->firstdrawseg; )
+
+		DrawSegmentList *drawseglist = Thread->DrawSegments.get();
+		for (unsigned int index = 0; index != drawseglist->SegmentsCount(); index++)
 		{
+			DrawSegment *ds = drawseglist->Segment(index);
+
 			// [ZZ] the same as above
 			if (ds->CurrentPortalUniq != renderportal->CurrentPortalUniq)
 				continue;
@@ -151,7 +163,7 @@ namespace swrenderer
 			if (ds->fake) continue;
 			if (ds->maskedtexturecol != nullptr || ds->bFogBoundary)
 			{
-				RenderDrawSegment renderer;
+				RenderDrawSegment renderer(Thread);
 				renderer.Render(ds, ds->x1, ds->x2);
 			}
 		}
@@ -160,9 +172,10 @@ namespace swrenderer
 	void RenderTranslucentPass::Render()
 	{
 		CollectPortals();
-		VisibleSpriteList::Instance()->Sort();
+		Thread->SpriteList->Sort();
+		Thread->DrawSegments->BuildSegmentGroups();
 
-		Clip3DFloors *clip3d = Clip3DFloors::Instance();
+		Clip3DFloors *clip3d = Thread->Clip3D.get();
 		if (clip3d->height_top == nullptr)
 		{ // kg3D - no visible 3D floors, normal rendering
 			DrawMaskedSingle(false);
@@ -170,7 +183,7 @@ namespace swrenderer
 		else
 		{ // kg3D - correct sorting
 			// ceilings
-			for (HeightLevel *hl = clip3d->height_cur; hl != nullptr && hl->height >= ViewPos.Z; hl = hl->prev)
+			for (HeightLevel *hl = clip3d->height_cur; hl != nullptr && hl->height >= Thread->Viewport->viewpoint.Pos.Z; hl = hl->prev)
 			{
 				if (hl->next)
 				{
@@ -183,16 +196,16 @@ namespace swrenderer
 				}
 				clip3d->sclipBottom = hl->height;
 				DrawMaskedSingle(true);
-				VisiblePlaneList::Instance()->RenderHeight(hl->height);
+				Thread->PlaneList->RenderHeight(hl->height);
 			}
 
 			// floors
 			clip3d->fake3D = FAKE3D_DOWN2UP | FAKE3D_CLIPTOP;
 			clip3d->sclipTop = clip3d->height_top->height;
 			DrawMaskedSingle(true);
-			for (HeightLevel *hl = clip3d->height_top; hl != nullptr && hl->height < ViewPos.Z; hl = hl->next)
+			for (HeightLevel *hl = clip3d->height_top; hl != nullptr && hl->height < Thread->Viewport->viewpoint.Pos.Z; hl = hl->next)
 			{
-				VisiblePlaneList::Instance()->RenderHeight(hl->height);
+				Thread->PlaneList->RenderHeight(hl->height);
 				if (hl->next)
 				{
 					clip3d->fake3D = FAKE3D_DOWN2UP | FAKE3D_CLIPTOP | FAKE3D_CLIPBOTTOM;
@@ -208,7 +221,5 @@ namespace swrenderer
 			clip3d->DeleteHeights();
 			clip3d->fake3D = 0;
 		}
-
-		RenderPlayerSprites::Instance()->Render();
 	}
 }

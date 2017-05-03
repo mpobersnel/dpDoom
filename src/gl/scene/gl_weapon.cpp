@@ -43,6 +43,7 @@
 #include "gl/data/gl_vertexbuffer.h"
 #include "gl/dynlights/gl_glow.h"
 #include "gl/scene/gl_drawinfo.h"
+#include "gl/scene/gl_scenedrawer.h"
 #include "gl/models/gl_models.h"
 #include "gl/shaders/gl_shader.h"
 #include "gl/textures/gl_material.h"
@@ -51,7 +52,6 @@
 
 EXTERN_CVAR (Bool, r_drawplayersprites)
 EXTERN_CVAR(Float, transsouls)
-EXTERN_CVAR (Bool, st_scale)
 EXTERN_CVAR(Int, gl_fuzztype)
 EXTERN_CVAR (Bool, r_deathcamera)
 
@@ -62,7 +62,7 @@ EXTERN_CVAR (Bool, r_deathcamera)
 //
 //==========================================================================
 
-void FGLRenderer::DrawPSprite (player_t * player,DPSprite *psp, float sx, float sy, bool hudModelStep, int OverrideShader, bool alphatexture)
+void GLSceneDrawer::DrawPSprite (player_t * player,DPSprite *psp, float sx, float sy, bool hudModelStep, int OverrideShader, bool alphatexture)
 {
 	float			fU1,fV1;
 	float			fU2,fV2;
@@ -81,7 +81,7 @@ void FGLRenderer::DrawPSprite (player_t * player,DPSprite *psp, float sx, float 
 
 	// decide which patch to use
 	bool mirror;
-	FTextureID lump = gl_GetSpriteFrame(psp->GetSprite(), psp->GetFrame(), 0, 0, &mirror);
+	FTextureID lump = sprites[psp->GetSprite()].GetSpriteFrame(psp->GetFrame(), 0, 0., &mirror);
 	if (!lump.isValid()) return;
 
 	FMaterial * tex = FMaterial::ValidateTexture(lump, true, false);
@@ -96,7 +96,7 @@ void FGLRenderer::DrawPSprite (player_t * player,DPSprite *psp, float sx, float 
 	tex->GetSpriteRect(&r);
 
 	// calculate edges of the shape
-	scalex = (320.0f / (240.0f * WidescreenRatio)) * vw / 320;
+	scalex = (320.0f / (240.0f * r_viewwindow.WidescreenRatio)) * vw / 320;
 
 	tx = sx - (160 - r.left);
 	x1 = tx * scalex + vw/2;
@@ -120,7 +120,7 @@ void FGLRenderer::DrawPSprite (player_t * player,DPSprite *psp, float sx, float 
 		{
 			ftexturemid -= fYAd;
 		}
-		else if (!st_scale)
+		else 
 		{
 			ftexturemid -= StatusBar->GetDisplacement () * fYAd;
 		}
@@ -171,7 +171,7 @@ static bool isBright(DPSprite *psp)
 	if (psp != nullptr && psp->GetState() != nullptr)
 	{
 		bool disablefullbright = false;
-		FTextureID lump = gl_GetSpriteFrame(psp->GetSprite(), psp->GetFrame(), 0, 0, NULL);
+		FTextureID lump = sprites[psp->GetSprite()].GetSpriteFrame(psp->GetFrame(), 0, 0., nullptr);
 		if (lump.isValid())
 		{
 			FMaterial * tex = FMaterial::ValidateTexture(lump, false, false);
@@ -189,7 +189,7 @@ static bool isBright(DPSprite *psp)
 //
 //==========================================================================
 
-void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
+void GLSceneDrawer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 {
 	bool brightflash = false;
 	unsigned int i;
@@ -200,6 +200,8 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 	player_t * player=playermo->player;
 	
 	s3d::Stereo3DMode::getCurrentMode().AdjustPlayerSprites();
+
+	AActor *camera = r_viewpoint.camera;
 
 	// this is the same as the software renderer
 	if (!player ||
@@ -212,7 +214,7 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 	float bobx, boby, wx, wy;
 	DPSprite *weapon;
 
-	P_BobWeapon(camera->player, &bobx, &boby, r_TicFracF);
+	P_BobWeapon(camera->player, &bobx, &boby, r_viewpoint.TicFrac);
 
 	// Interpolate the main weapon layer once so as to be able to add it to other layers.
 	if ((weapon = camera->player->FindPSprite(PSP_WEAPON)) != nullptr)
@@ -224,8 +226,8 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 		}
 		else
 		{
-			wx = weapon->oldx + (weapon->x - weapon->oldx) * r_TicFracF;
-			wy = weapon->oldy + (weapon->y - weapon->oldy) * r_TicFracF;
+			wx = weapon->oldx + (weapon->x - weapon->oldx) * r_viewpoint.TicFrac;
+			wy = weapon->oldy + (weapon->y - weapon->oldy) * r_viewpoint.TicFrac;
 		}
 	}
 	else
@@ -234,7 +236,7 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 		wy = 0;
 	}
 
-	if (gl_fixedcolormap) 
+	if (FixedColormap) 
 	{
 		lightlevel=255;
 		cm.Clear();
@@ -242,13 +244,13 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 	}
 	else
 	{
-		fakesec    = gl_FakeFlat(viewsector, &fs, false);
+		fakesec    = gl_FakeFlat(viewsector, &fs, in_area, false);
 
 		// calculate light level for weapon sprites
 		lightlevel = gl_ClampLight(fakesec->lightlevel);
 
 		// calculate colormap for weapon sprites
-		if (viewsector->e->XFloor.ffloors.Size() && !glset.nocoloredspritelighting)
+		if (viewsector->e->XFloor.ffloors.Size() && !(level.flags3 & LEVEL3_NOCOLOREDSPRITELIGHTING))
 		{
 			TArray<lightlist_t> & lightlist = viewsector->e->XFloor.lightlist;
 			for(i=0;i<lightlist.Size();i++)
@@ -257,11 +259,11 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 
 				if (i<lightlist.Size()-1) 
 				{
-					lightbottom=lightlist[i+1].plane.ZatPoint(ViewPos);
+					lightbottom=lightlist[i+1].plane.ZatPoint(r_viewpoint.Pos);
 				}
 				else 
 				{
-					lightbottom=viewsector->floorplane.ZatPoint(ViewPos);
+					lightbottom=viewsector->floorplane.ZatPoint(r_viewpoint.Pos);
 				}
 
 				if (lightbottom<player->viewz) 
@@ -274,8 +276,8 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 		}
 		else 
 		{
-			cm=fakesec->ColorMap;
-			if (glset.nocoloredspritelighting) cm.ClearColor();
+			cm=fakesec->Colormap;
+			if (level.flags3 & LEVEL3_NOCOLOREDSPRITELIGHTING) cm.ClearColor();
 		}
 
 		lightlevel = gl_CalcLightLevel(lightlevel, getExtraLight(), true);
@@ -305,38 +307,47 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 		lightlevel = 255;
 	}
 
-	PalEntry ThingColor = (playermo->RenderStyle.Flags & STYLEF_ColorIsFixed) ? playermo->fillcolor : 0xffffff;
-	ThingColor.a = 255;
+	gl_RenderState.AlphaFunc(GL_GEQUAL, gl_mask_sprite_threshold);
 
-	visstyle_t vis;
+	// hack alert! Rather than changing everything in the underlying lighting code let's just temporarily change
+	// light mode here to draw the weapon sprite.
+	int oldlightmode = glset.lightmode;
+	if (glset.lightmode == 8) glset.lightmode = 2;
 
-	vis.RenderStyle = STYLE_Count;
-	vis.Alpha = playermo->Alpha;
-	vis.Invert = false;
-	playermo->AlterWeaponSprite(&vis);
-	
-	FRenderStyle RenderStyle;
-	if (vis.RenderStyle == STYLE_Count) RenderStyle = playermo->RenderStyle;
-	else RenderStyle = vis.RenderStyle;
-
-	if (vis.Invert)
+	for(DPSprite *psp = player->psprites; psp != nullptr && psp->GetID() < PSP_TARGETCENTER; psp = psp->GetNext())
 	{
-		// this only happens for Strife's inverted weapon sprite
-		RenderStyle.Flags |= STYLEF_InvertSource;
-	}
-	if (RenderStyle.AsDWORD == 0)
-	{
-		// This is RenderStyle None.
-		return;
-	}
+		auto rs = psp->GetRenderStyle(playermo->RenderStyle, playermo->Alpha);
 
-	// Set the render parameters
+		visstyle_t vis;
+		float trans = 0.f;
 
-	int OverrideShader = -1;
-	float trans = 0.f;
-	if (RenderStyle.BlendOp >= STYLEOP_Fuzz && RenderStyle.BlendOp <= STYLEOP_FuzzOrRevSub)
-	{
-		RenderStyle.CheckFuzz();
+		vis.RenderStyle = STYLE_Count;
+		vis.Alpha = rs.second;
+		vis.Invert = false;
+		playermo->AlterWeaponSprite(&vis);
+
+		FRenderStyle RenderStyle;
+
+		if (!(psp->Flags & PSPF_FORCEALPHA)) trans = vis.Alpha;
+
+		if (vis.RenderStyle != STYLE_Count && !(psp->Flags & PSPF_FORCESTYLE))
+		{
+			RenderStyle = vis.RenderStyle;
+		}
+		else
+		{
+			RenderStyle = rs.first;
+		}
+
+		if (vis.Invert)
+		{
+			// this only happens for Strife's inverted weapon sprite
+			RenderStyle.Flags |= STYLEF_InvertSource;
+		}
+
+		// Set the render parameters
+
+		int OverrideShader = -1;
 		if (RenderStyle.BlendOp == STYLEOP_Fuzz)
 		{
 			if (gl_fuzztype != 0)
@@ -351,35 +362,35 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 				RenderStyle.BlendOp = STYLEOP_Shadow;
 			}
 		}
-	}
 
-	gl_SetRenderStyle(RenderStyle, false, false);
+		gl_SetRenderStyle(RenderStyle, false, false);
 
-	if (RenderStyle.Flags & STYLEF_TransSoulsAlpha)
-	{
-		trans = transsouls;
-	}
-	else if (RenderStyle.Flags & STYLEF_Alpha1)
-	{
-		trans = 1.f;
-	}
-	else if (trans == 0.f)
-	{
-		trans = vis.Alpha;
-	}
+		if (RenderStyle.Flags & STYLEF_TransSoulsAlpha)
+		{
+			trans = transsouls;
+		}
+		else if (RenderStyle.Flags & STYLEF_Alpha1)
+		{
+			trans = 1.f;
+		}
+		else if (trans == 0.f)
+		{
+			trans = vis.Alpha;
+		}
 
-	// now draw the different layers of the weapon
-	gl_RenderState.EnableBrightmap(true);
-	gl_RenderState.SetObjectColor(ThingColor);
-	gl_RenderState.AlphaFunc(GL_GEQUAL, gl_mask_sprite_threshold);
+		PalEntry ThingColor = (playermo->RenderStyle.Flags & STYLEF_ColorIsFixed) ? playermo->fillcolor : 0xffffff;
+		ThingColor.a = 255;
 
-	// hack alert! Rather than changing everything in the underlying lighting code let's just temporarily change
-	// light mode here to draw the weapon sprite.
-	int oldlightmode = glset.lightmode;
-	if (glset.lightmode == 8) glset.lightmode = 2;
+		// now draw the different layers of the weapon.
+		// For stencil render styles brightmaps need to be disabled.
+		gl_RenderState.EnableBrightmap(!(RenderStyle.Flags & STYLEF_ColorIsFixed));
+		PalEntry finalcol(ThingColor.a,
+			ThingColor.r * viewsector->SpecialColors[sector_t::sprites].r / 255,
+			ThingColor.g * viewsector->SpecialColors[sector_t::sprites].g / 255,
+			ThingColor.b * viewsector->SpecialColors[sector_t::sprites].b / 255);
 
-	for(DPSprite *psp = player->psprites; psp != nullptr && psp->GetID() < PSP_TARGETCENTER; psp = psp->GetNext())
-	{
+		gl_RenderState.SetObjectColor(finalcol);
+
 		if (psp->GetState() != nullptr) 
 		{
 			FColormap cmc = cm;
@@ -388,9 +399,7 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 			{
 				if (fakesec == viewsector || in_area != area_below)	
 				{
-					cmc.LightColor.r=
-					cmc.LightColor.g=
-					cmc.LightColor.b=0xff;
+					cmc.MakeWhite();
 				}
 				else
 				{
@@ -404,15 +413,15 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 			// set the lighting parameters
 			if (RenderStyle.BlendOp == STYLEOP_Shadow)
 			{
-				gl_RenderState.SetColor(0.2f, 0.2f, 0.2f, 0.33f, cmc.desaturation);
+				gl_RenderState.SetColor(0.2f, 0.2f, 0.2f, 0.33f, cmc.Desaturation);
 			}
 			else
 			{
-				if (gl_lights && GLRenderer->mLightCount && !gl_fixedcolormap && gl_light_sprites)
+				if (gl_lights && GLRenderer->mLightCount && FixedColormap == CM_DEFAULT && gl_light_sprites)
 				{
 					gl_SetDynSpriteLight(playermo, NULL);
 				}
-				gl_SetColor(ll, 0, cmc, trans, true);
+				SetColor(ll, 0, cmc, trans, true);
 			}
 
 			if (psp->firstTic)
@@ -422,8 +431,8 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 				psp->oldy = psp->y;
 			}
 
-			float sx = psp->oldx + (psp->x - psp->oldx) * r_TicFracF;
-			float sy = psp->oldy + (psp->y - psp->oldy) * r_TicFracF;
+			float sx = psp->oldx + (psp->x - psp->oldx) * r_viewpoint.TicFrac;
+			float sy = psp->oldy + (psp->y - psp->oldy) * r_viewpoint.TicFrac;
 
 			if (psp->Flags & PSPF_ADDBOB)
 			{
@@ -453,13 +462,13 @@ void FGLRenderer::DrawPlayerSprites(sector_t * viewsector, bool hudModelStep)
 //
 //==========================================================================
 
-void FGLRenderer::DrawTargeterSprites()
+void GLSceneDrawer::DrawTargeterSprites()
 {
 	AActor * playermo=players[consoleplayer].camera;
 	player_t * player=playermo->player;
 	
 	if(!player || playermo->renderflags&RF_INVISIBLE || !r_drawplayersprites ||
-		mViewActor!=playermo) return;
+		GLRenderer->mViewActor!=playermo) return;
 
 	gl_RenderState.EnableBrightmap(false);
 	gl_RenderState.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

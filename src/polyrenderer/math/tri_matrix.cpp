@@ -37,7 +37,7 @@
 #include "tri_matrix.h"
 #include "polyrenderer/drawers/poly_triangle.h"
 #include "swrenderer/drawers/r_draw_rgba.h"
-#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/viewport/r_viewport.h"
 
 TriMatrix TriMatrix::null()
 {
@@ -132,27 +132,29 @@ TriMatrix TriMatrix::frustum(float left, float right, float bottom, float top, f
 	return m;
 }
 
-TriMatrix TriMatrix::worldToView()
+#if 0
+TriMatrix TriMatrix::worldToView(const FRenderViewpoint &viewpoint)
 {
 	TriMatrix m = null();
-	m.matrix[0 + 0 * 4] = (float)ViewSin;
-	m.matrix[0 + 1 * 4] = (float)-ViewCos;
+	m.matrix[0 + 0 * 4] = (float)viewpoint.Sin;
+	m.matrix[0 + 1 * 4] = (float)-viewpoint.Cos;
 	m.matrix[1 + 2 * 4] = 1.0f;
-	m.matrix[2 + 0 * 4] = (float)-ViewCos;
-	m.matrix[2 + 1 * 4] = (float)-ViewSin;
+	m.matrix[2 + 0 * 4] = (float)-viewpoint.Cos;
+	m.matrix[2 + 1 * 4] = (float)-viewpoint.Sin;
 	m.matrix[3 + 3 * 4] = 1.0f;
-	return m * translate((float)-ViewPos.X, (float)-ViewPos.Y, (float)-ViewPos.Z);
+	return m * translate((float)-viewpoint.Pos.X, (float)-viewpoint.Pos.Y, (float)-viewpoint.Pos.Z);
 }
 
-TriMatrix TriMatrix::viewToClip()
+TriMatrix TriMatrix::viewToClip(double focalTangent, double centerY, double invZtoScale)
 {
 	float near = 5.0f;
 	float far = 65536.0f;
-	float width = (float)(FocalTangent * near);
-	float top = (float)(swrenderer::CenterY / swrenderer::InvZtoScale * near);
-	float bottom = (float)(top - viewheight / swrenderer::InvZtoScale * near);
+	float width = (float)(focalTangent * near);
+	float top = (float)(centerY / invZtoScale * near);
+	float bottom = (float)(top - viewheight / invZtoScale * near);
 	return frustum(-width, width, bottom, top, near, far);
 }
+#endif
 
 TriMatrix TriMatrix::operator*(const TriMatrix &mult) const
 {
@@ -173,6 +175,7 @@ TriMatrix TriMatrix::operator*(const TriMatrix &mult) const
 
 ShadedTriVertex TriMatrix::operator*(TriVertex v) const
 {
+#ifdef NO_SSE
 	float vx = matrix[0 * 4 + 0] * v.x + matrix[1 * 4 + 0] * v.y + matrix[2 * 4 + 0] * v.z + matrix[3 * 4 + 0] * v.w;
 	float vy = matrix[0 * 4 + 1] * v.x + matrix[1 * 4 + 1] * v.y + matrix[2 * 4 + 1] * v.z + matrix[3 * 4 + 1] * v.w;
 	float vz = matrix[0 * 4 + 2] * v.x + matrix[1 * 4 + 2] * v.y + matrix[2 * 4 + 2] * v.z + matrix[3 * 4 + 2] * v.w;
@@ -182,7 +185,21 @@ ShadedTriVertex TriMatrix::operator*(TriVertex v) const
 	sv.y = vy;
 	sv.z = vz;
 	sv.w = vw;
-	for (int i = 0; i < TriVertex::NumVarying; i++)
-		sv.varying[i] = v.varying[i];
+#else
+	__m128 m0 = _mm_loadu_ps(matrix);
+	__m128 m1 = _mm_loadu_ps(matrix + 4);
+	__m128 m2 = _mm_loadu_ps(matrix + 8);
+	__m128 m3 = _mm_loadu_ps(matrix + 12);
+	__m128 mv = _mm_loadu_ps(&v.x);
+	m0 = _mm_mul_ps(m0, _mm_shuffle_ps(mv, mv, _MM_SHUFFLE(0, 0, 0, 0)));
+	m1 = _mm_mul_ps(m1, _mm_shuffle_ps(mv, mv, _MM_SHUFFLE(1, 1, 1, 1)));
+	m2 = _mm_mul_ps(m2, _mm_shuffle_ps(mv, mv, _MM_SHUFFLE(2, 2, 2, 2)));
+	m3 = _mm_mul_ps(m3, _mm_shuffle_ps(mv, mv, _MM_SHUFFLE(3, 3, 3, 3)));
+	mv = _mm_add_ps(_mm_add_ps(_mm_add_ps(m0, m1), m2), m3);
+	ShadedTriVertex sv;
+	_mm_storeu_ps(&sv.x, mv);
+#endif
+	sv.u = v.u;
+	sv.v = v.v;
 	return sv;
 }

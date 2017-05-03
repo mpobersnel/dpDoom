@@ -27,8 +27,7 @@
 #include "r_data/r_translate.h"
 #include "poly_sprite.h"
 #include "polyrenderer/poly_renderer.h"
-#include "polyrenderer/math/poly_intersection.h"
-#include "swrenderer/scene/r_light.h"
+#include "polyrenderer/scene/poly_light.h"
 
 EXTERN_CVAR(Float, transsouls)
 EXTERN_CVAR(Int, r_drawfuzz)
@@ -38,7 +37,8 @@ bool RenderPolySprite::GetLine(AActor *thing, DVector2 &left, DVector2 &right)
 	if (IsThingCulled(thing))
 		return false;
 
-	DVector3 pos = thing->InterpolatedPosition(r_TicFracF);
+	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+	DVector3 pos = thing->InterpolatedPosition(viewpoint.TicFrac);
 
 	bool flipTextureX = false;
 	FTexture *tex = GetSpriteTexture(thing, flipTextureX);
@@ -59,19 +59,20 @@ bool RenderPolySprite::GetLine(AActor *thing, DVector2 &left, DVector2 &right)
 
 	pos.X += spriteHalfWidth;
 
-	left = DVector2(pos.X - ViewSin * spriteHalfWidth, pos.Y + ViewCos * spriteHalfWidth);
-	right = DVector2(pos.X + ViewSin * spriteHalfWidth, pos.Y - ViewCos * spriteHalfWidth);
+	left = DVector2(pos.X - viewpoint.Sin * spriteHalfWidth, pos.Y + viewpoint.Cos * spriteHalfWidth);
+	right = DVector2(pos.X + viewpoint.Sin * spriteHalfWidth, pos.Y - viewpoint.Cos * spriteHalfWidth);
 	return true;
 }
 
-void RenderPolySprite::Render(const TriMatrix &worldToClip, const Vec4f &clipPlane, AActor *thing, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue, float t1, float t2)
+void RenderPolySprite::Render(const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, AActor *thing, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue, float t1, float t2)
 {
 	DVector2 line[2];
 	if (!GetLine(thing, line[0], line[1]))
 		return;
 	
-	DVector3 pos = thing->InterpolatedPosition(r_TicFracF);
-	pos.Z += thing->GetBobOffset(r_TicFracF);
+	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+	DVector3 pos = thing->InterpolatedPosition(viewpoint.TicFrac);
+	pos.Z += thing->GetBobOffset(viewpoint.TicFrac);
 
 	bool flipTextureX = false;
 	FTexture *tex = GetSpriteTexture(thing, flipTextureX);
@@ -100,12 +101,10 @@ void RenderPolySprite::Render(const TriMatrix &worldToClip, const Vec4f &clipPla
 	// Rumor has it that AlterWeaponSprite needs to be called with visstyle passed in somewhere around here..
 	//R_SetColorMapLight(visstyle.BaseColormap, 0, visstyle.ColormapNum << FRACBITS);
 
-	TriVertex *vertices = PolyVertexBuffer::GetVertices(4);
-	if (!vertices)
-		return;
+	TriVertex *vertices = PolyRenderer::Instance()->FrameMemory.AllocMemory<TriVertex>(4);
 
 	bool foggy = false;
-	int actualextralight = foggy ? 0 : extralight << 4;
+	int actualextralight = foggy ? 0 : viewpoint.extralight << 4;
 
 	std::pair<float, float> offsets[4] =
 	{
@@ -129,151 +128,36 @@ void RenderPolySprite::Render(const TriMatrix &worldToClip, const Vec4f &clipPla
 		vertices[i].y = (float)p.Y;
 		vertices[i].z = (float)(pos.Z + spriteHeight * offsets[i].second);
 		vertices[i].w = 1.0f;
-		vertices[i].varying[0] = (float)(offsets[i].first * tex->Scale.X);
-		vertices[i].varying[1] = (float)((1.0f - offsets[i].second) * tex->Scale.Y);
+		vertices[i].u = (float)(offsets[i].first * tex->Scale.X);
+		vertices[i].v = (float)((1.0f - offsets[i].second) * tex->Scale.Y);
 		if (flipTextureX)
-			vertices[i].varying[0] = 1.0f - vertices[i].varying[0];
+			vertices[i].u = 1.0f - vertices[i].u;
 	}
 
 	bool fullbrightSprite = ((thing->renderflags & RF_FULLBRIGHT) || (thing->flags5 & MF5_BRIGHT));
-	swrenderer::CameraLight *cameraLight = swrenderer::CameraLight::Instance();
+	int lightlevel = fullbrightSprite ? 255 : thing->Sector->lightlevel + actualextralight;
 
 	PolyDrawArgs args;
-	args.uniforms.globvis = (float)swrenderer::LightVisibility::Instance()->SpriteGlobVis();
-	args.uniforms.flags = 0;
-	if (fullbrightSprite || cameraLight->fixedlightlev >= 0 || cameraLight->fixedcolormap)
-	{
-		args.uniforms.light = 256;
-		args.uniforms.flags |= TriUniforms::fixed_light;
-	}
-	else
-	{
-		args.uniforms.light = (uint32_t)((thing->Sector->lightlevel + actualextralight) / 255.0f * 256.0f);
-	}
-	args.uniforms.subsectorDepth = subsectorDepth;
-
-	args.objectToClip = &worldToClip;
-	args.vinput = vertices;
-	args.vcount = 4;
-	args.mode = TriangleDrawMode::Fan;
-	args.ccw = true;
-	args.stenciltestvalue = stencilValue;
-	args.stencilwritevalue = stencilValue;
-	args.SetTexture(tex, thing->Translation);
-	args.SetColormap(sub->sector->ColorMap);
-	args.SetClipPlane(clipPlane.x, clipPlane.y, clipPlane.z, clipPlane.w);
-
-	TriBlendMode blendmode;
-	
-	if (thing->RenderStyle == LegacyRenderStyles[STYLE_Normal] ||
-		 (r_drawfuzz == 0 && thing->RenderStyle == LegacyRenderStyles[STYLE_OptFuzzy]))
-	{
-		args.uniforms.destalpha = 0;
-		args.uniforms.srcalpha = 256;
-		blendmode = args.translation ? TriBlendMode::TranslateAdd : TriBlendMode::Add;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_Add] && fullbrightSprite && thing->Alpha == 1.0 && args.translation == nullptr)
-	{
-		args.uniforms.destalpha = 256;
-		args.uniforms.srcalpha = 256;
-		blendmode = TriBlendMode::AddSrcColorOneMinusSrcColor;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_Add])
-	{
-		args.uniforms.destalpha = (uint32_t)(1.0 * 256);
-		args.uniforms.srcalpha = (uint32_t)(thing->Alpha * 256);
-		blendmode = args.translation ? TriBlendMode::TranslateAdd : TriBlendMode::Add;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_Subtract])
-	{
-		args.uniforms.destalpha = (uint32_t)(1.0 * 256);
-		args.uniforms.srcalpha = (uint32_t)(thing->Alpha * 256);
-		blendmode = args.translation ? TriBlendMode::TranslateRevSub : TriBlendMode::RevSub;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_SoulTrans])
-	{
-		args.uniforms.destalpha = (uint32_t)(256 - transsouls * 256);
-		args.uniforms.srcalpha = (uint32_t)(transsouls * 256);
-		blendmode = args.translation ? TriBlendMode::TranslateAdd : TriBlendMode::Add;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_Fuzzy] ||
-		 (r_drawfuzz == 2 && thing->RenderStyle == LegacyRenderStyles[STYLE_OptFuzzy]))
-	{	// NYI - Fuzzy - for now, just a copy of "Shadow"
-		args.uniforms.destalpha = 160;
-		args.uniforms.srcalpha = 0;
-		blendmode = args.translation ? TriBlendMode::TranslateAdd : TriBlendMode::Add;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_Shadow] ||
-		 (r_drawfuzz == 1 && thing->RenderStyle == LegacyRenderStyles[STYLE_OptFuzzy]))
-	{
-		args.uniforms.destalpha = 160;
-		args.uniforms.srcalpha = 0;
-		blendmode = args.translation ? TriBlendMode::TranslateAdd : TriBlendMode::Add;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_TranslucentStencil])
-	{
-		args.uniforms.destalpha = (uint32_t)(256 - thing->Alpha * 256);
-		args.uniforms.srcalpha = (uint32_t)(thing->Alpha * 256);
-		args.uniforms.color = 0xff000000 | thing->fillcolor;
-		blendmode = TriBlendMode::Stencil;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_AddStencil])
-	{
-		args.uniforms.destalpha = 256;
-		args.uniforms.srcalpha = (uint32_t)(thing->Alpha * 256);
-		args.uniforms.color = 0xff000000 | thing->fillcolor;
-		blendmode = TriBlendMode::Stencil;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_Shaded])
-	{
-		args.uniforms.srcalpha = (uint32_t)(thing->Alpha * 256);
-		args.uniforms.destalpha = 256 - args.uniforms.srcalpha;
-		args.uniforms.color = 0;
-		blendmode = TriBlendMode::Shaded;
-	}
-	else if (thing->RenderStyle == LegacyRenderStyles[STYLE_AddShaded])
-	{
-		args.uniforms.destalpha = 256;
-		args.uniforms.srcalpha = (uint32_t)(thing->Alpha * 256);
-		args.uniforms.color = 0;
-		blendmode = TriBlendMode::Shaded;
-	}
-	else
-	{
-		args.uniforms.destalpha = (uint32_t)(256 - thing->Alpha * 256);
-		args.uniforms.srcalpha = (uint32_t)(thing->Alpha * 256);
-		blendmode = args.translation ? TriBlendMode::TranslateAdd : TriBlendMode::Add;
-	}
-	
-	if (blendmode == TriBlendMode::Shaded)
-	{
-		args.SetTexture(tex, thing->Translation, true);
-	}
-	
-	if (!swrenderer::r_swtruecolor)
-	{
-		uint32_t r = (args.uniforms.color >> 16) & 0xff;
-		uint32_t g = (args.uniforms.color >> 8) & 0xff;
-		uint32_t b = args.uniforms.color & 0xff;
-		args.uniforms.color = RGB32k.RGB[r >> 3][g >> 3][b >> 3];
-
-		if (blendmode == TriBlendMode::Sub) // Sub crashes in pal mode for some weird reason.
-			blendmode = TriBlendMode::Add;
-	}
-
-	args.subsectorTest = true;
-	args.writeSubsector = false;
-	args.writeStencil = false;
-	args.blendmode = blendmode;
-	PolyTriangleDrawer::draw(args);
+	args.SetLight(GetColorTable(sub->sector->Colormap, sub->sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
+	args.SetSubsectorDepth(subsectorDepth);
+	args.SetTransform(&worldToClip);
+	args.SetFaceCullCCW(true);
+	args.SetStencilTestValue(stencilValue);
+	args.SetWriteStencil(true, stencilValue);
+	args.SetClipPlane(clipPlane);
+	args.SetStyle(thing->RenderStyle, thing->Alpha, thing->fillcolor, thing->Translation, tex, fullbrightSprite);
+	args.SetSubsectorDepthTest(true);
+	args.SetWriteSubsectorDepth(false);
+	args.SetWriteStencil(false);
+	args.DrawArray(vertices, 4, PolyDrawMode::TriangleFan);
 }
 
 bool RenderPolySprite::IsThingCulled(AActor *thing)
 {
-	FIntCVar *cvar = thing->GetClass()->distancecheck;
+	FIntCVar *cvar = thing->GetInfo()->distancecheck;
 	if (cvar != nullptr && *cvar >= 0)
 	{
-		double dist = (thing->Pos() - ViewPos).LengthSquared();
+		double dist = (thing->Pos() - PolyRenderer::Instance()->Viewpoint.Pos).LengthSquared();
 		double check = (double)**cvar;
 		if (dist >= check * check)
 			return true;
@@ -291,88 +175,14 @@ bool RenderPolySprite::IsThingCulled(AActor *thing)
 	return false;
 }
 
-#if 0
-visstyle_t RenderPolySprite::GetSpriteVisStyle(AActor *thing, double z)
-{
-	visstyle_t visstyle;
-
-	bool foggy = false;
-	int actualextralight = foggy ? 0 : extralight << 4;
-	int spriteshade = LIGHT2SHADE(thing->Sector->lightlevel + actualextralight);
-
-	FRenderStyle RenderStyle;
-	RenderStyle = thing->RenderStyle;
-	float Alpha = float(thing->Alpha);
-	int ColormapNum = 0;
-
-	// The software renderer cannot invert the source without inverting the overlay
-	// too. That means if the source is inverted, we need to do the reverse of what
-	// the invert overlay flag says to do.
-	bool invertcolormap = (RenderStyle.Flags & STYLEF_InvertOverlay) != 0;
-
-	if (RenderStyle.Flags & STYLEF_InvertSource)
-	{
-		invertcolormap = !invertcolormap;
-	}
-
-	FDynamicColormap *mybasecolormap = thing->Sector->ColorMap;
-
-	// Sprites that are added to the scene must fade to black.
-	if (RenderStyle == LegacyRenderStyles[STYLE_Add] && mybasecolormap->Fade != 0)
-	{
-		mybasecolormap = GetSpecialLights(mybasecolormap->Color, 0, mybasecolormap->Desaturate);
-	}
-
-	if (RenderStyle.Flags & STYLEF_FadeToBlack)
-	{
-		if (invertcolormap)
-		{ // Fade to white
-			mybasecolormap = GetSpecialLights(mybasecolormap->Color, MAKERGB(255, 255, 255), mybasecolormap->Desaturate);
-			invertcolormap = false;
-		}
-		else
-		{ // Fade to black
-			mybasecolormap = GetSpecialLights(mybasecolormap->Color, MAKERGB(0, 0, 0), mybasecolormap->Desaturate);
-		}
-	}
-
-	// get light level
-	if (swrenderer::fixedcolormap != nullptr)
-	{ // fixed map
-		BaseColormap = swrenderer::fixedcolormap;
-		ColormapNum = 0;
-	}
-	else
-	{
-		if (invertcolormap)
-		{
-			mybasecolormap = GetSpecialLights(mybasecolormap->Color, mybasecolormap->Fade.InverseColor(), mybasecolormap->Desaturate);
-		}
-		if (swrenderer::fixedlightlev >= 0)
-		{
-			BaseColormap = mybasecolormap;
-			ColormapNum = swrenderer::fixedlightlev >> COLORMAPSHIFT;
-		}
-		else if (!foggy && ((thing->renderflags & RF_FULLBRIGHT) || (thing->flags5 & MF5_BRIGHT)))
-		{ // full bright
-			BaseColormap = mybasecolormap;
-			ColormapNum = 0;
-		}
-		else
-		{ // diminished light
-			double minz = double((2048 * 4) / double(1 << 20));
-			ColormapNum = GETPALOOKUP(swrenderer::r_SpriteVisibility / MAX(z, minz), spriteshade);
-			BaseColormap = mybasecolormap;
-		}
-	}
-
-	return visstyle;
-}
-#endif
-
 FTexture *RenderPolySprite::GetSpriteTexture(AActor *thing, /*out*/ bool &flipX)
 {
+	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
 	flipX = false;
+
+	if (thing->renderflags & RF_FLATSPRITE)
+		return nullptr;	// do not draw flat sprites.
+
 	if (thing->picnum.isValid())
 	{
 		FTexture *tex = TexMan(thing->picnum);
@@ -385,9 +195,9 @@ FTexture *RenderPolySprite::GetSpriteTexture(AActor *thing, /*out*/ bool &flipX)
 		{
 			// choose a different rotation based on player view
 			spriteframe_t *sprframe = &SpriteFrames[tex->Rotations];
-			DVector3 pos = thing->InterpolatedPosition(r_TicFracF);
-			pos.Z += thing->GetBobOffset(r_TicFracF);
-			DAngle ang = (pos - ViewPos).Angle();
+			DVector3 pos = thing->InterpolatedPosition(viewpoint.TicFrac);
+			pos.Z += thing->GetBobOffset(viewpoint.TicFrac);
+			DAngle ang = (pos - viewpoint.Pos).Angle();
 			angle_t rot;
 			if (sprframe->Texture[0] == sprframe->Texture[1])
 			{
@@ -419,21 +229,15 @@ FTexture *RenderPolySprite::GetSpriteTexture(AActor *thing, /*out*/ bool &flipX)
 		{
 			//picnum = SpriteFrames[sprdef->spriteframes + thing->frame].Texture[0];
 			// choose a different rotation based on player view
-			spriteframe_t *sprframe = &SpriteFrames[sprdef->spriteframes + thing->frame];
-			DVector3 pos = thing->InterpolatedPosition(r_TicFracF);
-			pos.Z += thing->GetBobOffset(r_TicFracF);
-			DAngle ang = (pos - ViewPos).Angle();
-			angle_t rot;
-			if (sprframe->Texture[0] == sprframe->Texture[1])
-			{
-				rot = (ang - thing->Angles.Yaw + 45.0 / 2 * 9).BAMs() >> 28;
-			}
-			else
-			{
-				rot = (ang - thing->Angles.Yaw + (45.0 / 2 * 9 - 180.0 / 16)).BAMs() >> 28;
-			}
-			flipX = (sprframe->Flip & (1 << rot)) != 0;
-			return TexMan[sprframe->Texture[rot]];	// Do not animate the rotation
+
+			DVector3 pos = thing->InterpolatedPosition(viewpoint.TicFrac);
+			pos.Z += thing->GetBobOffset(viewpoint.TicFrac);
+			DAngle ang = (pos - viewpoint.Pos).Angle();
+
+			DAngle sprangle = thing->GetSpriteAngle((pos - viewpoint.Pos).Angle(), viewpoint.TicFrac);
+			FTextureID tex = sprdef->GetSpriteFrame(thing->frame, -1, sprangle, &flipX);
+			if (!tex.isValid()) return nullptr;
+			return TexMan[tex];
 		}
 	}
 }

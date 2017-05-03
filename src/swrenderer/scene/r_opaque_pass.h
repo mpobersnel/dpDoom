@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #pragma once
 
@@ -18,11 +26,13 @@
 #include "r_defs.h"
 #include "swrenderer/line/r_line.h"
 #include "swrenderer/scene/r_3dfloors.h"
+#include <set>
 
 struct FVoxelDef;
 
 namespace swrenderer
 {
+	class RenderThread;
 	struct VisiblePlane;
 
 	// The 3072 below is just an arbitrary value picked to avoid
@@ -51,16 +61,20 @@ namespace swrenderer
 	class RenderOpaquePass
 	{
 	public:
-		static RenderOpaquePass *Instance();
+		RenderOpaquePass(RenderThread *thread);
 
 		void ClearClip();
 		void RenderScene();
 
 		void ResetFakingUnderwater() { r_fakingunderwater = false; }
 		sector_t *FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel, seg_t *backline, int backx1, int backx2, double frontcz1, double frontcz2);
+		
+		void ClearSeenSprites() { SeenSpriteSectors.clear(); SeenActors.clear(); }
 
 		short floorclip[MAXWIDTH];
 		short ceilingclip[MAXWIDTH];
+
+		RenderThread *Thread = nullptr;
 
 	private:
 		void RenderBSPNode(void *node);
@@ -72,8 +86,8 @@ namespace swrenderer
 
 		void AddSprites(sector_t *sec, int lightlevel, WaterFakeSide fakeside, bool foggy, FDynamicColormap *basecolormap);
 
-		static bool IsPotentiallyVisible(AActor *thing);
-		static bool GetThingSprite(AActor *thing, ThingSprite &sprite);
+		bool IsPotentiallyVisible(AActor *thing);
+		bool GetThingSprite(AActor *thing, ThingSprite &sprite);
 
 		subsector_t *InSubsector = nullptr;
 		sector_t *frontsector = nullptr;
@@ -81,5 +95,7 @@ namespace swrenderer
 		bool r_fakingunderwater = false;
 
 		SWRenderLine renderline;
+		std::set<sector_t*> SeenSpriteSectors;
+		std::set<AActor*> SeenActors;
 	};
 }

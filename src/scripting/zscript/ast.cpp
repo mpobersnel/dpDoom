@@ -32,6 +32,8 @@
 */
 
 #include "dobject.h"
+#include "vmintern.h"
+#include "types.h"
 #include "sc_man.h"
 #include "memarena.h"
 #include "zcc_parser.h"
@@ -44,21 +46,23 @@ static const char *BuiltInTypeNames[] =
 {
 	"sint8", "uint8",
 	"sint16", "uint16",
-	"sint32", "uint32",
+	"sint32", "uint32_t",
 	"intauto",
 
 	"bool",
-	"float32", "float64", "floatauto",
+	"float64", "floatauto",
 	"string",
 	"vector2",
 	"vector3",
 	"name",
+
 	"color",
 	"state",
 	"sound",
 
 	"usertype",
-
+	"nativetype",
+	"let",
 };
 
 class FLispString
@@ -112,7 +116,7 @@ public:
 			}
 			else
 			{ // Move hanging ( characters to the new line
-				Str.Truncate(long(Str.Len() - ConsecOpens));
+				Str.Truncate(Str.Len() - ConsecOpens);
 				NestDepth -= ConsecOpens;
 			}
 			Str << '\n';
@@ -346,6 +350,16 @@ static void PrintProperty(FLispString &out, ZCC_TreeNode *node)
 	out.Close();
 }
 
+static void PrintStaticArrayState(FLispString &out, ZCC_TreeNode *node)
+{
+	auto *snode = (ZCC_StaticArrayStatement *)node;
+	out.Break();
+	out.Open("static-array");
+	out.AddName(snode->Id);
+	PrintNodes(out, snode->Values, false, true);
+	out.Close();
+}
+
 static void PrintEnum(FLispString &out, ZCC_TreeNode *node)
 {
 	ZCC_Enum *enode = (ZCC_Enum *)node;
@@ -472,8 +486,9 @@ static void PrintBasicType(FLispString &out, ZCC_TreeNode *node)
 	out.Open("basic-type");
 	PrintNodes(out, tnode->ArraySize);
 	PrintBuiltInType(out, tnode->Type);
-	if (tnode->Type == ZCC_UserType)
+	if (tnode->Type == ZCC_UserType || tnode->Type == ZCC_NativeType)
 	{
+		if (tnode->Type == ZCC_NativeType) out.Add("@", 1);
 		PrintNodes(out, tnode->UserType, false);
 	}
 	out.Close();
@@ -578,7 +593,7 @@ static void PrintExprConstant(FLispString &out, ZCC_TreeNode *node)
 	{
 		out.AddName(ENamedName(enode->IntVal));
 	}
-	else if (enode->Type->IsKindOf(RUNTIME_CLASS(PInt)))
+	else if (enode->Type->isIntCompatible())
 	{
 		out.AddInt(enode->IntVal, static_cast<PInt *>(enode->Type)->Unsigned);
 	}
@@ -944,6 +959,7 @@ void (* const TreeNodePrinter[NUM_AST_NODE_TYPES])(FLispString &, ZCC_TreeNode *
 	PrintVectorInitializer,
 	PrintDeclFlags,
 	PrintExprClassCast,
+	PrintStaticArrayState,
 	PrintProperty,
 };
 

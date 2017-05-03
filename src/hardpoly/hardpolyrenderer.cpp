@@ -58,12 +58,7 @@ HardpolyRenderer::~HardpolyRenderer()
 {
 }
 
-bool HardpolyRenderer::UsesColormap() const
-{
-	return false;
-}
-
-void HardpolyRenderer::Precache(BYTE *texhitlist, TMap<PClassActor*, bool> &actorhitlist)
+void HardpolyRenderer::Precache(uint8_t *texhitlist, TMap<PClassActor*, bool> &actorhitlist)
 {
 }
 
@@ -422,8 +417,7 @@ void HardpolyRenderer::OnModeSet()
 
 void HardpolyRenderer::Init()
 {
-	gl_ParseDefs();
-	
+	//gl_ParseDefs();
 	mContext = std::make_shared<GPUContext>();
 }
 
@@ -436,22 +430,12 @@ void HardpolyRenderer::RenderTextureView(FCanvasTexture *tex, AActor *viewpoint,
 	tex->SetUpdated();
 }
 
-sector_t *HardpolyRenderer::FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel)
-{
-	return swrenderer::RenderOpaquePass::Instance()->FakeFlat(sec, tempsec, floorlightlevel, ceilinglightlevel, nullptr, 0, 0, 0, 0);
-}
-
-void HardpolyRenderer::StateChanged(AActor *actor)
-{
-	gl_SetActorLights(actor);
-}
-
 void HardpolyRenderer::PreprocessLevel()
 {
-	gl_PreprocessLevel();
+	//gl_PreprocessLevel();
 }
 
 void HardpolyRenderer::CleanLevelData()
 {
-	gl_CleanLevelData();
+	//gl_CleanLevelData();
 }

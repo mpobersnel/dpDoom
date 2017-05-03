@@ -1,14 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #include <stdlib.h>
@@ -26,21 +35,23 @@
 #include "cmdlib.h"
 #include "d_net.h"
 #include "g_level.h"
+#include "g_levellocals.h"
 #include "swrenderer/scene/r_opaque_pass.h"
 #include "r_slopeplane.h"
 #include "swrenderer/scene/r_3dfloors.h"
 #include "v_palette.h"
 #include "r_data/colormaps.h"
 #include "swrenderer/drawers/r_draw_rgba.h"
-#include "gl/dynlights/gl_dynlight.h"
+#include "a_dynlight.h"
 #include "swrenderer/segments/r_clipsegment.h"
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
-#include "swrenderer/r_memory.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/plane/r_visibleplane.h"
+#include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
 
 #ifdef _MSC_VER
 #pragma warning(disable:4244)
@@ -48,10 +59,13 @@
 
 namespace swrenderer
 {
-	void RenderSlopePlane::Render(VisiblePlane *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *colormap)
+	RenderSlopePlane::RenderSlopePlane(RenderThread *thread)
 	{
-		using namespace drawerargs;
+		Thread = thread;
+	}
 
+	void RenderSlopePlane::Render(VisiblePlane *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *colormap, FTexture *texture)
+	{
 		static const float ifloatpow2[16] =
 		{
 			// ifloatpow2[i] = 1 / (1 << i)
@@ -71,25 +85,30 @@ namespace swrenderer
 		{
 			return;
 		}
+		
+		auto viewport = Thread->Viewport.get();
 
-		lxscale = _xscale * ifloatpow2[ds_xbits];
-		lyscale = _yscale * ifloatpow2[ds_ybits];
+		drawerargs.SetSolidColor(3);
+		drawerargs.SetTexture(Thread, texture);
+
+		lxscale = _xscale * ifloatpow2[drawerargs.TextureWidthBits()];
+		lyscale = _yscale * ifloatpow2[drawerargs.TextureHeightBits()];
 		xscale = 64.f / lxscale;
 		yscale = 64.f / lyscale;
-		zeroheight = pl->height.ZatPoint(ViewPos);
+		zeroheight = pl->height.ZatPoint(Thread->Viewport->viewpoint.Pos);
 
-		pviewx = xs_ToFixed(32 - ds_xbits, pl->xform.xOffs * pl->xform.xScale);
-		pviewy = xs_ToFixed(32 - ds_ybits, pl->xform.yOffs * pl->xform.yScale);
+		pviewx = xs_ToFixed(32 - drawerargs.TextureWidthBits(), pl->xform.xOffs * pl->xform.xScale);
+		pviewy = xs_ToFixed(32 - drawerargs.TextureHeightBits(), pl->xform.yOffs * pl->xform.yScale);
 		planeang = (pl->xform.Angle + pl->xform.baseAngle).Radians();
 
 		// p is the texture origin in view space
 		// Don't add in the offsets at this stage, because doing so can result in
 		// errors if the flat is rotated.
-		ang = M_PI * 3 / 2 - ViewAngle.Radians();
+		ang = M_PI * 3 / 2 - Thread->Viewport->viewpoint.Angles.Yaw.Radians();
 		cosine = cos(ang), sine = sin(ang);
-		p[0] = ViewPos.X * cosine - ViewPos.Y * sine;
-		p[2] = ViewPos.X * sine + ViewPos.Y * cosine;
-		p[1] = pl->height.ZatPoint(0.0, 0.0) - ViewPos.Z;
+		p[0] = Thread->Viewport->viewpoint.Pos.X * cosine - Thread->Viewport->viewpoint.Pos.Y * sine;
+		p[2] = Thread->Viewport->viewpoint.Pos.X * sine + Thread->Viewport->viewpoint.Pos.Y * cosine;
+		p[1] = pl->height.ZatPoint(0.0, 0.0) - Thread->Viewport->viewpoint.Pos.Z;
 
 		// m is the v direction vector in view space
 		ang = ang - M_PI / 2 - planeang;
@@ -116,26 +135,26 @@ namespace swrenderer
 		// how much you slope the surface. Use the commented-out code above instead to keep
 		// the textures a constant size across the surface's plane instead.
 		cosine = cos(planeang), sine = sin(planeang);
-		m[1] = pl->height.ZatPoint(ViewPos.X + yscale * sine, ViewPos.Y + yscale * cosine) - zeroheight;
-		n[1] = -(pl->height.ZatPoint(ViewPos.X - xscale * cosine, ViewPos.Y + xscale * sine) - zeroheight);
+		m[1] = pl->height.ZatPoint(Thread->Viewport->viewpoint.Pos.X + yscale * sine, Thread->Viewport->viewpoint.Pos.Y + yscale * cosine) - zeroheight;
+		n[1] = -(pl->height.ZatPoint(Thread->Viewport->viewpoint.Pos.X - xscale * cosine, Thread->Viewport->viewpoint.Pos.Y + xscale * sine) - zeroheight);
 
 		plane_su = p ^ m;
 		plane_sv = p ^ n;
 		plane_sz = m ^ n;
 
-		plane_su.Z *= FocalLengthX;
-		plane_sv.Z *= FocalLengthX;
-		plane_sz.Z *= FocalLengthX;
+		plane_su.Z *= viewport->FocalLengthX;
+		plane_sv.Z *= viewport->FocalLengthX;
+		plane_sz.Z *= viewport->FocalLengthX;
 
-		plane_su.Y *= IYaspectMul;
-		plane_sv.Y *= IYaspectMul;
-		plane_sz.Y *= IYaspectMul;
+		plane_su.Y *= viewport->IYaspectMul;
+		plane_sv.Y *= viewport->IYaspectMul;
+		plane_sz.Y *= viewport->IYaspectMul;
 
 		// Premultiply the texture vectors with the scale factors
 		plane_su *= 4294967296.f;
 		plane_sv *= 4294967296.f;
 
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = Thread->Portal.get();
 		if (renderportal->MirrorFlags & RF_XFLIP)
 		{
 			plane_su[0] = -plane_su[0];
@@ -143,37 +162,40 @@ namespace swrenderer
 			plane_sz[0] = -plane_sz[0];
 		}
 
-		planelightfloat = (LightVisibility::Instance()->SlopePlaneGlobVis() * lxscale * lyscale) / (fabs(pl->height.ZatPoint(ViewPos) - ViewPos.Z)) / 65536.f;
+		// [RH] set foggy flag
+		basecolormap = colormap;
+		bool foggy = level.fadeto || basecolormap->Fade || (level.flags & LEVEL_HASFADETABLE);;
+
+		planelightfloat = (Thread->Light->SlopePlaneGlobVis(foggy) * lxscale * lyscale) / (fabs(pl->height.ZatPoint(Thread->Viewport->viewpoint.Pos) - Thread->Viewport->viewpoint.Pos.Z)) / 65536.f;
 
 		if (pl->height.fC() > 0)
 			planelightfloat = -planelightfloat;
 
-		basecolormap = colormap;
 
 		CameraLight *cameraLight = CameraLight::Instance();
-		if (cameraLight->fixedlightlev >= 0)
+		if (cameraLight->FixedLightLevel() >= 0)
 		{
-			R_SetDSColorMapLight(basecolormap, 0, FIXEDLIGHT2SHADE(cameraLight->fixedlightlev));
+			drawerargs.SetLight(basecolormap, 0, cameraLight->FixedLightLevelShade());
 			plane_shade = false;
 		}
-		else if (cameraLight->fixedcolormap)
+		else if (cameraLight->FixedColormap())
 		{
-			R_SetDSColorMapLight(cameraLight->fixedcolormap, 0, 0);
+			drawerargs.SetLight(cameraLight->FixedColormap(), 0, 0);
 			plane_shade = false;
 		}
 		else
 		{
-			R_SetDSColorMapLight(basecolormap, 0, 0);
+			drawerargs.SetLight(basecolormap, 0, 0);
 			plane_shade = true;
-			planeshade = LIGHT2SHADE(pl->lightlevel);
+			planeshade = LightVisibility::LightLevelToShade(pl->lightlevel, foggy);
 		}
 
 		// Hack in support for 1 x Z and Z x 1 texture sizes
-		if (ds_ybits == 0)
+		if (drawerargs.TextureHeightBits() == 0)
 		{
 			plane_sv[2] = plane_sv[1] = plane_sv[0] = 0;
 		}
-		if (ds_xbits == 0)
+		if (drawerargs.TextureWidthBits() == 0)
 		{
 			plane_su[2] = plane_su[1] = plane_su[0] = 0;
 		}
@@ -183,6 +205,6 @@ namespace swrenderer
 
 	void RenderSlopePlane::RenderLine(int y, int x1, int x2)
 	{
-		R_Drawers()->DrawTiltedSpan(y, x1, x2, plane_sz, plane_su, plane_sv, plane_shade, planeshade, planelightfloat, pviewx, pviewy, basecolormap);
+		drawerargs.DrawTiltedSpan(Thread, y, x1, x2, plane_sz, plane_su, plane_sv, plane_shade, planeshade, planelightfloat, pviewx, pviewy, basecolormap);
 	}
 }

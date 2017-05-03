@@ -33,8 +33,31 @@ class Weapon : StateProvider native
 	native float FOVScale;
 	native int Crosshair;							// 0 to use player's crosshair
 	native bool GivenAsMorphWeapon;
-	native bool bAltFire;							// Set when self weapon's alternate fire is used.
+	native bool bAltFire;							// Set when this weapon's alternate fire is used.
 	native readonly bool bDehAmmo;
+	native readonly int SlotNumber;
+	
+	property AmmoGive: AmmoGive1;
+	property AmmoGive1: AmmoGive1;
+	property AmmoGive2: AmmoGive2;
+	property AmmoUse: AmmoUse1;
+	property AmmoUse1: AmmoUse1;
+	property AmmoUse2: AmmoUse2;
+	property AmmoType: AmmoType1;
+	property AmmoType1: AmmoType1;
+	property AmmoType2: AmmoType2;
+	property Kickback: Kickback;
+	property ReadySound: ReadySound;
+	property SelectionOrder: SelectionOrder;
+	property MinSelectionAmmo1: MinSelAmmo1;
+	property MinSelectionAmmo2: MinSelAmmo2;
+	property SisterWeapon: SisterWeaponType;
+	property UpSound: UpSound;
+	property YAdjust: YAdjust;
+	property BobSpeed: BobSpeed;
+	property BobRangeX: BobRangeX;
+	property BobRangeY: BobRangeY;
+	property SlotNumber: SlotNumber;
 
 	Default
 	{
@@ -43,6 +66,8 @@ class Weapon : StateProvider native
 		Weapon.BobSpeed 1.0;
 		Weapon.BobRangeX 1.0;
 		Weapon.BobRangeY 1.0;
+		Weapon.SlotNumber -1;
+		Weapon.SlotPriority 32767;
 		+WEAPONSPAWN
 		DefaultStateUsage SUF_ACTOR|SUF_OVERLAY|SUF_WEAPON;
 	}
@@ -87,6 +112,12 @@ class Weapon : StateProvider native
 		return s;
 	}
 	
+	override String GetObituary(Actor victim, Actor inflictor, Name mod, bool playerattack)
+	{
+		// Weapons may never return HitObituary by default. Override this if it is needed.
+		return Obituary;
+	}
+	
 	action void A_GunFlash(statelabel flashlabel = null, int flags = 0)
 	{
 		let player = player;
@@ -99,18 +130,26 @@ class Weapon : StateProvider native
 		{
 			player.mo.PlayAttacking2 ();
 		}
+
+		Weapon weapon = player.ReadyWeapon;
+		state flashstate = null;
+
 		if (flashlabel == null)
 		{
-			if (player.ReadyWeapon.bAltFire)
+			if (weapon.bAltFire)
 			{
-				flashlabel = 'AltFlash';
+				flashstate = weapon.FindState('AltFlash');
 			}
-			if (flashlabel == null)
+			if (flashstate == null)
 			{
-				flashlabel = 'Flash';
+				flashstate = weapon.FindState('Flash');
 			}
 		}
-		player.SetPsprite(PSP_FLASH, player.ReadyWeapon.FindState(flashlabel));
+		else
+		{
+			flashstate = weapon.FindState(flashlabel);
+		}
+		player.SetPsprite(PSP_FLASH, flashstate);
 	}
 	
 	//---------------------------------------------------------------------------
@@ -250,7 +289,7 @@ class Weapon : StateProvider native
 	
 	//===========================================================================
 	//
-	// AWeapon :: TryPickup
+	// Weapon :: TryPickup
 	//
 	// If you can't see the weapon when it's active, then you can't pick it up.
 	//
@@ -275,7 +314,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: TryPickup
+	// Weapon :: TryPickup
 	//
 	//===========================================================================
 
@@ -291,7 +330,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: Use
+	// Weapon :: Use
 	//
 	// Make the player switch to self weapon.
 	//
@@ -322,7 +361,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: Destroy
+	// Weapon :: Destroy
 	//
 	//===========================================================================
 
@@ -345,7 +384,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: HandlePickup
+	// Weapon :: HandlePickup
 	//
 	// Try to leach ammo from the weapon if you have it already.
 	//
@@ -370,7 +409,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: PickupForAmmo
+	// Weapon :: PickupForAmmo
 	//
 	// The player already has self weapon, so try to pick it up for ammo.
 	//
@@ -409,7 +448,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: CreateCopy
+	// Weapon :: CreateCopy
 	//
 	//===========================================================================
 
@@ -426,14 +465,14 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: CreateTossable
+	// Weapon :: CreateTossable
 	//
 	// A weapon that's tossed out should contain no ammo, so you can't cheat
 	// by dropping it and then picking it back up.
 	//
 	//===========================================================================
 
-	override Inventory CreateTossable ()
+	override Inventory CreateTossable (int amt)
 	{
 		// Only drop the weapon that is meant to be placed in a level. That is,
 		// only drop the weapon that normally gives you ammo.
@@ -441,9 +480,9 @@ class Weapon : StateProvider native
 			Default.AmmoGive1 == 0 && Default.AmmoGive2 == 0 &&
 			(SisterWeapon.Default.AmmoGive1 > 0 || SisterWeapon.Default.AmmoGive2 > 0))
 		{
-			return SisterWeapon.CreateTossable ();
+			return SisterWeapon.CreateTossable (amt);
 		}
-		let copy = Weapon(Super.CreateTossable ());
+		let copy = Weapon(Super.CreateTossable (-1));
 
 		if (copy != NULL)
 		{
@@ -462,7 +501,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: AttachToOwner
+	// Weapon :: AttachToOwner
 	//
 	//===========================================================================
 
@@ -489,7 +528,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: AddAmmo
+	// Weapon :: AddAmmo
 	//
 	// Give some ammo to the owner, even if it's just 0.
 	//
@@ -534,7 +573,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: AddExistingAmmo
+	// Weapon :: AddExistingAmmo
 	//
 	// Give the owner some more ammo he already has.
 	//
@@ -561,7 +600,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: AddWeapon
+	// Weapon :: AddWeapon
 	//
 	// Give the owner a weapon if they don't have it already.
 	//
@@ -586,7 +625,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: ShouldStay
+	// Weapon :: ShouldStay
 	//
 	//===========================================================================
 
@@ -604,7 +643,7 @@ class Weapon : StateProvider native
 
 	//===========================================================================
 	//
-	// AWeapon :: EndPowerUp
+	// Weapon :: EndPowerUp
 	//
 	// The Tome of Power just expired.
 	//

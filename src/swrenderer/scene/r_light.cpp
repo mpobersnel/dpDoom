@@ -1,14 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #include <stdlib.h>
@@ -31,7 +40,7 @@
 #include "r_utility.h"
 #include "d_player.h"
 #include "swrenderer/scene/r_light.h"
-#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/viewport/r_viewport.h"
 
 CVAR(Bool, r_shadercolormaps, true, CVAR_ARCHIVE)
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor)
@@ -44,8 +53,9 @@ namespace swrenderer
 		return &instance;
 	}
 
-	void CameraLight::SetCamera(AActor *actor)
+	void CameraLight::SetCamera(FRenderViewpoint &viewpoint, DCanvas *renderTarget, AActor *actor)
 	{
+		AActor *camera = viewpoint.camera;
 		player_t *player = actor->player;
 		if (camera && camera->player != nullptr)
 			player = camera->player;
@@ -59,7 +69,7 @@ namespace swrenderer
 			if (player->fixedcolormap >= 0 && player->fixedcolormap < (int)SpecialColormaps.Size())
 			{
 				realfixedcolormap = &SpecialColormaps[player->fixedcolormap];
-				if (RenderTarget == screen && (r_swtruecolor || ((DFrameBuffer *)screen->Accel2D && r_shadercolormaps)))
+				if (renderTarget == screen && (renderTarget->IsBgra() || ((DFrameBuffer *)screen->Accel2D && r_shadercolormaps)))
 				{
 					// Render everything fullbright. The copy to video memory will
 					// apply the special colormap, so it won't be restricted to the
@@ -68,7 +78,7 @@ namespace swrenderer
 				}
 				else
 				{
-					fixedcolormap = &SpecialColormaps[player->fixedcolormap];
+					fixedcolormap = &SpecialSWColormaps[player->fixedcolormap];
 				}
 			}
 			else if (player->fixedlightlevel >= 0 && player->fixedlightlevel < NUMCOLORMAPS)
@@ -82,30 +92,24 @@ namespace swrenderer
 			}
 		}
 		// [RH] Inverse light for shooting the Sigil
-		if (fixedcolormap == nullptr && extralight == INT_MIN)
+		if (fixedcolormap == nullptr && viewpoint.extralight == INT_MIN)
 		{
-			fixedcolormap = &SpecialColormaps[INVERSECOLORMAP];
-			extralight = 0;
+			fixedcolormap = &SpecialSWColormaps[INVERSECOLORMAP];
+			viewpoint.extralight = 0;
 		}
 	}
 
 	/////////////////////////////////////////////////////////////////////////
 
-	LightVisibility *LightVisibility::Instance()
-	{
-		static LightVisibility instance;
-		return &instance;
-	}
-
 	// Changes how rapidly things get dark with distance
-	void LightVisibility::SetVisibility(double vis)
+	void LightVisibility::SetVisibility(RenderViewport *viewport, double vis)
 	{
 		// Allow negative visibilities, just for novelty's sake
 		vis = clamp(vis, -204.7, 204.7);	// (205 and larger do not work in 5:4 aspect ratio)
 
 		CurrentVisibility = vis;
 
-		if (FocalTangent == 0 || FocalLengthY == 0)
+		if (viewport->viewwindow.FocalTangent == 0 || viewport->FocalLengthY == 0)
 		{ // If r_visibility is called before the renderer is all set up, don't
 		  // divide by zero. This will be called again later, and the proper
 		  // values can be initialized then.
@@ -114,9 +118,9 @@ namespace swrenderer
 
 		BaseVisibility = vis;
 
-		MaxVisForWall = (InvZtoScale * (SCREENWIDTH*r_Yaspect) / (viewwidth*SCREENHEIGHT * FocalTangent));
+		MaxVisForWall = (viewport->InvZtoScale * (SCREENWIDTH*r_Yaspect) / (viewwidth*SCREENHEIGHT * viewport->viewwindow.FocalTangent));
 		MaxVisForWall = 32767.0 / MaxVisForWall;
-		MaxVisForFloor = 32767.0 / (viewheight >> 2) * FocalLengthY / 160;
+		MaxVisForFloor = 32767.0 / (viewheight >> 2) * viewport->FocalLengthY / 160;
 
 		// Prevent overflow on walls
 		if (BaseVisibility < 0 && BaseVisibility < -MaxVisForWall)
@@ -126,8 +130,8 @@ namespace swrenderer
 		else
 			WallVisibility = BaseVisibility;
 
-		WallVisibility = (InvZtoScale * SCREENWIDTH*AspectBaseHeight(WidescreenRatio) /
-			(viewwidth*SCREENHEIGHT * 3)) * (WallVisibility * FocalTangent);
+		WallVisibility = (viewport->InvZtoScale * SCREENWIDTH*AspectBaseHeight(viewport->viewwindow.WidescreenRatio) /
+			(viewwidth*SCREENHEIGHT * 3)) * (WallVisibility * viewport->viewwindow.FocalTangent);
 
 		// Prevent overflow on floors/ceilings. Note that the calculation of
 		// MaxVisForFloor means that planes less than two units from the player's
@@ -140,9 +144,27 @@ namespace swrenderer
 		else
 			FloorVisibility = BaseVisibility;
 
-		FloorVisibility = 160.0 * FloorVisibility / FocalLengthY;
+		FloorVisibility = 160.0 * FloorVisibility / viewport->FocalLengthY;
 
-		TiltVisibility = float(vis * FocalTangent * (16.f * 320.f) / viewwidth);
+		TiltVisibility = float(vis * viewport->viewwindow.FocalTangent * (16.f * 320.f) / viewwidth);
+
+		NoLightFade = !!(level.flags3 & LEVEL3_NOLIGHTFADE);
+	}
+
+	fixed_t LightVisibility::LightLevelToShade(int lightlevel, bool foggy)
+	{
+		bool nolightfade = !foggy && ((level.flags3 & LEVEL3_NOLIGHTFADE));
+		if (nolightfade)
+		{
+			return (MAX(255 - lightlevel, 0) * NUMCOLORMAPS) << (FRACBITS - 8);
+		}
+		else
+		{
+			// Convert a light level into an unbounded colormap index (shade). Result is
+			// fixed point. Why the +12? I wish I knew, but experimentation indicates it
+			// is necessary in order to best reproduce Doom's original lighting.
+			return (NUMCOLORMAPS * 2 * FRACUNIT) - ((lightlevel + 12) * (FRACUNIT*NUMCOLORMAPS / 128));
+		}
 	}
 
 	// Controls how quickly light ramps across a 1/z range. Set this, and it
@@ -152,11 +174,11 @@ namespace swrenderer
 	{
 		if (argv.argc() < 2)
 		{
-			Printf("Visibility is %g\n", LightVisibility::Instance()->GetVisibility());
+			Printf("Visibility is %g\n", Renderer->GetVisibility());
 		}
 		else if (!netgame)
 		{
-			LightVisibility::Instance()->SetVisibility(atof(argv[1]));
+			Renderer->SetVisibility(atof(argv[1]));
 		}
 		else
 		{
@@ -187,15 +209,15 @@ namespace swrenderer
 		}
 
 		CameraLight *cameraLight = CameraLight::Instance();
-		if (cameraLight->fixedcolormap)
+		if (cameraLight->FixedColormap())
 		{
-			BaseColormap = cameraLight->fixedcolormap;
+			BaseColormap = cameraLight->FixedColormap();
 			ColormapNum = 0;
 		}
-		else if (cameraLight->fixedlightlev >= 0)
+		else if (cameraLight->FixedLightLevel() >= 0)
 		{
 			BaseColormap = (r_fullbrightignoresectorcolor) ? &FullNormalLight : basecolormap;
-			ColormapNum = cameraLight->fixedlightlev >> COLORMAPSHIFT;
+			ColormapNum = cameraLight->FixedLightLevel() >> COLORMAPSHIFT;
 		}
 		else if (fullbright)
 		{

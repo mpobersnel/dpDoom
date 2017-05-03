@@ -1,24 +1,34 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #pragma once
 
 namespace swrenderer
 {
+	class RenderThread;
+	
 	/* portal structure, this is used in r_ code in order to store drawsegs with portals (and mirrors) */
 	struct PortalDrawseg
 	{
-		PortalDrawseg(line_t *linedef, int x1, int x2, const short *topclip, const short *bottomclip);
+		PortalDrawseg(RenderThread *thread, line_t *linedef, int x1, int x2, const short *topclip, const short *bottomclip);
 
 		line_t* src = nullptr; // source line (the one drawn) this doesn't change over render loops
 		line_t* dst = nullptr; // destination line (the one that the portal is linked with, equals 'src' for mirrors)

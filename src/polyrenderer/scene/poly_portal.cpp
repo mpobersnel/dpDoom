@@ -29,10 +29,7 @@
 #include "r_data/r_translate.h"
 #include "poly_portal.h"
 #include "polyrenderer/poly_renderer.h"
-#include "swrenderer/scene/r_light.h"
-#include "gl/data/gl_data.h"
-
-extern bool r_showviewer;
+#include "polyrenderer/scene/poly_light.h"
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -46,27 +43,64 @@ void PolyDrawSectorPortal::Render(int portalDepth)
 	if (Portal->mType == PORTS_HORIZON || Portal->mType == PORTS_PLANE)
 		return;
 
+	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+
+	PolyClipPlane portalPlane(0.0f, 0.0f, 0.0f, 1.0f);
+	if (Portal->mType != PORTS_SKYVIEWPOINT)
+	{
+		float minHeight;
+		float maxHeight;
+		bool first = true;
+		for (const auto &range : Shape)
+		{
+			for (int i = 0; i < range.Count; i++)
+			{
+				if (first)
+				{
+					minHeight = range.Vertices[i].z;
+					maxHeight = range.Vertices[i].z;
+					first = false;
+				}
+				else
+				{
+					minHeight = MIN(minHeight, range.Vertices[i].z);
+					maxHeight = MAX(maxHeight, range.Vertices[i].z);
+				}
+			}
+		}
+
+		if (!first && minHeight > viewpoint.Pos.Z)
+		{
+			portalPlane = PolyClipPlane(0.0f, 0.0f, 1.0f, -minHeight);
+		}
+		else if (!first && maxHeight < viewpoint.Pos.Z)
+		{
+			portalPlane = PolyClipPlane(0.0f, 0.0f, -1.0f, maxHeight);
+		}
+	}
+
 	SaveGlobals();
 
 	// To do: get this information from PolyRenderer instead of duplicating the code..
-	double radPitch = ViewPitch.Normalized180().Radians();
+	const auto &viewwindow = PolyRenderer::Instance()->Viewwindow;
+	double radPitch = viewpoint.Angles.Pitch.Normalized180().Radians();
 	double angx = cos(radPitch);
-	double angy = sin(radPitch) * glset.pixelstretch;
+	double angy = sin(radPitch) * level.info->pixelstretch;
 	double alen = sqrt(angx*angx + angy*angy);
 	float adjustedPitch = (float)asin(angy / alen);
-	float adjustedViewAngle = (float)(ViewAngle - 90).Radians();
-	float ratio = WidescreenRatio;
-	float fovratio = (WidescreenRatio >= 1.3f) ? 1.333333f : ratio;
-	float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(FieldOfView.Radians() / 2) / fovratio)).Degrees);
+	float adjustedViewAngle = (float)(viewpoint.Angles.Yaw - 90).Radians();
+	float ratio = viewwindow.WidescreenRatio;
+	float fovratio = (viewwindow.WidescreenRatio >= 1.3f) ? 1.333333f : ratio;
+	float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(viewpoint.FieldOfView.Radians() / 2) / fovratio)).Degrees);
 	TriMatrix worldToView =
 		TriMatrix::rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
 		TriMatrix::rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
-		TriMatrix::scale(1.0f, glset.pixelstretch, 1.0f) *
+		TriMatrix::scale(1.0f, level.info->pixelstretch, 1.0f) *
 		TriMatrix::swapYZ() *
-		TriMatrix::translate((float)-ViewPos.X, (float)-ViewPos.Y, (float)-ViewPos.Z);
+		TriMatrix::translate((float)-viewpoint.Pos.X, (float)-viewpoint.Pos.Y, (float)-viewpoint.Pos.Z);
 	TriMatrix worldToClip = TriMatrix::perspective(fovy, ratio, 5.0f, 65535.0f) * worldToView;
 
-	RenderPortal.SetViewpoint(worldToClip, PortalPlane, StencilValue);
+	RenderPortal.SetViewpoint(worldToClip, portalPlane, StencilValue);
 	RenderPortal.SetPortalSegments(Segments);
 	RenderPortal.Render(portalDepth);
 	
@@ -87,33 +121,36 @@ void PolyDrawSectorPortal::RenderTranslucent(int portalDepth)
 
 void PolyDrawSectorPortal::SaveGlobals()
 {
-	savedextralight = extralight;
-	savedpos = ViewPos;
-	savedangle = ViewAngle;
-	savedvisibility = swrenderer::LightVisibility::Instance()->GetVisibility();
-	savedcamera = camera;
-	savedsector = viewsector;
+	auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+	const auto &viewwindow = PolyRenderer::Instance()->Viewwindow;
+
+	savedextralight = viewpoint.extralight;
+	savedpos = viewpoint.Pos;
+	savedangles = viewpoint.Angles;
+	//savedvisibility = PolyRenderer::Instance()->Light.GetVisibility();
+	savedcamera = viewpoint.camera;
+	savedsector = viewpoint.sector;
 
 	if (Portal->mType == PORTS_SKYVIEWPOINT)
 	{
 		// Don't let gun flashes brighten the sky box
 		AActor *sky = Portal->mSkybox;
-		extralight = 0;
-		swrenderer::LightVisibility::Instance()->SetVisibility(sky->args[0] * 0.25f);
-		ViewPos = sky->InterpolatedPosition(r_TicFracF);
-		ViewAngle = savedangle + (sky->PrevAngles.Yaw + deltaangle(sky->PrevAngles.Yaw, sky->Angles.Yaw) * r_TicFracF);
+		viewpoint.extralight = 0;
+		//PolyRenderer::Instance()->Light.SetVisibility(sky->args[0] * 0.25f);
+		viewpoint.Pos = sky->InterpolatedPosition(viewpoint.TicFrac);
+		viewpoint.Angles.Yaw = savedangles.Yaw + (sky->PrevAngles.Yaw + deltaangle(sky->PrevAngles.Yaw, sky->Angles.Yaw) * viewpoint.TicFrac);
 	}
 	else //if (Portal->mType == PORTS_STACKEDSECTORTHING || Portal->mType == PORTS_PORTAL || Portal->mType == PORTS_LINKEDPORTAL)
 	{
 		//extralight = pl->extralight;
-		//swrenderer::R_SetVisibility(pl->visibility);
-		ViewPos.X += Portal->mDisplacement.X;
-		ViewPos.Y += Portal->mDisplacement.Y;
+		//SetVisibility(pl->visibility);
+		viewpoint.Pos.X += Portal->mDisplacement.X;
+		viewpoint.Pos.Y += Portal->mDisplacement.Y;
 	}
 
-	camera = nullptr;
-	viewsector = Portal->mDestination;
-	R_SetViewAngle();
+	viewpoint.camera = nullptr;
+	viewpoint.sector = Portal->mDestination;
+	R_SetViewAngle(viewpoint, viewwindow);
 
 	Portal->mFlags |= PORTSF_INSKYBOX;
 	if (Portal->mPartner > 0) level.sectorPortals[Portal->mPartner].mFlags |= PORTSF_INSKYBOX;
@@ -124,13 +161,16 @@ void PolyDrawSectorPortal::RestoreGlobals()
 	Portal->mFlags &= ~PORTSF_INSKYBOX;
 	if (Portal->mPartner > 0) level.sectorPortals[Portal->mPartner].mFlags &= ~PORTSF_INSKYBOX;
 
-	camera = savedcamera;
-	viewsector = savedsector;
-	ViewPos = savedpos;
-	swrenderer::LightVisibility::Instance()->SetVisibility(savedvisibility);
-	extralight = savedextralight;
-	ViewAngle = savedangle;
-	R_SetViewAngle();
+	auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+	const auto &viewwindow = PolyRenderer::Instance()->Viewwindow;
+
+	viewpoint.camera = savedcamera;
+	viewpoint.sector = savedsector;
+	viewpoint.Pos = savedpos;
+	//PolyRenderer::Instance()->Light.SetVisibility(savedvisibility);
+	viewpoint.extralight = savedextralight;
+	viewpoint.Angles = savedangles;
+	R_SetViewAngle(viewpoint, viewwindow);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -150,21 +190,23 @@ void PolyDrawLinePortal::Render(int portalDepth)
 	SaveGlobals();
 
 	// To do: get this information from PolyRenderer instead of duplicating the code..
-	double radPitch = ViewPitch.Normalized180().Radians();
+	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+	const auto &viewwindow = PolyRenderer::Instance()->Viewwindow;
+	double radPitch = viewpoint.Angles.Pitch.Normalized180().Radians();
 	double angx = cos(radPitch);
-	double angy = sin(radPitch) * glset.pixelstretch;
+	double angy = sin(radPitch) * level.info->pixelstretch;
 	double alen = sqrt(angx*angx + angy*angy);
 	float adjustedPitch = (float)asin(angy / alen);
-	float adjustedViewAngle = (float)(ViewAngle - 90).Radians();
-	float ratio = WidescreenRatio;
-	float fovratio = (WidescreenRatio >= 1.3f) ? 1.333333f : ratio;
-	float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(FieldOfView.Radians() / 2) / fovratio)).Degrees);
+	float adjustedViewAngle = (float)(viewpoint.Angles.Yaw - 90).Radians();
+	float ratio = viewwindow.WidescreenRatio;
+	float fovratio = (viewwindow.WidescreenRatio >= 1.3f) ? 1.333333f : ratio;
+	float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(viewpoint.FieldOfView.Radians() / 2) / fovratio)).Degrees);
 	TriMatrix worldToView =
 		TriMatrix::rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
 		TriMatrix::rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
-		TriMatrix::scale(1.0f, glset.pixelstretch, 1.0f) *
+		TriMatrix::scale(1.0f, level.info->pixelstretch, 1.0f) *
 		TriMatrix::swapYZ() *
-		TriMatrix::translate((float)-ViewPos.X, (float)-ViewPos.Y, (float)-ViewPos.Z);
+		TriMatrix::translate((float)-viewpoint.Pos.X, (float)-viewpoint.Pos.Y, (float)-viewpoint.Pos.Z);
 	if (Mirror)
 		worldToView = TriMatrix::scale(-1.0f, 1.0f, 1.0f) * worldToView;
 	TriMatrix worldToClip = TriMatrix::perspective(fovy, ratio, 5.0f, 65535.0f) * worldToView;
@@ -175,7 +217,7 @@ void PolyDrawLinePortal::Render(int portalDepth)
 	DVector2 planeNormal = (clipLine->v2->fPos() - clipLine->v1->fPos()).Rotated90CW();
 	planeNormal.MakeUnit();
 	double planeD = -(planeNormal | (planePos + planeNormal * 0.001));
-	Vec4f portalPlane((float)planeNormal.X, (float)planeNormal.Y, 0.0f, (float)planeD);
+	PolyClipPlane portalPlane((float)planeNormal.X, (float)planeNormal.Y, (float)0.0f, (float)planeD);
 
 	RenderPortal.SetViewpoint(worldToClip, portalPlane, StencilValue);
 	RenderPortal.SetPortalSegments(Segments);
@@ -193,30 +235,33 @@ void PolyDrawLinePortal::RenderTranslucent(int portalDepth)
 
 void PolyDrawLinePortal::SaveGlobals()
 {
-	savedextralight = extralight;
-	savedpos = ViewPos;
-	savedangle = ViewAngle;
-	savedcamera = camera;
-	savedsector = viewsector;
-	savedinvisibility = camera ? (camera->renderflags & RF_INVISIBLE) == RF_INVISIBLE : false;
-	savedViewPath[0] = ViewPath[0];
-	savedViewPath[1] = ViewPath[1];
+	auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+	const auto &viewwindow = PolyRenderer::Instance()->Viewwindow;
+
+	savedextralight = viewpoint.extralight;
+	savedpos = viewpoint.Pos;
+	savedangles = viewpoint.Angles;
+	savedcamera = viewpoint.camera;
+	savedsector = viewpoint.sector;
+	savedinvisibility = viewpoint.camera ? (viewpoint.camera->renderflags & RF_INVISIBLE) == RF_INVISIBLE : false;
+	savedViewPath[0] = viewpoint.Path[0];
+	savedViewPath[1] = viewpoint.Path[1];
 
 	if (Mirror)
 	{
-		DAngle startang = ViewAngle;
-		DVector3 startpos = ViewPos;
+		DAngle startang = viewpoint.Angles.Yaw;
+		DVector3 startpos = viewpoint.Pos;
 
 		vertex_t *v1 = Mirror->v1;
 
 		// Reflect the current view behind the mirror.
 		if (Mirror->Delta().X == 0)
 		{ // vertical mirror
-			ViewPos.X = v1->fX() - startpos.X + v1->fX();
+			viewpoint.Pos.X = v1->fX() - startpos.X + v1->fX();
 		}
 		else if (Mirror->Delta().Y == 0)
 		{ // horizontal mirror
-			ViewPos.Y = v1->fY() - startpos.Y + v1->fY();
+			viewpoint.Pos.Y = v1->fY() - startpos.Y + v1->fY();
 		}
 		else
 		{ // any mirror
@@ -232,36 +277,36 @@ void PolyDrawLinePortal::SaveGlobals()
 			// the above two cases catch len == 0
 			double r = ((x - x1)*dx + (y - y1)*dy) / (dx*dx + dy*dy);
 
-			ViewPos.X = (x1 + r * dx) * 2 - x;
-			ViewPos.Y = (y1 + r * dy) * 2 - y;
+			viewpoint.Pos.X = (x1 + r * dx) * 2 - x;
+			viewpoint.Pos.Y = (y1 + r * dy) * 2 - y;
 		}
-		ViewAngle = Mirror->Delta().Angle() * 2 - startang;
+		viewpoint.Angles.Yaw = Mirror->Delta().Angle() * 2 - startang;
 
-		if (camera)
-			camera->renderflags &= ~RF_INVISIBLE;
+		if (viewpoint.camera)
+			viewpoint.camera->renderflags &= ~RF_INVISIBLE;
 	}
 	else
 	{
 		auto src = Portal->mOrigin;
 		auto dst = Portal->mDestination;
 
-		P_TranslatePortalXY(src, ViewPos.X, ViewPos.Y);
-		P_TranslatePortalZ(src, ViewPos.Z);
-		P_TranslatePortalAngle(src, ViewAngle);
-		P_TranslatePortalXY(src, ViewPath[0].X, ViewPath[0].Y);
-		P_TranslatePortalXY(src, ViewPath[1].X, ViewPath[1].Y);
+		P_TranslatePortalXY(src, viewpoint.Pos.X, viewpoint.Pos.Y);
+		P_TranslatePortalZ(src, viewpoint.Pos.Z);
+		P_TranslatePortalAngle(src, viewpoint.Angles.Yaw);
+		P_TranslatePortalXY(src, viewpoint.Path[0].X, viewpoint.Path[0].Y);
+		P_TranslatePortalXY(src, viewpoint.Path[1].X, viewpoint.Path[1].Y);
 
-		if (!r_showviewer && camera && P_PointOnLineSidePrecise(ViewPath[0], dst) != P_PointOnLineSidePrecise(ViewPath[1], dst))
+		if (!viewpoint.showviewer && viewpoint.camera && P_PointOnLineSidePrecise(viewpoint.Path[0], dst) != P_PointOnLineSidePrecise(viewpoint.Path[1], dst))
 		{
-			double distp = (ViewPath[0] - ViewPath[1]).Length();
+			double distp = (viewpoint.Path[0] - viewpoint.Path[1]).Length();
 			if (distp > EQUAL_EPSILON)
 			{
-				double dist1 = (ViewPos - ViewPath[0]).Length();
-				double dist2 = (ViewPos - ViewPath[1]).Length();
+				double dist1 = (viewpoint.Pos - viewpoint.Path[0]).Length();
+				double dist2 = (viewpoint.Pos - viewpoint.Path[1]).Length();
 
 				if (dist1 + dist2 < distp + 1)
 				{
-					camera->renderflags |= RF_INVISIBLE;
+					viewpoint.camera->renderflags |= RF_INVISIBLE;
 				}
 			}
 		}
@@ -269,7 +314,7 @@ void PolyDrawLinePortal::SaveGlobals()
 
 	//camera = nullptr;
 	//viewsector = R_PointInSubsector(ViewPos)->sector;
-	R_SetViewAngle();
+	R_SetViewAngle(viewpoint, viewwindow);
 
 	if (Mirror)
 		PolyTriangleDrawer::toggle_mirror();
@@ -277,21 +322,23 @@ void PolyDrawLinePortal::SaveGlobals()
 
 void PolyDrawLinePortal::RestoreGlobals()
 {
-	if (camera)
+	auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+	const auto &viewwindow = PolyRenderer::Instance()->Viewwindow;
+	if (viewpoint.camera)
 	{
 		if (savedinvisibility)
-			camera->renderflags |= RF_INVISIBLE;
+			viewpoint.camera->renderflags |= RF_INVISIBLE;
 		else
-			camera->renderflags &= ~RF_INVISIBLE;
+			viewpoint.camera->renderflags &= ~RF_INVISIBLE;
 	}
-	camera = savedcamera;
-	viewsector = savedsector;
-	ViewPos = savedpos;
-	extralight = savedextralight;
-	ViewAngle = savedangle;
-	ViewPath[0] = savedViewPath[0];
-	ViewPath[1] = savedViewPath[1];
-	R_SetViewAngle();
+	viewpoint.camera = savedcamera;
+	viewpoint.sector = savedsector;
+	viewpoint.Pos = savedpos;
+	viewpoint.extralight = savedextralight;
+	viewpoint.Angles = savedangles;
+	viewpoint.Path[0] = savedViewPath[0];
+	viewpoint.Path[1] = savedViewPath[1];
+	R_SetViewAngle(viewpoint, viewwindow);
 
 	if (Mirror)
 		PolyTriangleDrawer::toggle_mirror();

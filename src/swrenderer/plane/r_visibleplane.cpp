@@ -1,14 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #include <stdlib.h>
@@ -27,8 +36,9 @@
 #include "cmdlib.h"
 #include "d_net.h"
 #include "g_level.h"
-#include "gl/dynlights/gl_dynlight.h"
+#include "a_dynlight.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
 #include "swrenderer/scene/r_opaque_pass.h"
 #include "swrenderer/scene/r_3dfloors.h"
 #include "swrenderer/scene/r_portal.h"
@@ -43,22 +53,26 @@ CVAR(Bool, tilt, false, 0);
 
 namespace swrenderer
 {
-	VisiblePlane::VisiblePlane()
+	VisiblePlane::VisiblePlane(RenderThread *thread)
 	{
 		picnum.SetNull();
 		height.set(0.0, 0.0, 1.0, 0.0);
 
-		bottom = RenderMemory::AllocMemory<uint16_t>(viewwidth);
-		top = RenderMemory::AllocMemory<uint16_t>(viewwidth);
+		bottom = thread->FrameMemory->AllocMemory<uint16_t>(viewwidth);
+		top = thread->FrameMemory->AllocMemory<uint16_t>(viewwidth);
 
 		fillshort(bottom, viewwidth, 0);
 		fillshort(top, viewwidth, 0x7fff);
 	}
 
-	void VisiblePlane::AddLights(FLightNode *node)
+	void VisiblePlane::AddLights(RenderThread *thread, FLightNode *node)
 	{
 		if (!r_dynlights)
 			return;
+
+		CameraLight *cameraLight = CameraLight::Instance();
+		if (cameraLight->FixedColormap() != NULL || cameraLight->FixedLightLevel() >= 0)
+			return; // [SP] no dynlights if invul or lightamp
 
 		while (node)
 		{
@@ -77,7 +91,7 @@ namespace swrenderer
 				}
 				if (!found)
 				{
-					VisiblePlaneLight *newlight = RenderMemory::NewObject<VisiblePlaneLight>();
+					VisiblePlaneLight *newlight = thread->FrameMemory->NewObject<VisiblePlaneLight>();
 					newlight->next = lights;
 					newlight->lightsource = node->lightsource;
 					lights = newlight;
@@ -87,14 +101,14 @@ namespace swrenderer
 		}
 	}
 
-	void VisiblePlane::Render(fixed_t alpha, bool additive, bool masked)
+	void VisiblePlane::Render(RenderThread *thread, fixed_t alpha, bool additive, bool masked)
 	{
 		if (left >= right)
 			return;
 
 		if (picnum == skyflatnum) // sky flat
 		{
-			RenderSkyPlane renderer;
+			RenderSkyPlane renderer(thread);
 			renderer.Render(this);
 		}
 		else // regular flat
@@ -114,21 +128,21 @@ namespace swrenderer
 			{ // Don't waste time on a masked texture if it isn't really masked.
 				masked = false;
 			}
-			R_SetSpanTexture(tex);
 			double xscale = xform.xScale * tex->Scale.X;
 			double yscale = xform.yScale * tex->Scale.Y;
 
 			if (!height.isSlope() && !tilt)
 			{
-				RenderFlatPlane renderer;
-				renderer.Render(this, xscale, yscale, alpha, additive, masked, colormap);
+				RenderFlatPlane renderer(thread);
+				renderer.Render(this, xscale, yscale, alpha, additive, masked, colormap, tex);
 			}
 			else
 			{
-				RenderSlopePlane renderer;
-				renderer.Render(this, xscale, yscale, alpha, additive, masked, colormap);
+				RenderSlopePlane renderer(thread);
+				renderer.Render(this, xscale, yscale, alpha, additive, masked, colormap, tex);
 			}
 		}
-		NetUpdate();
+		if (thread->MainThread)
+			NetUpdate();
 	}
 }

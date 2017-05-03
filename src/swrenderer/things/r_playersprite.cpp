@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,13 +59,13 @@
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
 #include "swrenderer/things/r_sprite.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
 #include "g_levellocals.h"
 
-EXTERN_CVAR(Bool, st_scale)
 EXTERN_CVAR(Bool, r_drawplayersprites)
 EXTERN_CVAR(Bool, r_deathcamera)
 EXTERN_CVAR(Bool, r_shadercolormaps)
@@ -65,10 +73,9 @@ EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor)
 
 namespace swrenderer
 {
-	RenderPlayerSprites *RenderPlayerSprites::Instance()
+	RenderPlayerSprites::RenderPlayerSprites(RenderThread *thread)
 	{
-		static RenderPlayerSprites instance;
-		return &instance;
+		Thread = thread;
 	}
 
 	void RenderPlayerSprites::Render()
@@ -78,74 +85,75 @@ namespace swrenderer
 		DPSprite*	psp;
 		DPSprite*	weapon;
 		sector_t*	sec = NULL;
-		static sector_t tempsec;
 		int			floorlight, ceilinglight;
 		F3DFloor *rover;
 
 		if (!r_drawplayersprites ||
-			!camera ||
-			!camera->player ||
+			!Thread->Viewport->viewpoint.camera ||
+			!Thread->Viewport->viewpoint.camera->player ||
 			(players[consoleplayer].cheats & CF_CHASECAM) ||
-			(r_deathcamera && camera->health <= 0))
+			(r_deathcamera && Thread->Viewport->viewpoint.camera->health <= 0))
 			return;
 
 		FDynamicColormap *basecolormap;
 		CameraLight *cameraLight = CameraLight::Instance();
-		if (cameraLight->fixedlightlev < 0 && viewsector->e && viewsector->e->XFloor.lightlist.Size())
+		if (cameraLight->FixedLightLevel() < 0 && Thread->Viewport->viewpoint.sector->e && Thread->Viewport->viewpoint.sector->e->XFloor.lightlist.Size())
 		{
-			for (i = viewsector->e->XFloor.lightlist.Size() - 1; i >= 0; i--)
+			for (i = Thread->Viewport->viewpoint.sector->e->XFloor.lightlist.Size() - 1; i >= 0; i--)
 			{
-				if (ViewPos.Z <= viewsector->e->XFloor.lightlist[i].plane.Zat0())
+				if (Thread->Viewport->viewpoint.Pos.Z <= Thread->Viewport->viewpoint.sector->e->XFloor.lightlist[i].plane.Zat0())
 				{
-					rover = viewsector->e->XFloor.lightlist[i].caster;
+					rover = Thread->Viewport->viewpoint.sector->e->XFloor.lightlist[i].caster;
 					if (rover)
 					{
-						if (rover->flags & FF_DOUBLESHADOW && ViewPos.Z <= rover->bottom.plane->Zat0())
+						if (rover->flags & FF_DOUBLESHADOW && Thread->Viewport->viewpoint.Pos.Z <= rover->bottom.plane->Zat0())
 							break;
 						sec = rover->model;
 						if (rover->flags & FF_FADEWALLS)
-							basecolormap = sec->ColorMap;
+							basecolormap = GetColorTable(sec->Colormap, sec->SpecialColors[sector_t::sprites], true);
 						else
-							basecolormap = viewsector->e->XFloor.lightlist[i].extra_colormap;
+							basecolormap = GetColorTable(Thread->Viewport->viewpoint.sector->e->XFloor.lightlist[i].extra_colormap, sec->SpecialColors[sector_t::sprites], true);
 					}
 					break;
 				}
 			}
 			if (!sec)
 			{
-				sec = viewsector;
-				basecolormap = sec->ColorMap;
+				sec = Thread->Viewport->viewpoint.sector;
+				basecolormap = GetColorTable(sec->Colormap, sec->SpecialColors[sector_t::sprites], true);
 			}
 			floorlight = ceilinglight = sec->lightlevel;
 		}
 		else
 		{	// This used to use camera->Sector but due to interpolation that can be incorrect
 			// when the interpolated viewpoint is in a different sector than the camera.
-			sec = RenderOpaquePass::Instance()->FakeFlat(viewsector, &tempsec, &floorlight, &ceilinglight, nullptr, 0, 0, 0, 0);
+			sec = Thread->OpaquePass->FakeFlat(Thread->Viewport->viewpoint.sector, &tempsec, &floorlight, &ceilinglight, nullptr, 0, 0, 0, 0);
 
 			// [RH] set basecolormap
-			basecolormap = sec->ColorMap;
+			basecolormap = GetColorTable(sec->Colormap, sec->SpecialColors[sector_t::sprites], true);
 		}
 
 		// [RH] set foggy flag
 		bool foggy = (level.fadeto || basecolormap->Fade || (level.flags & LEVEL_HASFADETABLE));
 
 		// get light level
-		lightnum = ((floorlight + ceilinglight) >> 1) + R_ActualExtraLight(foggy);
-		int spriteshade = LIGHT2SHADE(lightnum) - 24 * FRACUNIT;
+		lightnum = ((floorlight + ceilinglight) >> 1) + LightVisibility::ActualExtraLight(foggy, Thread->Viewport.get());
+		int spriteshade = LightVisibility::LightLevelToShade(lightnum, foggy) - 24 * FRACUNIT;
 
-		if (camera->player != NULL)
+		if (Thread->Viewport->viewpoint.camera->player != NULL)
 		{
-			double centerhack = CenterY;
+			auto viewport = Thread->Viewport.get();
+			
+			double centerhack = viewport->CenterY;
 			double wx, wy;
 			float bobx, boby;
 
-			CenterY = viewheight / 2;
+			viewport->CenterY = viewheight / 2;
 
-			P_BobWeapon(camera->player, &bobx, &boby, r_TicFracF);
+			P_BobWeapon(viewport->viewpoint.camera->player, &bobx, &boby, viewport->viewpoint.TicFrac);
 
 			// Interpolate the main weapon layer once so as to be able to add it to other layers.
-			if ((weapon = camera->player->FindPSprite(PSP_WEAPON)) != nullptr)
+			if ((weapon = viewport->viewpoint.camera->player->FindPSprite(PSP_WEAPON)) != nullptr)
 			{
 				if (weapon->firstTic)
 				{
@@ -154,8 +162,8 @@ namespace swrenderer
 				}
 				else
 				{
-					wx = weapon->oldx + (weapon->x - weapon->oldx) * r_TicFracF;
-					wy = weapon->oldy + (weapon->y - weapon->oldy) * r_TicFracF;
+					wx = weapon->oldx + (weapon->x - weapon->oldx) * viewport->viewpoint.TicFrac;
+					wy = weapon->oldy + (weapon->y - weapon->oldy) * viewport->viewpoint.TicFrac;
 				}
 			}
 			else
@@ -165,7 +173,7 @@ namespace swrenderer
 			}
 
 			// add all active psprites
-			psp = camera->player->psprites;
+			psp = viewport->viewpoint.camera->player->psprites;
 			while (psp)
 			{
 				// [RH] Don't draw the targeter's crosshair if the player already has a crosshair set.
@@ -175,13 +183,13 @@ namespace swrenderer
 
 				if ((psp->GetID() != PSP_TARGETCENTER || CrosshairImage == nullptr) && psp->GetCaller() != nullptr)
 				{
-					RenderSprite(psp, camera, bobx, boby, wx, wy, r_TicFracF, spriteshade, basecolormap, foggy);
+					RenderSprite(psp, viewport->viewpoint.camera, bobx, boby, wx, wy, viewport->viewpoint.TicFrac, spriteshade, basecolormap, foggy);
 				}
 
 				psp = psp->GetNext();
 			}
 
-			CenterY = centerhack;
+			viewport->CenterY = centerhack;
 		}
 	}
 
@@ -194,7 +202,7 @@ namespace swrenderer
 		spritedef_t*		sprdef;
 		spriteframe_t*		sprframe;
 		FTextureID			picnum;
-		WORD				flip;
+		uint16_t				flip;
 		FTexture*			tex;
 		bool				noaccel;
 		double				alpha = owner->Alpha;
@@ -217,7 +225,7 @@ namespace swrenderer
 		flip = sprframe->Flip & 1;
 		tex = TexMan(picnum);
 
-		if (tex->UseType == FTexture::TEX_Null || pspr->RenderStyle == STYLE_None)
+		if (tex->UseType == FTexture::TEX_Null)
 			return;
 
 		if (pspr->firstTic)
@@ -241,23 +249,25 @@ namespace swrenderer
 			sx += wx;
 			sy += wy;
 		}
+		
+		auto viewport = Thread->Viewport.get();
 
-		double pspritexscale = centerxwide / 160.0;
-		double pspriteyscale = pspritexscale * YaspectMul;
+		double pspritexscale = viewport->viewwindow.centerxwide / 160.0;
+		double pspriteyscale = pspritexscale * viewport->YaspectMul;
 		double pspritexiscale = 1 / pspritexscale;
 
 		// calculate edges of the shape
 		tx = sx - BASEXCENTER;
 
 		tx -= tex->GetScaledLeftOffset();
-		x1 = xs_RoundToInt(CenterX + tx * pspritexscale);
+		x1 = xs_RoundToInt(viewport->CenterX + tx * pspritexscale);
 
 		// off the right side
 		if (x1 > viewwidth)
 			return;
 
 		tx += tex->GetScaledWidth();
-		x2 = xs_RoundToInt(CenterX + tx * pspritexscale);
+		x2 = xs_RoundToInt(viewport->CenterX + tx * pspritexscale);
 
 		// off the left side
 		if (x2 <= 0)
@@ -270,14 +280,14 @@ namespace swrenderer
 
 		vis.texturemid = (BASEYCENTER - sy) * tex->Scale.Y + tex->TopOffset;
 
-		if (camera->player && (RenderTarget != screen ||
-			viewheight == RenderTarget->GetHeight() ||
-			(RenderTarget->GetWidth() > (BASEXCENTER * 2) && !st_scale)))
+		if (Thread->Viewport->viewpoint.camera->player && (viewport->RenderTarget != screen ||
+			viewheight == viewport->RenderTarget->GetHeight() ||
+			(viewport->RenderTarget->GetWidth() > (BASEXCENTER * 2))))
 		{	// Adjust PSprite for fullscreen views
 			AWeapon *weapon = dyn_cast<AWeapon>(pspr->GetCaller());
 			if (weapon != nullptr && weapon->YAdjust != 0)
 			{
-				if (RenderTarget != screen || viewheight == RenderTarget->GetHeight())
+				if (viewport->RenderTarget != screen || viewheight == viewport->RenderTarget->GetHeight())
 				{
 					vis.texturemid -= weapon->YAdjust;
 				}
@@ -289,7 +299,7 @@ namespace swrenderer
 		}
 		if (pspr->GetID() < PSP_TARGETCENTER)
 		{ // Move the weapon down for 1280x1024.
-			vis.texturemid -= AspectPspriteOffset(WidescreenRatio);
+			vis.texturemid -= AspectPspriteOffset(viewport->viewwindow.WidescreenRatio);
 		}
 		vis.x1 = x1 < 0 ? 0 : x1;
 		vis.x2 = x2 >= viewwidth ? viewwidth : x2;
@@ -318,111 +328,11 @@ namespace swrenderer
 		if (pspr->GetID() < PSP_TARGETCENTER)
 		{
 			// [MC] Set the render style 
+			auto rs = pspr->GetRenderStyle(owner->RenderStyle, owner->Alpha);
+			vis.RenderStyle = rs.first;
+			vis.Alpha = rs.second;
 
-			if (pspr->Flags & PSPF_RENDERSTYLE)
-			{
-				const int rs = clamp<int>(pspr->RenderStyle, 0, STYLE_Count);
-
-				if (pspr->Flags & PSPF_FORCESTYLE)
-				{
-					vis.RenderStyle = LegacyRenderStyles[rs];
-				}
-				else if (owner->RenderStyle == LegacyRenderStyles[STYLE_Fuzzy])
-				{
-					vis.RenderStyle = LegacyRenderStyles[STYLE_Fuzzy];
-				}
-				else if (owner->RenderStyle == LegacyRenderStyles[STYLE_OptFuzzy])
-				{
-					vis.RenderStyle = LegacyRenderStyles[STYLE_OptFuzzy];
-					vis.RenderStyle.CheckFuzz();
-				}
-				else if (owner->RenderStyle == LegacyRenderStyles[STYLE_Subtract])
-				{
-					vis.RenderStyle = LegacyRenderStyles[STYLE_Subtract];
-				}
-				else
-				{
-					vis.RenderStyle = LegacyRenderStyles[rs];
-				}
-			}
-			else
-			{
-				vis.RenderStyle = owner->RenderStyle;
-			}
-
-			// Set the alpha based on if using the overlay's own or not. Also adjust
-			// and override the alpha if not forced.
-			if (pspr->Flags & PSPF_ALPHA)
-			{
-				if (vis.RenderStyle == LegacyRenderStyles[STYLE_Fuzzy])
-				{
-					alpha = owner->Alpha;
-				}
-				else if (vis.RenderStyle == LegacyRenderStyles[STYLE_OptFuzzy])
-				{
-					FRenderStyle style = vis.RenderStyle;
-					style.CheckFuzz();
-					switch (style.BlendOp)
-					{
-					default:
-						alpha = pspr->alpha * owner->Alpha;
-						break;
-					case STYLEOP_Fuzz:
-					case STYLEOP_Sub:
-						alpha = owner->Alpha;
-						break;
-					}
-
-				}
-				else if (vis.RenderStyle == LegacyRenderStyles[STYLE_Subtract])
-				{
-					alpha = owner->Alpha;
-				}
-				else if (vis.RenderStyle == LegacyRenderStyles[STYLE_Add] ||
-					vis.RenderStyle == LegacyRenderStyles[STYLE_Translucent] ||
-					vis.RenderStyle == LegacyRenderStyles[STYLE_TranslucentStencil] ||
-					vis.RenderStyle == LegacyRenderStyles[STYLE_AddStencil] ||
-					vis.RenderStyle == LegacyRenderStyles[STYLE_AddShaded])
-				{
-					alpha = owner->Alpha * pspr->alpha;
-				}
-				else
-				{
-					alpha = owner->Alpha;
-				}
-			}
-
-			// Should normal renderstyle come out on top at the end and we desire alpha,
-			// switch it to translucent. Normal never applies any sort of alpha.
-			if ((pspr->Flags & PSPF_ALPHA) &&
-				vis.RenderStyle == LegacyRenderStyles[STYLE_Normal] &&
-				vis.Alpha < 1.0)
-			{
-				vis.RenderStyle = LegacyRenderStyles[STYLE_Translucent];
-				alpha = owner->Alpha * pspr->alpha;
-			}
-
-			// ALWAYS take priority if asked for, except fuzz. Fuzz does absolutely nothing
-			// no matter what way it's changed.
-			if (pspr->Flags & PSPF_FORCEALPHA)
-			{
-				//Due to lack of != operators...
-				if (vis.RenderStyle == LegacyRenderStyles[STYLE_Fuzzy] ||
-					vis.RenderStyle == LegacyRenderStyles[STYLE_SoulTrans] ||
-					vis.RenderStyle == LegacyRenderStyles[STYLE_Stencil])
-				{
-				}
-				else
-				{
-					alpha = pspr->alpha;
-					vis.RenderStyle.Flags |= STYLEF_ForceAlpha;
-				}
-			}
-			vis.Alpha = clamp<float>(float(alpha), 0.f, 1.f);
-
-			// Due to how some of the effects are handled, going to 0 or less causes some
-			// weirdness to display. There's no point rendering it anyway if it's 0.
-			if (vis.Alpha <= 0.)
+			if (!vis.RenderStyle.IsVisible(vis.Alpha))
 				return;
 
 			//-----------------------------------------------------------------------------
@@ -444,33 +354,33 @@ namespace swrenderer
 
 			colormap_to_use = (FDynamicColormap*)vis.Light.BaseColormap;
 
-			if (camera->Inventory != nullptr)
+			if (Thread->Viewport->viewpoint.camera->Inventory != nullptr)
 			{
 				visstyle_t visstyle;
 				visstyle.Alpha = vis.Alpha;
 				visstyle.RenderStyle = STYLE_Count;
 				visstyle.Invert = false;
 				
-				camera->Inventory->AlterWeaponSprite(&visstyle);
+				Thread->Viewport->viewpoint.camera->Inventory->AlterWeaponSprite(&visstyle);
 				
-				vis.Alpha = visstyle.Alpha;
+				if (!(pspr->Flags & PSPF_FORCEALPHA)) vis.Alpha = visstyle.Alpha;
 
-				if (visstyle.RenderStyle != STYLE_Count)
+				if (visstyle.RenderStyle != STYLE_Count && !(pspr->Flags & PSPF_FORCESTYLE))
 				{
 					vis.RenderStyle = visstyle.RenderStyle;
 				}
 
 				if (visstyle.Invert)
 				{
-					vis.Light.BaseColormap = &SpecialColormaps[INVERSECOLORMAP];
+					vis.Light.BaseColormap = &SpecialSWColormaps[INVERSECOLORMAP];
 					vis.Light.ColormapNum = 0;
 					noaccel = true;
 				}
 			}
 			// If we're drawing with a special colormap, but shaders for them are disabled, do
 			// not accelerate.
-			if (!r_shadercolormaps && (vis.Light.BaseColormap >= &SpecialColormaps[0] &&
-				vis.Light.BaseColormap <= &SpecialColormaps.Last()))
+			if (!r_shadercolormaps && (vis.Light.BaseColormap >= &SpecialSWColormaps[0] &&
+				vis.Light.BaseColormap <= &SpecialSWColormaps.Last()))
 			{
 				noaccel = true;
 			}
@@ -482,7 +392,7 @@ namespace swrenderer
 			// If the main colormap has fixed lights, and this sprite is being drawn with that
 			// colormap, disable acceleration so that the lights can remain fixed.
 			CameraLight *cameraLight = CameraLight::Instance();
-			if (!noaccel && cameraLight->realfixedcolormap == nullptr &&
+			if (!noaccel && cameraLight->ShaderColormap() == nullptr &&
 				NormalLightHasFixedLights && vis.Light.BaseColormap == &NormalLight &&
 				vis.pic->UseBasePalette())
 			{
@@ -499,7 +409,7 @@ namespace swrenderer
 
 		// Check for hardware-assisted 2D. If it's available, and this sprite is not
 		// fuzzy, don't draw it until after the switch to 2D mode.
-		if (!noaccel && RenderTarget == screen && (DFrameBuffer *)screen->Accel2D)
+		if (!noaccel && viewport->RenderTarget == screen && (DFrameBuffer *)screen->Accel2D)
 		{
 			FRenderStyle style = vis.RenderStyle;
 			style.CheckFuzz();
@@ -521,16 +431,20 @@ namespace swrenderer
 				accelSprite.x1 = x1;
 				accelSprite.flip = vis.xiscale < 0;
 
-				if (vis.Light.BaseColormap >= &SpecialColormaps[0] &&
-					vis.Light.BaseColormap < &SpecialColormaps[SpecialColormaps.Size()])
+				if (vis.Light.BaseColormap >= &SpecialSWColormaps[0] &&
+					vis.Light.BaseColormap < &SpecialSWColormaps[SpecialColormaps.Size()])
 				{
-					accelSprite.special = static_cast<FSpecialColormap*>(vis.Light.BaseColormap);
+					accelSprite.special = &SpecialColormaps[vis.Light.BaseColormap - &SpecialSWColormaps[0]];
+				}
+				else if (CameraLight::Instance()->ShaderColormap())
+				{
+					accelSprite.special = CameraLight::Instance()->ShaderColormap();
 				}
 				else if (colormap_to_use->Color == PalEntry(255, 255, 255) &&
 					colormap_to_use->Desaturate == 0)
 				{
 					accelSprite.overlay = colormap_to_use->Fade;
-					accelSprite.overlay.a = BYTE(vis.Light.ColormapNum * 255 / NUMCOLORMAPS);
+					accelSprite.overlay.a = uint8_t(vis.Light.ColormapNum * 255 / NUMCOLORMAPS);
 				}
 				else
 				{
@@ -546,7 +460,7 @@ namespace swrenderer
 			}
 		}
 
-		vis.Render();
+		vis.Render(Thread);
 	}
 
 	void RenderPlayerSprites::RenderRemaining()
@@ -558,7 +472,7 @@ namespace swrenderer
 				viewwindowy + viewheight / 2 - sprite.texturemid * sprite.yscale - 0.5,
 				DTA_DestWidthF, FIXED2DBL(sprite.pic->GetWidth() * sprite.xscale),
 				DTA_DestHeightF, sprite.pic->GetHeight() * sprite.yscale,
-				DTA_Translation, TranslationToTable(sprite.Translation),
+				DTA_TranslationIndex, sprite.Translation,
 				DTA_FlipX, sprite.flip,
 				DTA_TopOffset, 0,
 				DTA_LeftOffset, 0,
@@ -566,7 +480,7 @@ namespace swrenderer
 				DTA_ClipTop, viewwindowy,
 				DTA_ClipRight, viewwindowx + viewwidth,
 				DTA_ClipBottom, viewwindowy + viewheight,
-				DTA_AlphaF, sprite.Alpha,
+				DTA_Alpha, sprite.Alpha,
 				DTA_RenderStyle, sprite.RenderStyle,
 				DTA_FillColor, sprite.FillColor,
 				DTA_SpecialColormap, sprite.special,
@@ -580,32 +494,27 @@ namespace swrenderer
 
 	/////////////////////////////////////////////////////////////////////////
 
-	void NoAccelPlayerSprite::Render()
+	void NoAccelPlayerSprite::Render(RenderThread *thread)
 	{
 		if (xscale == 0 || fabs(yscale) < (1.0f / 32000.0f))
 		{ // scaled to 0; can't see
 			return;
 		}
 
-		R_SetColorMapLight(Light.BaseColormap, 0, Light.ColormapNum << FRACBITS);
+		SpriteDrawerArgs drawerargs;
+		drawerargs.SetLight(Light.BaseColormap, 0, Light.ColormapNum << FRACBITS);
 
 		FDynamicColormap *basecolormap = static_cast<FDynamicColormap*>(Light.BaseColormap);
 
-		bool visible = R_SetPatchStyle(RenderStyle, Alpha, Translation, FillColor, basecolormap);
-
-		if (RenderStyle == LegacyRenderStyles[STYLE_Shaded])
-		{ // For shaded sprites, R_SetPatchStyle sets a dc_colormap to an alpha table, but
-		  // it is the brightest one. We need to get back to the proper light level for
-		  // this sprite.
-			R_SetColorMapLight(drawerargs::dc_fcolormap, 0, Light.ColormapNum << FRACBITS);
-		}
-
+		bool visible = drawerargs.SetStyle(thread->Viewport.get(), RenderStyle, Alpha, Translation, FillColor, basecolormap, Light.ColormapNum << FRACBITS);
 		if (!visible)
 			return;
 
 		double spryscale = yscale;
 		bool sprflipvert = false;
 		fixed_t iscale = FLOAT2FIXED(1 / yscale);
+		
+		auto viewport = thread->Viewport.get();
 
 		double sprtopscreen;
 		if (renderflags & RF_YFLIP)
@@ -613,12 +522,12 @@ namespace swrenderer
 			sprflipvert = true;
 			spryscale = -spryscale;
 			iscale = -iscale;
-			sprtopscreen = CenterY + (texturemid - pic->GetHeight()) * spryscale;
+			sprtopscreen = viewport->CenterY + (texturemid - pic->GetHeight()) * spryscale;
 		}
 		else
 		{
 			sprflipvert = false;
-			sprtopscreen = CenterY - texturemid * spryscale;
+			sprtopscreen = viewport->CenterY - texturemid * spryscale;
 		}
 
 		// clip to screen bounds
@@ -626,12 +535,14 @@ namespace swrenderer
 		short *mceilingclip = zeroarray;
 
 		fixed_t frac = startfrac;
+		thread->PrepareTexture(pic);
 		for (int x = x1; x < x2; x++)
 		{
-			R_DrawMaskedColumn(x, iscale, pic, frac, spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip, false);
+			drawerargs.DrawMaskedColumn(thread, x, iscale, pic, frac, spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip, false);
 			frac += xiscale;
 		}
 
-		NetUpdate();
+		if (thread->MainThread)
+			NetUpdate();
 	}
 }

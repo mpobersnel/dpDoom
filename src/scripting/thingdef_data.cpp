@@ -50,13 +50,25 @@
 #include "zstring.h"
 #include "d_event.h"
 #include "g_levellocals.h"
-#include "vm.h"
 #include "p_checkposition.h"
 #include "r_sky.h"
+#include "v_font.h"
+#include "v_video.h"
+#include "c_bind.h"
+#include "menu/menu.h"
+#include "teaminfo.h"
+#include "r_data/sprites.h"
+#include "serializer.h"
+#include "wi_stuff.h"
+#include "a_dynlight.h"
+#include "vm.h"
+#include "types.h"
 
 static TArray<FPropertyInfo*> properties;
 static TArray<AFuncDesc> AFTable;
 static TArray<FieldDesc> FieldTable;
+extern int				BackbuttonTime;
+extern float			BackbuttonAlpha;
 
 //==========================================================================
 //
@@ -307,6 +319,9 @@ static FFlagDef ActorFlagDefs[]=
 	DEFINE_FLAG(MF7, SPRITEANGLE, AActor, flags7),
 	DEFINE_FLAG(MF7, SMASHABLE, AActor, flags7),
 	DEFINE_FLAG(MF7, NOSHIELDREFLECT, AActor, flags7),
+	DEFINE_FLAG(MF7, FORCEZERORADIUSDMG, AActor, flags7),
+	DEFINE_FLAG(MF7, NOINFIGHTSPECIES, AActor, flags7),
+	DEFINE_FLAG(MF7, FORCEINFIGHTING, AActor, flags7),
 
 	// Effect flags
 	DEFINE_FLAG(FX, VISIBILITYPULSE, AActor, effects),
@@ -326,6 +341,8 @@ static FFlagDef ActorFlagDefs[]=
 	DEFINE_FLAG(RF, ABSMASKPITCH, AActor, renderflags),
 	DEFINE_FLAG(RF, XFLIP, AActor, renderflags),
 	DEFINE_FLAG(RF, YFLIP, AActor, renderflags),
+	DEFINE_FLAG(RF, INTERPOLATEANGLES, AActor, renderflags),
+	DEFINE_FLAG(RF, DONTINTERPOLATE, AActor, renderflags),
 
 	// Bounce flags
 	DEFINE_FLAG2(BOUNCE_Walls, BOUNCEONWALLS, AActor, BounceFlags),
@@ -342,6 +359,7 @@ static FFlagDef ActorFlagDefs[]=
 	DEFINE_FLAG2(BOUNCE_MBF, MBFBOUNCER, AActor, BounceFlags),
 	DEFINE_FLAG2(BOUNCE_AutoOffFloorOnly, BOUNCEAUTOOFFFLOORONLY, AActor, BounceFlags),
 	DEFINE_FLAG2(BOUNCE_UseBounceState, USEBOUNCESTATE, AActor, BounceFlags),
+	DEFINE_FLAG2(BOUNCE_NotOnShootables, DONTBOUNCEONSHOOTABLES, AActor, BounceFlags),
 };
 
 // These won't be accessible through bitfield variables
@@ -415,6 +433,8 @@ static FFlagDef InventoryFlagDefs[] =
 	DEFINE_FLAG(IF, TRANSFER, AInventory, ItemFlags),
 	DEFINE_FLAG(IF, NOTELEPORTFREEZE, AInventory, ItemFlags),
 	DEFINE_FLAG(IF, NOSCREENBLINK, AInventory, ItemFlags),
+	DEFINE_FLAG(IF, ISARMOR, AInventory, ItemFlags),
+	DEFINE_FLAG(IF, ISHEALTH, AInventory, ItemFlags),
 
 	DEFINE_DUMMY_FLAG(FORCERESPAWNINSURVIVAL, false),
 
@@ -461,6 +481,17 @@ static FFlagDef PlayerPawnFlagDefs[] =
 	DEFINE_FLAG(PPF, CROUCHABLEMORPH, APlayerPawn, PlayerFlags),
 };
 
+static FFlagDef DynLightFlagDefs[] =
+{
+	// PlayerPawn flags
+	DEFINE_FLAG(MF4, SUBTRACTIVE, ADynamicLight, flags4),
+	DEFINE_FLAG(MF4, ADDITIVE, ADynamicLight, flags4),
+	DEFINE_FLAG(MF4, DONTLIGHTSELF, ADynamicLight, flags4),
+	DEFINE_FLAG(MF4, ATTENUATE, ADynamicLight, flags4),
+	DEFINE_FLAG(MF4, NOSHADOWMAP, ADynamicLight, flags4),
+	DEFINE_FLAG(MF4, DONTLIGHTACTORS, ADynamicLight, flags4),
+};
+
 static FFlagDef PowerSpeedFlagDefs[] =
 {
 	// PowerSpeed flags
@@ -475,6 +506,7 @@ static const struct FFlagList { const PClass * const *Type; FFlagDef *Defs; int 
 	{ &RUNTIME_CLASS_CASTLESS(AInventory), 	InventoryFlagDefs,	countof(InventoryFlagDefs), 3 },
 	{ &RUNTIME_CLASS_CASTLESS(AWeapon), 	WeaponFlagDefs,		countof(WeaponFlagDefs), 3 },
 	{ &RUNTIME_CLASS_CASTLESS(APlayerPawn),	PlayerPawnFlagDefs,	countof(PlayerPawnFlagDefs), 3 },
+	{ &RUNTIME_CLASS_CASTLESS(ADynamicLight),DynLightFlagDefs,	countof(DynLightFlagDefs), 3 },
 };
 #define NUM_FLAG_LISTS (countof(FlagLists))
 
@@ -609,18 +641,42 @@ FPropertyInfo *FindProperty(const char * string)
 
 //==========================================================================
 //
+//
+//
+//==========================================================================
+
+template <typename Desc>
+static int CompareClassNames(const char* const aname, const Desc& b)
+{
+	// ++ to get past the prefix letter of the native class name, which gets omitted by the FName for the class.
+	const char* bname = b.ClassName;
+	if ('\0' != *bname) ++bname;
+	return stricmp(aname, bname);
+}
+
+template <typename Desc>
+static int CompareClassNames(const Desc& a, const Desc& b)
+{
+	// ++ to get past the prefix letter of the native class name, which gets omitted by the FName for the class.
+	const char* aname = a.ClassName;
+	if ('\0' != *aname) ++aname;
+	return CompareClassNames(aname, b);
+}
+
+//==========================================================================
+//
 // Find a function by name using a binary search
 //
 //==========================================================================
 
-AFuncDesc *FindFunction(PStruct *cls, const char * string)
+AFuncDesc *FindFunction(PContainerType *cls, const char * string)
 {
 	int min = 0, max = AFTable.Size() - 1;
 
 	while (min <= max)
 	{
 		int mid = (min + max) / 2;
-		int lexval = stricmp(cls->TypeName.GetChars(), AFTable[mid].ClassName + 1);
+		int lexval = CompareClassNames(cls->TypeName.GetChars(), AFTable[mid]);
 		if (lexval == 0) lexval = stricmp(string, AFTable[mid].FuncName);
 		if (lexval == 0)
 		{
@@ -644,14 +700,15 @@ AFuncDesc *FindFunction(PStruct *cls, const char * string)
 //
 //==========================================================================
 
-FieldDesc *FindField(PStruct *cls, const char * string)
+FieldDesc *FindField(PContainerType *cls, const char * string)
 {
 	int min = 0, max = FieldTable.Size() - 1;
+	const char * cname = cls ? cls->TypeName.GetChars() : "";
 
 	while (min <= max)
 	{
 		int mid = (min + max) / 2;
-		int lexval = stricmp(cls->TypeName.GetChars(), FieldTable[mid].ClassName + 1);
+		int lexval = CompareClassNames(cname, FieldTable[mid]);
 		if (lexval == 0) lexval = stricmp(string, FieldTable[mid].FieldName);
 		if (lexval == 0)
 		{
@@ -678,7 +735,7 @@ FieldDesc *FindField(PStruct *cls, const char * string)
 
 VMFunction *FindVMFunction(PClass *cls, const char *name)
 {
-	auto f = dyn_cast<PFunction>(cls->Symbols.FindSymbol(name, true));
+	auto f = dyn_cast<PFunction>(cls->FindSymbol(name, true));
 	return f == nullptr ? nullptr : f->Variants[0].Implementation;
 }
 
@@ -701,16 +758,14 @@ static int propcmp(const void * a, const void * b)
 
 static int funccmp(const void * a, const void * b)
 {
-	// +1 to get past the prefix letter of the native class name, which gets omitted by the FName for the class.
-	int res = stricmp(((AFuncDesc*)a)->ClassName + 1, ((AFuncDesc*)b)->ClassName + 1);
+	int res = CompareClassNames(*(AFuncDesc*)a, *(AFuncDesc*)b);
 	if (res == 0) res = stricmp(((AFuncDesc*)a)->FuncName, ((AFuncDesc*)b)->FuncName);
 	return res;
 }
 
 static int fieldcmp(const void * a, const void * b)
 {
-	// +1 to get past the prefix letter of the native class name, which gets omitted by the FName for the class.
-	int res = stricmp(((FieldDesc*)a)->ClassName + 1, ((FieldDesc*)b)->ClassName + 1);
+	int res = CompareClassNames(*(FieldDesc*)a, *(FieldDesc*)b);
 	if (res == 0) res = stricmp(((FieldDesc*)a)->FieldName, ((FieldDesc*)b)->FieldName);
 	return res;
 }
@@ -723,126 +778,120 @@ static int fieldcmp(const void * a, const void * b)
 
 void InitThingdef()
 {
-	// Create all global variables here because this cannot be done on the script side and really isn't worth adding support for.
-	// Also create all special fields here that cannot be declared by script syntax.
-
-	auto secplanestruct = NewNativeStruct("Secplane", nullptr);
+	// Some native types need size and serialization information added before the scripts get compiled.
+	auto secplanestruct = NewStruct("Secplane", nullptr, true);
 	secplanestruct->Size = sizeof(secplane_t);
 	secplanestruct->Align = alignof(secplane_t);
 
-	auto sectorstruct = NewNativeStruct("Sector", nullptr);
+	auto sectorstruct = NewStruct("Sector", nullptr, true);
 	sectorstruct->Size = sizeof(sector_t);
 	sectorstruct->Align = alignof(sector_t);
+	NewPointer(sectorstruct, false)->InstallHandlers(
+		[](FSerializer &ar, const char *key, const void *addr)
+		{
+			ar(key, *(sector_t **)addr);
+		},
+		[](FSerializer &ar, const char *key, void *addr)
+		{
+			Serialize<sector_t>(ar, key, *(sector_t **)addr, nullptr);
+			return true;
+		}
+	);
 
-	auto linestruct = NewNativeStruct("Line", nullptr);
+	auto linestruct = NewStruct("Line", nullptr, true);
 	linestruct->Size = sizeof(line_t);
 	linestruct->Align = alignof(line_t);
+	NewPointer(linestruct, false)->InstallHandlers(
+		[](FSerializer &ar, const char *key, const void *addr)
+		{
+			ar(key, *(line_t **)addr);
+		},
+		[](FSerializer &ar, const char *key, void *addr)
+		{
+			Serialize<line_t>(ar, key, *(line_t **)addr, nullptr);
+			return true;
+		}
+	);
 
-	auto sidestruct = NewNativeStruct("Side", nullptr);
+	auto sidestruct = NewStruct("Side", nullptr, true);
 	sidestruct->Size = sizeof(side_t);
 	sidestruct->Align = alignof(side_t);
+	NewPointer(sidestruct, false)->InstallHandlers(
+		[](FSerializer &ar, const char *key, const void *addr)
+		{
+			ar(key, *(side_t **)addr);
+		},
+			[](FSerializer &ar, const char *key, void *addr)
+		{
+			Serialize<side_t>(ar, key, *(side_t **)addr, nullptr);
+			return true;
+		}
+	);
 
-	auto vertstruct = NewNativeStruct("Vertex", nullptr);
+	auto vertstruct = NewStruct("Vertex", nullptr, true);
 	vertstruct->Size = sizeof(vertex_t);
 	vertstruct->Align = alignof(vertex_t);
+	NewPointer(vertstruct, false)->InstallHandlers(
+		[](FSerializer &ar, const char *key, const void *addr)
+		{
+			ar(key, *(vertex_t **)addr);
+		},
+		[](FSerializer &ar, const char *key, void *addr)
+		{
+			Serialize<vertex_t>(ar, key, *(vertex_t **)addr, nullptr);
+			return true;
+		}
+	);
 
-	auto sectorportalstruct = NewNativeStruct("SectorPortal", nullptr);
+	auto sectorportalstruct = NewStruct("SectorPortal", nullptr, true);
 	sectorportalstruct->Size = sizeof(FSectorPortal);
 	sectorportalstruct->Align = alignof(FSectorPortal);
 
-	// set up the lines array in the sector struct. This is a bit messy because the type system is not prepared to handle a pointer to an array of pointers to a native struct even remotely well...
-	// As a result, the size has to be set to something large and arbritrary because it can change between maps. This will need some serious improvement when things get cleaned up.
-	sectorstruct->AddNativeField("lines", NewPointer(NewResizableArray(NewPointer(linestruct, false)), false), myoffsetof(sector_t, Lines), VARF_Native);
+	auto playerclassstruct = NewStruct("PlayerClass", nullptr, true);
+	playerclassstruct->Size = sizeof(FPlayerClass);
+	playerclassstruct->Align = alignof(FPlayerClass);
 
-	sectorstruct->AddNativeField("ceilingplane", secplanestruct, myoffsetof(sector_t, ceilingplane), VARF_Native);
-	sectorstruct->AddNativeField("floorplane", secplanestruct, myoffsetof(sector_t, floorplane), VARF_Native);
+	auto playerskinstruct = NewStruct("PlayerSkin", nullptr, true);
+	playerskinstruct->Size = sizeof(FPlayerSkin);
+	playerskinstruct->Align = alignof(FPlayerSkin);
 
+	auto teamstruct = NewStruct("Team", nullptr, true);
+	teamstruct->Size = sizeof(FTeam);
+	teamstruct->Align = alignof(FTeam);
 
-
-
-	// expose the global validcount variable.
-	PField *vcf = new PField("validcount", TypeSInt32, VARF_Native | VARF_Static, (intptr_t)&validcount);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(vcf);
-
-	// expose the global Multiplayer variable.
-	PField *multif = new PField("multiplayer", TypeBool, VARF_Native | VARF_ReadOnly | VARF_Static, (intptr_t)&multiplayer);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(multif);
-
-	// set up a variable for the global level data structure
-	PStruct *lstruct = NewNativeStruct("LevelLocals", nullptr);
-	PField *levelf = new PField("level", lstruct, VARF_Native | VARF_Static, (intptr_t)&level);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(levelf);
-
-	// Add the game data arrays to LevelLocals.
-	lstruct->AddNativeField("sectors", NewPointer(NewResizableArray(sectorstruct), false), myoffsetof(FLevelLocals, sectors), VARF_Native);
-	lstruct->AddNativeField("lines", NewPointer(NewResizableArray(linestruct), false), myoffsetof(FLevelLocals, lines), VARF_Native);
-	lstruct->AddNativeField("sides", NewPointer(NewResizableArray(sidestruct), false), myoffsetof(FLevelLocals, sides), VARF_Native);
-	lstruct->AddNativeField("vertexes", NewPointer(NewResizableArray(vertstruct), false), myoffsetof(FLevelLocals, vertexes), VARF_Native|VARF_ReadOnly);
-	lstruct->AddNativeField("sectorportals", NewPointer(NewResizableArray(sectorportalstruct), false), myoffsetof(FLevelLocals, sectorPortals), VARF_Native);
-
-
-	auto aact = NewPointer(NewResizableArray(NewClassPointer(RUNTIME_CLASS(AActor))), true);
-	PField *aacf = new PField("AllActorClasses", aact, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&PClassActor::AllActorClasses);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(aacf);
-
-	// set up a variable for the DEH data
-	PStruct *dstruct = NewNativeStruct("DehInfo", nullptr);
-	PField *dehf = new PField("deh", dstruct, VARF_Native | VARF_Static, (intptr_t)&deh);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(dehf);
-
-	// set up a variable for the global gameinfo data
-	PStruct *gistruct = NewNativeStruct("GameInfoStruct", nullptr);
-	PField *gi = new PField("gameinfo", gistruct, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&gameinfo);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(gi);
-
-	// set up a variable for the global players array.
-	PStruct *pstruct = NewNativeStruct("PlayerInfo", nullptr);
+	PStruct *pstruct = NewStruct("PlayerInfo", nullptr, true);
 	pstruct->Size = sizeof(player_t);
 	pstruct->Align = alignof(player_t);
-	PArray *parray = NewArray(pstruct, MAXPLAYERS);
-	PField *playerf = new PField("players", parray, VARF_Native | VARF_Static, (intptr_t)&players);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
-
-	pstruct->AddNativeField("weapons", NewNativeStruct("WeaponSlots", nullptr), myoffsetof(player_t, weapons), VARF_Native);
-
-
-	parray = NewArray(TypeBool, MAXPLAYERS);
-	playerf = new PField("playeringame", parray, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&playeringame);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
-
-	playerf = new PField("gameaction", TypeUInt8, VARF_Native | VARF_Static, (intptr_t)&gameaction);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
-
-	playerf = new PField("skyflatnum", TypeTextureID, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&skyflatnum);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
-
-	playerf = new PField("globalfreeze", TypeUInt8, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&bglobal.freeze);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
-
-	playerf = new PField("consoleplayer", TypeSInt32, VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&consoleplayer);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
-
-	// Argh. It sucks when bad hacks need to be supported. WP_NOCHANGE is just a bogus pointer but it used everywhere as a special flag.
-	// It cannot be defined as constant because constants can either be numbers or strings but nothing else, so the only 'solution'
-	// is to create a static variable from it and reference that in the script. Yuck!!!
-	static AWeapon *wpnochg = WP_NOCHANGE;
-	playerf = new PField("WP_NOCHANGE", NewPointer(RUNTIME_CLASS(AWeapon), false), VARF_Native | VARF_Static | VARF_ReadOnly, (intptr_t)&wpnochg);
-	Namespaces.GlobalNamespace->Symbols.AddSymbol(playerf);
-
-	// synthesize a symbol for each flag from the flag name tables to avoid redundant declaration of them.
-	for (auto &fl : FlagLists)
-	{
-		if (fl.Use & 2)
+	NewPointer(pstruct, false)->InstallHandlers(
+		[](FSerializer &ar, const char *key, const void *addr)
 		{
-			for(int i=0;i<fl.NumDefs;i++)
-			{
-				if (fl.Defs[i].structoffset > 0) // skip the deprecated entries in this list
-				{
-					const_cast<PClass*>(*fl.Type)->AddNativeField(FStringf("b%s", fl.Defs[i].name), (fl.Defs[i].fieldsize == 4 ? TypeSInt32 : TypeSInt16), fl.Defs[i].structoffset, fl.Defs[i].varflags, fl.Defs[i].flagbit);
-				}
-			}
+			ar(key, *(player_t **)addr);
+		},
+			[](FSerializer &ar, const char *key, void *addr)
+		{
+			Serialize<player_t>(ar, key, *(player_t **)addr, nullptr);
+			return true;
 		}
-	}
+	);
+
+	auto fontstruct = NewStruct("FFont", nullptr, true);
+	fontstruct->Size = sizeof(FFont);
+	fontstruct->Align = alignof(FFont);
+	NewPointer(fontstruct, false)->InstallHandlers(
+		[](FSerializer &ar, const char *key, const void *addr)
+		{
+			ar(key, *(FFont **)addr);
+		},
+			[](FSerializer &ar, const char *key, void *addr)
+		{
+			Serialize<FFont>(ar, key, *(FFont **)addr, nullptr);
+			return true;
+		}
+	);
+
+	auto wbplayerstruct = NewStruct("WBPlayerStruct", nullptr, true);
+	wbplayerstruct->Size = sizeof(wbplayerstruct_t);
+	wbplayerstruct->Align = alignof(wbplayerstruct_t);
 
 	FAutoSegIterator probe(CRegHead, CRegTail);
 
@@ -910,9 +959,37 @@ void InitThingdef()
 		FieldTable.ShrinkToFit();
 		qsort(&FieldTable[0], FieldTable.Size(), sizeof(FieldTable[0]), fieldcmp);
 	}
-
 }
 
+void SynthesizeFlagFields()
+{
+	// These are needed for inserting the flag symbols
+	/*
+	NewClassType(RUNTIME_CLASS(DObject));
+	NewClassType(RUNTIME_CLASS(DThinker));
+	NewClassType(RUNTIME_CLASS(AActor));
+	NewClassType(RUNTIME_CLASS(AInventory));
+	NewClassType(RUNTIME_CLASS(AStateProvider));
+	NewClassType(RUNTIME_CLASS(AWeapon));
+	NewClassType(RUNTIME_CLASS(APlayerPawn));
+	NewClassType(RUNTIME_CLASS(ADynamicLight));
+	*/
+	// synthesize a symbol for each flag from the flag name tables to avoid redundant declaration of them.
+	for (auto &fl : FlagLists)
+	{
+		auto cls = const_cast<PClass*>(*fl.Type);
+		if (fl.Use & 2)
+		{
+			for (int i = 0; i < fl.NumDefs; i++)
+			{
+				if (fl.Defs[i].structoffset > 0) // skip the deprecated entries in this list
+				{
+					cls->VMType->AddNativeField(FStringf("b%s", fl.Defs[i].name), (fl.Defs[i].fieldsize == 4 ? TypeSInt32 : TypeSInt16), fl.Defs[i].structoffset, fl.Defs[i].varflags, fl.Defs[i].flagbit);
+				}
+			}
+		}
+	}
+}
 DEFINE_ACTION_FUNCTION(DObject, GameType)
 {
 	PARAM_PROLOGUE;
@@ -945,7 +1022,7 @@ DEFINE_ACTION_FUNCTION(FStringStruct, Replace)
 	return 0;
 }
 
-static FString FStringFormat(VM_ARGS)
+FString FStringFormat(VM_ARGS)
 {
 	assert(param[0].Type == REGT_STRING);
 	FString fmtstring = param[0].s().GetChars();
@@ -1118,3 +1195,56 @@ DEFINE_ACTION_FUNCTION(FStringStruct, AppendFormat)
 	(*self) += s;
 	return 0;
 }
+
+DEFINE_ACTION_FUNCTION(FStringStruct, Mid)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FString);
+	PARAM_UINT(pos);
+	PARAM_UINT(len);
+	FString s = self->Mid(pos, len);
+	ACTION_RETURN_STRING(s);
+}
+
+DEFINE_ACTION_FUNCTION(FStringStruct, Left)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FString);
+	PARAM_UINT(len);
+	FString s = self->Left(len);
+	ACTION_RETURN_STRING(s);
+}
+
+DEFINE_ACTION_FUNCTION(FStringStruct, Truncate)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FString);
+	PARAM_UINT(len);
+	self->Truncate(len);
+	return 0;
+}
+
+// CharAt and CharCodeAt is how JS does it, and JS is similar here in that it doesn't have char type as int.
+DEFINE_ACTION_FUNCTION(FStringStruct, CharAt)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FString);
+	PARAM_INT(pos);
+	int slen = (int)self->Len();
+	if (pos < 0 || pos >= slen)
+		ACTION_RETURN_STRING("");
+	ACTION_RETURN_STRING(FString((*self)[pos]));
+}
+
+DEFINE_ACTION_FUNCTION(FStringStruct, CharCodeAt)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FString);
+	PARAM_INT(pos);
+	int slen = (int)self->Len();
+	if (pos < 0 || pos >= slen)
+		ACTION_RETURN_INT(0);
+	ACTION_RETURN_INT((*self)[pos]);
+}
+
+DEFINE_ACTION_FUNCTION(FStringStruct, Filter)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FString);
+	ACTION_RETURN_STRING(strbin1(*self));
+}
+

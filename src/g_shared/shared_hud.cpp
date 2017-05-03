@@ -54,6 +54,7 @@
 #include "r_utility.h"
 #include "cmdlib.h"
 #include "g_levellocals.h"
+#include "vm.h"
 
 #include <time.h>
 
@@ -64,11 +65,12 @@ EXTERN_CVAR(Bool,am_follow)
 EXTERN_CVAR (Int, con_scaletext)
 EXTERN_CVAR (Bool, idmypos)
 EXTERN_CVAR (Int, screenblocks)
+EXTERN_CVAR(Bool, hud_aspectscale)
 
 EXTERN_CVAR (Bool, am_showtime)
 EXTERN_CVAR (Bool, am_showtotaltime)
 
-CVAR(Int,hud_althudscale, 4, CVAR_ARCHIVE)				// Scale the hud to 640x400?
+CVAR(Int,hud_althudscale, 0, CVAR_ARCHIVE)				// Scale the hud to 640x400?
 CVAR(Bool,hud_althud, false, CVAR_ARCHIVE)				// Enable/Disable the alternate HUD
 
 														// These are intentionally not the same as in the automap!
@@ -114,23 +116,12 @@ static FFont * IndexFont;					// The font for the inventory indices
 static FTexture * healthpic;				// Health icon
 static FTexture * berserkpic;				// Berserk icon (Doom only)
 static FTexture * fragpic;					// Frags icon
-static FTexture * invgems[4];				// Inventory arrows
+static FTexture * invgems[2];				// Inventory arrows
 
 static int hudwidth, hudheight;				// current width/height for HUD display
 static int statspace;
 
 DVector2 AM_GetPosition();
-int active_con_scaletext();
-
-FTextureID GetHUDIcon(PClassInventory *cls)
-{
-	return cls->AltHUDIcon;
-}
-
-void SetHUDIcon(PClassInventory *cls, FTextureID tex)
-{
-	cls->AltHUDIcon = tex;
-}
 
 //---------------------------------------------------------------------------
 //
@@ -138,7 +129,7 @@ void SetHUDIcon(PClassInventory *cls, FTextureID tex)
 // center of the box. The image is scaled down if it doesn't fit
 //
 //---------------------------------------------------------------------------
-static void DrawImageToBox(FTexture * tex, int x, int y, int w, int h, int trans=0xc000)
+static void DrawImageToBox(FTexture * tex, int x, int y, int w, int h, double trans = 0.75)
 {
 	double scale1, scale2;
 
@@ -174,7 +165,7 @@ static void DrawImageToBox(FTexture * tex, int x, int y, int w, int h, int trans
 //
 //---------------------------------------------------------------------------
 
-static void DrawHudText(FFont *font, int color, char * text, int x, int y, int trans=0xc000)
+static void DrawHudText(FFont *font, int color, char * text, int x, int y, double trans = 0.75)
 {
 	int zerowidth;
 	FTexture *tex_zero = font->GetChar('0', &zerowidth);
@@ -207,7 +198,7 @@ static void DrawHudText(FFont *font, int color, char * text, int x, int y, int t
 //
 //---------------------------------------------------------------------------
 
-static void DrawHudNumber(FFont *font, int color, int num, int x, int y, int trans=0xc000)
+static void DrawHudNumber(FFont *font, int color, int num, int x, int y, double trans = 0.75)
 {
 	char text[15];
 
@@ -227,11 +218,11 @@ static void DrawStatLine(int x, int &y, const char *prefix, const char *string)
 	y -= SmallFont->GetHeight()-1;
 	screen->DrawText(SmallFont, hudcolor_statnames, x, y, prefix, 
 		DTA_KeepRatio, true,
-		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_Alpha, 0xc000, TAG_DONE);
+		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_Alpha, 0.75, TAG_DONE);
 
 	screen->DrawText(SmallFont, hudcolor_stats, x+statspace, y, string,
 		DTA_KeepRatio, true,
-		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_Alpha, 0xc000, TAG_DONE);
+		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_Alpha, 0.75, TAG_DONE);
 }
 
 static void DrawStatus(player_t * CPlayer, int x, int y)
@@ -394,21 +385,20 @@ static void SetKeyTypes()
 {
 	for(unsigned int i = 0; i < PClassActor::AllActorClasses.Size(); i++)
 	{
-		PClass *ti = PClassActor::AllActorClasses[i];
+		PClassActor *ti = PClassActor::AllActorClasses[i];
 		auto kt = PClass::FindActor(NAME_Key);
 
 		if (ti->IsDescendantOf(kt))
 		{
-			PClassActor *tia = static_cast<PClassActor *>(ti);
-			AInventory *key = (AInventory*)(GetDefaultByType(tia));
+			AInventory *key = (AInventory*)(GetDefaultByType(ti));
 
 			if (key->Icon.isValid() && key->special1 > 0)
 			{
-				KeyTypes.Push(tia);
+				KeyTypes.Push(ti);
 			}
 			else 
 			{
-				UnassignedKeyTypes.Push(tia);
+				UnassignedKeyTypes.Push(ti);
 			}
 		}
 	}
@@ -437,7 +427,7 @@ static void SetKeyTypes()
 static void DrawOneKey(int xo, int & x, int & y, int & c, AInventory * inv)
 {
 	FTextureID icon = FNullTextureID();
-	FTextureID AltIcon = GetHUDIcon(inv->GetClass());
+	FTextureID AltIcon = inv->AltHUDIcon;
 
 	if (!AltIcon.Exists()) return;
 
@@ -516,27 +506,27 @@ static int DrawKeys(player_t * CPlayer, int x, int y)
 // Drawing Ammo
 //
 //---------------------------------------------------------------------------
-static TArray<PClassInventory *> orderedammos;
+static TArray<PClassActor *> orderedammos;
 
 static void AddAmmoToList(AWeapon * weapdef)
 {
 
-	for(int i=0; i<2;i++)
+	for (int i = 0; i < 2; i++)
 	{
-		PClassInventory * ti = i==0? weapdef->AmmoType1 : weapdef->AmmoType2;
+		auto ti = i == 0 ? weapdef->AmmoType1 : weapdef->AmmoType2;
 		if (ti)
 		{
-			auto ammodef=(AInventory*)GetDefaultByType(ti);
+			auto ammodef = (AInventory*)GetDefaultByType(ti);
 
 			if (ammodef && !(ammodef->ItemFlags&IF_INVBAR))
 			{
 				unsigned int j;
 
-				for(j=0;j<orderedammos.Size();j++)
+				for (j = 0; j < orderedammos.Size(); j++)
 				{
 					if (ti == orderedammos[j]) break;
 				}
-				if (j==orderedammos.Size()) orderedammos.Push(ti);
+				if (j == orderedammos.Size()) orderedammos.Push(ti);
 			}
 		}
 	}
@@ -612,7 +602,7 @@ static int DrawAmmo(player_t *CPlayer, int x, int y)
 		// Now check for the remaining weapons that are in the inventory but not in the weapon slots
 		for(inv=CPlayer->mo->Inventory;inv;inv=inv->Inventory)
 		{
-			if (inv->IsKindOf(RUNTIME_CLASS(AWeapon)))
+			if (inv->IsKindOf(NAME_Weapon))
 			{
 				AddAmmoToList((AWeapon*)inv);
 			}
@@ -646,15 +636,15 @@ static int DrawAmmo(player_t *CPlayer, int x, int y)
 	for(i=orderedammos.Size()-1;i>=0;i--)
 	{
 
-		PClassInventory * type = orderedammos[i];
+		auto type = orderedammos[i];
 		auto ammoitem = CPlayer->mo->FindInventory(type);
 
 		auto inv = ammoitem? ammoitem : (AInventory*)GetDefaultByType(orderedammos[i]);
-		FTextureID AltIcon = GetHUDIcon(type);
+		FTextureID AltIcon = inv->AltHUDIcon;
 		FTextureID icon = !AltIcon.isNull()? AltIcon : inv->Icon;
 		if (!icon.isValid()) continue;
 
-		int trans= (wi && (type==wi->AmmoType1 || type==wi->AmmoType2)) ? 0xc000:0x6000;
+		double trans= (wi && (type==wi->AmmoType1 || type==wi->AmmoType2)) ? 0.75 : 0.375;
 
 		int maxammo = inv->MaxAmount;
 		int ammo = ammoitem? ammoitem->Amount : 0;
@@ -680,9 +670,16 @@ static int DrawAmmo(player_t *CPlayer, int x, int y)
 // Weapons List
 //
 //---------------------------------------------------------------------------
-FTextureID GetInventoryIcon(AInventory *item, DWORD flags, bool *applyscale=NULL)	// This function is also used by SBARINFO
+FTextureID GetInventoryIcon(AInventory *item, uint32_t flags, bool *applyscale=NULL)	// This function is also used by SBARINFO
 {
-	FTextureID picnum, AltIcon = GetHUDIcon(item->GetClass());
+	if (applyscale != NULL)
+	{
+		*applyscale = false;
+	}
+
+	if (item == nullptr) return FNullTextureID();
+
+	FTextureID picnum, AltIcon = item->AltHUDIcon;
 	FState * state=NULL, *ReadyState;
 	
 	picnum.SetNull();
@@ -713,7 +710,7 @@ FTextureID GetInventoryIcon(AInventory *item, DWORD flags, bool *applyscale=NULL
 			}
 		}
 		// no spawn state - now try the ready state if it's weapon
-		else if (!(flags & DI_SKIPREADY) && item->GetClass()->IsDescendantOf(RUNTIME_CLASS(AWeapon)) && (ReadyState = item->FindState(NAME_Ready)) && ReadyState->sprite!=0)
+		else if (!(flags & DI_SKIPREADY) && item->GetClass()->IsDescendantOf(NAME_Weapon) && (ReadyState = item->FindState(NAME_Ready)) && ReadyState->sprite!=0)
 		{
 			state = ReadyState;
 		}
@@ -728,19 +725,30 @@ FTextureID GetInventoryIcon(AInventory *item, DWORD flags, bool *applyscale=NULL
 	return picnum;
 }
 
+DEFINE_ACTION_FUNCTION(DBaseStatusBar, GetInventoryIcon)
+{
+	PARAM_PROLOGUE;
+	PARAM_OBJECT(item, AInventory);
+	PARAM_INT(flags);
+	bool applyscale;
+	FTextureID icon = GetInventoryIcon(item, flags, &applyscale);
+	if (numret >= 1) ret[0].SetInt(icon.GetIndex());
+	if (numret >= 2) ret[1].SetInt(applyscale);
+	return MIN(numret, 2);
+}
 
 static void DrawOneWeapon(player_t * CPlayer, int x, int & y, AWeapon * weapon)
 {
-	int trans;
+	double trans;
 
 	// Powered up weapons and inherited sister weapons are not displayed.
 	if (weapon->WeaponFlags & WIF_POWERED_UP) return;
 	if (weapon->SisterWeapon && weapon->IsKindOf(weapon->SisterWeapon->GetClass())) return;
 
-	trans=0x6666;
+	trans=0.4;
 	if (CPlayer->ReadyWeapon)
 	{
-		if (weapon==CPlayer->ReadyWeapon || weapon==CPlayer->ReadyWeapon->SisterWeapon) trans=0xd999;
+		if (weapon==CPlayer->ReadyWeapon || weapon==CPlayer->ReadyWeapon->SisterWeapon) trans = 0.85;
 	}
 
 	FTextureID picnum = GetInventoryIcon(weapon, DI_ALTICONFIRST);
@@ -767,7 +775,7 @@ static void DrawWeapons(player_t *CPlayer, int x, int y)
 	// First draw all weapons in the inventory that are not assigned to a weapon slot
 	for(inv = CPlayer->mo->Inventory; inv; inv = inv->Inventory)
 	{
-		if (inv->IsKindOf(RUNTIME_CLASS(AWeapon)) && 
+		if (inv->IsKindOf(NAME_Weapon) && 
 			!CPlayer->weapons.LocateWeapon(static_cast<AWeapon*>(inv)->GetClass(), NULL, NULL))
 		{
 			DrawOneWeapon(CPlayer, x, y, static_cast<AWeapon*>(inv));
@@ -807,20 +815,20 @@ static void DrawInventory(player_t * CPlayer, int x,int y)
 	{
 		if(rover->PrevInv())
 		{
-			screen->DrawTexture(invgems[!!(level.time&4)], x-10, y,
+			screen->DrawTexture(invgems[0], x-10, y,
 				DTA_KeepRatio, true,
-				DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_Alpha, 0x6666, TAG_DONE);
+				DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_Alpha, 0.4, TAG_DONE);
 		}
 
 		for(i=0;i<numitems && rover;rover=rover->NextInv())
 		{
 			if (rover->Amount>0)
 			{
-				FTextureID AltIcon = GetHUDIcon(rover->GetClass());
+				FTextureID AltIcon = rover->AltHUDIcon;
 
 				if (AltIcon.Exists() && (rover->Icon.isValid() || AltIcon.isValid()) )
 				{
-					int trans = rover==CPlayer->mo->InvSel ? 0x10000 : 0x6666;
+					double trans = rover==CPlayer->mo->InvSel ? 1.0 : 0.4;
 
 					DrawImageToBox(TexMan[AltIcon.isValid()? AltIcon : rover->Icon], x, y, 19, 25, trans);
 					if (rover->Amount>1)
@@ -843,9 +851,9 @@ static void DrawInventory(player_t * CPlayer, int x,int y)
 		}
 		if(rover)
 		{
-			screen->DrawTexture(invgems[2 + !!(level.time&4)], x-10, y,
+			screen->DrawTexture(invgems[1], x-10, y,
 				DTA_KeepRatio, true,
-				DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_Alpha, 0x6666, TAG_DONE);
+				DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_Alpha, 0.4, TAG_DONE);
 		}
 	}
 }
@@ -888,43 +896,31 @@ static void DrawCoordinates(player_t * CPlayer)
 		pos = DVector3(apos, z);
 	}
 
-	int vwidth, vheight;
-	if (active_con_scaletext() == 0)
-	{
-		vwidth = SCREENWIDTH / 2;
-		vheight = SCREENHEIGHT / 2;
-	}
-	else
-	{
-		vwidth = SCREENWIDTH / active_con_scaletext();
-		vheight = SCREENHEIGHT / active_con_scaletext();
-	}
-
-	int xpos = vwidth - SmallFont->StringWidth("X: -00000")-6;
+	int xpos = hudwidth - SmallFont->StringWidth("X: -00000")-6;
 	int ypos = 18;
 
-	screen->DrawText(SmallFont, hudcolor_titl, vwidth - 6 - SmallFont->StringWidth(level.MapName), ypos, level.MapName,
+	screen->DrawText(SmallFont, hudcolor_titl, hudwidth - 6 - SmallFont->StringWidth(level.MapName), ypos, level.MapName,
 		DTA_KeepRatio, true,
-		DTA_VirtualWidth, vwidth, DTA_VirtualHeight, vheight, TAG_DONE);
+		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, TAG_DONE);
 
-	screen->DrawText(SmallFont, hudcolor_titl, vwidth - 6 - SmallFont->StringWidth(level.LevelName), ypos + h, level.LevelName,
+	screen->DrawText(SmallFont, hudcolor_titl, hudwidth - 6 - SmallFont->StringWidth(level.LevelName), ypos + h, level.LevelName,
 		DTA_KeepRatio, true,
-		DTA_VirtualWidth, vwidth, DTA_VirtualHeight, vheight, TAG_DONE);
+		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, TAG_DONE);
 
 	mysnprintf(coordstr, countof(coordstr), "X: %d", int(pos.X));
 	screen->DrawText(SmallFont, hudcolor_xyco, xpos, ypos+2*h, coordstr,
 		DTA_KeepRatio, true,
-		DTA_VirtualWidth, vwidth, DTA_VirtualHeight, vheight, TAG_DONE);
+		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, TAG_DONE);
 
 	mysnprintf(coordstr, countof(coordstr), "Y: %d", int(pos.Y));
 	screen->DrawText(SmallFont, hudcolor_xyco, xpos, ypos+3*h, coordstr,
 		DTA_KeepRatio, true,
-		DTA_VirtualWidth, vwidth, DTA_VirtualHeight, vheight, TAG_DONE);
+		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, TAG_DONE);
 
 	mysnprintf(coordstr, countof(coordstr), "Z: %d", int(pos.Z));
 	screen->DrawText(SmallFont, hudcolor_xyco, xpos, ypos+4*h, coordstr,
 		DTA_KeepRatio, true,
-		DTA_VirtualWidth, vwidth, DTA_VirtualHeight, vheight, TAG_DONE);
+		DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, TAG_DONE);
 }
 
 //---------------------------------------------------------------------------
@@ -1071,6 +1067,60 @@ bool ST_IsLatencyVisible()
 		&& (hud_showlag <= 2);
 }
 
+//---------------------------------------------------------------------------
+//
+// draw the overlay
+//
+//---------------------------------------------------------------------------
+
+static void DrawPowerups(player_t *CPlayer)
+{
+	// Each icon gets a 32x32 block to draw itself in.
+	int x, y;
+	AInventory *item;
+	const int yshift = SmallFont->GetHeight();
+	const int POWERUPICONSIZE = 32;
+
+	x = hudwidth -20;
+	y = POWERUPICONSIZE * 5/4
+		+ (ST_IsTimeVisible() ? yshift : 0)
+		+ (ST_IsLatencyVisible() ? yshift : 0);
+
+	for (item = CPlayer->mo->Inventory; item != NULL; item = item->Inventory)
+	{
+		if (item->IsKindOf(NAME_Powerup))
+		{
+			IFVIRTUALPTRNAME(item, NAME_Powerup, GetPowerupIcon)
+			{
+				VMValue param[] = { item };
+				int rv;
+				VMReturn ret(&rv);
+				VMCall(func, param, 1, &ret, 1);
+				auto tex = FSetTextureID(rv);
+				if (!tex.isValid()) continue;
+				auto texture = TexMan(tex);
+
+				IFVIRTUALPTRNAME(item, NAME_Powerup, IsBlinking)
+				{
+					// Reuse the parameters from GetPowerupIcon
+					VMCall(func, param, 1, &ret, 1);
+					if (!rv)
+					{
+
+						screen->DrawTexture(texture, x, y, DTA_KeepRatio, true, DTA_VirtualWidth, hudwidth, DTA_VirtualHeight, hudheight, DTA_CenterBottomOffset, true, TAG_DONE);
+
+						x -= POWERUPICONSIZE;
+						if (x < -hudwidth / 2)
+						{
+							x = -20;
+							y += POWERUPICONSIZE * 3 / 2;
+						}
+					}
+				}
+			}
+		}
+	}
+}
 
 //---------------------------------------------------------------------------
 //
@@ -1083,49 +1133,9 @@ void DrawHUD()
 	player_t * CPlayer = StatusBar->CPlayer;
 
 	players[consoleplayer].inventorytics = 0;
-	if (hud_althudscale && SCREENWIDTH>640) 
-	{
-		hudwidth=SCREENWIDTH/2;
-		if (hud_althudscale == 4)
-		{
-			if (uiscale == 0)
-			{
-				hudwidth = CleanWidth;
-				hudheight = CleanHeight;
-			}
-			else
-			{
-				hudwidth = SCREENWIDTH / uiscale;
-				hudheight = SCREENHEIGHT / uiscale;
-			}
-		}
-		else if (hud_althudscale == 3)
-		{
-			hudwidth = SCREENWIDTH / 4;
-			hudheight = SCREENHEIGHT / 4;
-		}
-		else if (hud_althudscale == 2)
-		{
-			// Optionally just double the pixels to reduce scaling artifacts.
-			hudheight=SCREENHEIGHT/2;
-		}
-		else 
-		{
-			if (AspectTallerThanWide(WidescreenRatio))
-			{
-				hudheight = hudwidth * 30 / AspectMultiplier(WidescreenRatio);	// BaseRatioSizes is inverted for this mode
-			}
-			else
-			{
-				hudheight = hudwidth * 30 / (48*48/AspectMultiplier(WidescreenRatio));
-			}
-		}
-	}
-	else
-	{
-		hudwidth=SCREENWIDTH;
-		hudheight=SCREENHEIGHT;
-	}
+	int scale = GetUIScale(hud_althudscale);
+	hudwidth = SCREENWIDTH / scale;
+	hudheight = hud_aspectscale ? int(SCREENHEIGHT / (scale*1.2)) : SCREENHEIGHT / scale;
 
 	if (!automapactive)
 	{
@@ -1146,14 +1156,11 @@ void DrawHUD()
 		i=DrawAmmo(CPlayer, hudwidth-5, i);
 		if (hud_showweapons) DrawWeapons(CPlayer, hudwidth - 5, i);
 		DrawInventory(CPlayer, 144, hudheight-28);
-		if (CPlayer->camera && CPlayer->camera->player)
-		{
-			StatusBar->DrawCrosshair();
-		}
 		if (idmypos) DrawCoordinates(CPlayer);
 
 		DrawTime();
 		DrawLatency();
+		DrawPowerups(CPlayer);
 	}
 	else
 	{
@@ -1231,9 +1238,7 @@ void HUD_InitHud()
 	if (IndexFont == NULL) IndexFont = ConFont;	// Emergency fallback
 
 	invgems[0] = TexMan.FindTexture("INVGEML1");
-	invgems[1] = TexMan.FindTexture("INVGEML2");
-	invgems[2] = TexMan.FindTexture("INVGEMR1");
-	invgems[3] = TexMan.FindTexture("INVGEMR2");
+	invgems[1] = TexMan.FindTexture("INVGEMR1");
 
 	fragpic = TexMan.FindTexture("HU_FRAGS");	// Sadly, I don't have anything usable for this. :(
 
@@ -1285,7 +1290,7 @@ void HUD_InitHud()
 				}
 				else tex.SetInvalid();
 
-				if (ti) SetHUDIcon(static_cast<PClassInventory*>(ti), tex);
+				if (ti) ((AInventory*)GetDefaultByType(ti))->AltHUDIcon = tex;
 			}
 		}
 	}

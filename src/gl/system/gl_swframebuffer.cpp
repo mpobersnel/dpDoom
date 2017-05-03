@@ -39,7 +39,6 @@
 */
 
 #include "gl/system/gl_system.h"
-#include "files.h"
 #include "m_swap.h"
 #include "v_video.h"
 #include "doomstat.h"
@@ -53,7 +52,6 @@
 #include "templates.h"
 #include "i_system.h"
 #include "i_video.h"
-#include "i_input.h"
 #include "v_pfx.h"
 #include "stats.h"
 #include "doomerrors.h"
@@ -79,7 +77,6 @@ CVAR(Bool, vid_hwaalines, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 CUSTOM_CVAR(Bool, vid_hw2d, true, CVAR_NOINITCALL)
 {
 	V_SetBorderNeedRefresh();
-	ST_SetNeedRefresh();
 }
 #else
 EXTERN_CVAR(Bool, vid_hwaalines)
@@ -115,8 +112,6 @@ DFrameBuffer *CreateGLSWFrameBuffer(int width, int height, bool bgra, bool fulls
 	return new OpenGLSWFrameBuffer(NULL, width, height, 32, 60, fullscreen, bgra);
 }
 #endif
-
-IMPLEMENT_CLASS(OpenGLSWFrameBuffer, false, false)
 
 const char *const OpenGLSWFrameBuffer::ShaderDefines[OpenGLSWFrameBuffer::NUM_SHADERS] =
 {
@@ -197,9 +192,26 @@ OpenGLSWFrameBuffer::OpenGLSWFrameBuffer(void *hMonitor, int width, int height, 
 	static bool first = true;
 	if (first)
 	{
-		ogl_LoadFunctions();
+		if (ogl_LoadFunctions() == ogl_LOAD_FAILED)
+		{
+			Printf("OpenGL load failed. No OpenGL acceleration will be used.\n");
+			return;
+		}
+	}
+	
+	const char *glversion = (const char*)glGetString(GL_VERSION);
+	bool isGLES = (glversion && strlen(glversion) > 10 && memcmp(glversion, "OpenGL ES ", 10) == 0);
+	if (!isGLES && ogl_IsVersionGEQ(3, 0) == 0)
+	{
+		Printf("OpenGL acceleration requires at least OpenGL 3.0. No Acceleration will be used.\n");
+		return;
 	}
 	gl_LoadExtensions();
+	if (gl.legacyMode)
+	{
+		Printf("Legacy OpenGL path is active. No Acceleration will be used.\n");
+		return;
+	}
 	InitializeState();
 	if (first)
 	{
@@ -302,7 +314,7 @@ OpenGLSWFrameBuffer::HWPixelShader::~HWPixelShader()
 
 bool OpenGLSWFrameBuffer::CreateFrameBuffer(const FString &name, int width, int height, HWFrameBuffer **outFramebuffer)
 {
-	auto fb = std::make_unique<HWFrameBuffer>();
+	std::unique_ptr<HWFrameBuffer> fb(new HWFrameBuffer());
 	
 	GLint format = GL_RGBA16F;
 	if (gl.es) format = GL_RGB;
@@ -343,11 +355,14 @@ bool OpenGLSWFrameBuffer::CreateFrameBuffer(const FString &name, int width, int 
 
 bool OpenGLSWFrameBuffer::CreatePixelShader(FString vertexsrc, FString fragmentsrc, const FString &defines, HWPixelShader **outShader)
 {
-	auto shader = std::make_unique<HWPixelShader>();
+	std::unique_ptr<HWPixelShader> shader(new HWPixelShader());
 
 	shader->Program = glCreateProgram();
+	if (shader->Program == 0) { Printf("glCreateProgram failed. Disabling OpenGL hardware acceleration.\n"); return false; }
 	shader->VertexShader = glCreateShader(GL_VERTEX_SHADER);
+	if (shader->VertexShader == 0) { Printf("glCreateShader(GL_VERTEX_SHADER) failed. Disabling OpenGL hardware acceleration.\n"); return false; }
 	shader->FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	if (shader->FragmentShader == 0) { Printf("glCreateShader(GL_FRAGMENT_SHADER) failed. Disabling OpenGL hardware acceleration.\n"); return false; }
 	
 	int maxGlslVersion = 330;
 	int shaderVersion = MIN((int)round(gl.glslversion * 10) * 10, maxGlslVersion);
@@ -426,7 +441,7 @@ bool OpenGLSWFrameBuffer::CreatePixelShader(FString vertexsrc, FString fragments
 
 bool OpenGLSWFrameBuffer::CreateVertexBuffer(int size, HWVertexBuffer **outVertexBuffer)
 {
-	auto obj = std::make_unique<HWVertexBuffer>();
+	std::unique_ptr<HWVertexBuffer> obj(new HWVertexBuffer());
 
 	obj->Size = size;
 
@@ -457,7 +472,7 @@ bool OpenGLSWFrameBuffer::CreateVertexBuffer(int size, HWVertexBuffer **outVerte
 
 bool OpenGLSWFrameBuffer::CreateIndexBuffer(int size, HWIndexBuffer **outIndexBuffer)
 {
-	auto obj = std::make_unique<HWIndexBuffer>();
+	std::unique_ptr<HWIndexBuffer> obj(new HWIndexBuffer());
 
 	obj->Size = size;
 
@@ -477,7 +492,7 @@ bool OpenGLSWFrameBuffer::CreateIndexBuffer(int size, HWIndexBuffer **outIndexBu
 
 bool OpenGLSWFrameBuffer::CreateTexture(const FString &name, int width, int height, int levels, int format, HWTexture **outTexture)
 {
-	auto obj = std::make_unique<HWTexture>();
+	std::unique_ptr<HWTexture> obj(new HWTexture());
 
 	obj->Format = format;
 
@@ -515,7 +530,7 @@ bool OpenGLSWFrameBuffer::CreateTexture(const FString &name, int width, int heig
 
 OpenGLSWFrameBuffer::HWTexture *OpenGLSWFrameBuffer::CopyCurrentScreen()
 {
-	auto obj = std::make_unique<HWTexture>();
+	std::unique_ptr<HWTexture> obj(new HWTexture());
 	obj->Format = GL_RGBA16F;
 
 	GLint oldBinding = 0;
@@ -594,7 +609,7 @@ void OpenGLSWFrameBuffer::DrawTriangleFans(int count, const FBVERTEX *vertices)
 
 	if (!StreamVertexBuffer)
 	{
-		StreamVertexBuffer = std::make_unique<HWVertexBuffer>();
+		StreamVertexBuffer.reset(new HWVertexBuffer());
 		glGenVertexArrays(1, (GLuint*)&StreamVertexBuffer->VertexArray);
 		glGenBuffers(1, (GLuint*)&StreamVertexBuffer->Buffer);
 		glBindVertexArray(StreamVertexBuffer->VertexArray);
@@ -631,7 +646,7 @@ void OpenGLSWFrameBuffer::DrawTriangleFans(int count, const BURNVERTEX *vertices
 
 	if (!StreamVertexBufferBurn)
 	{
-		StreamVertexBufferBurn = std::make_unique<HWVertexBuffer>();
+		StreamVertexBufferBurn.reset(new HWVertexBuffer());
 		glGenVertexArrays(1, (GLuint*)&StreamVertexBufferBurn->VertexArray);
 		glGenBuffers(1, (GLuint*)&StreamVertexBufferBurn->Buffer);
 		glBindVertexArray(StreamVertexBufferBurn->VertexArray);
@@ -662,7 +677,7 @@ void OpenGLSWFrameBuffer::DrawPoints(int count, const FBVERTEX *vertices)
 
 	if (!StreamVertexBuffer)
 	{
-		StreamVertexBuffer = std::make_unique<HWVertexBuffer>();
+		StreamVertexBuffer.reset(new HWVertexBuffer());
 		glGenVertexArrays(1, (GLuint*)&StreamVertexBuffer->VertexArray);
 		glGenBuffers(1, (GLuint*)&StreamVertexBuffer->Buffer);
 		glBindVertexArray(StreamVertexBuffer->VertexArray);
@@ -1076,7 +1091,7 @@ void OpenGLSWFrameBuffer::CalcFullscreenCoords(FBVERTEX verts[4], bool viewarea_
 
 int OpenGLSWFrameBuffer::GetPageCount()
 {
-	return 1;
+	return 2;
 }
 
 //==========================================================================
@@ -1098,7 +1113,7 @@ bool OpenGLSWFrameBuffer::IsValid()
 
 bool OpenGLSWFrameBuffer::Lock(bool buffered)
 {
-	if (LockCount++ > 0)
+	if (m_Lock++ > 0)
 	{
 		return false;
 	}
@@ -1133,16 +1148,16 @@ bool OpenGLSWFrameBuffer::Lock(bool buffered)
 
 void OpenGLSWFrameBuffer::Unlock()
 {
-	if (LockCount == 0)
+	if (m_Lock == 0)
 	{
 		return;
 	}
 
-	if (UpdatePending && LockCount == 1)
+	if (UpdatePending && m_Lock == 1)
 	{
 		Update();
 	}
-	else if (--LockCount == 0)
+	else if (--m_Lock == 0)
 	{
 		Buffer = nullptr;
 	}
@@ -1174,13 +1189,13 @@ void OpenGLSWFrameBuffer::Update()
 		return;
 	}
 
-	if (LockCount != 1)
+	if (m_Lock != 1)
 	{
 		I_FatalError("Framebuffer must have exactly 1 lock to be updated");
-		if (LockCount > 0)
+		if (m_Lock > 0)
 		{
 			UpdatePending = true;
-			--LockCount;
+			--m_Lock;
 		}
 		return;
 	}
@@ -1223,7 +1238,7 @@ void OpenGLSWFrameBuffer::Update()
 	BlitCycles.Clock();
 #endif
 
-	LockCount = 0;
+	m_Lock = 0;
 	Draw3DPart(In2D <= 1);
 	if (In2D == 0)
 	{
@@ -1279,7 +1294,7 @@ void OpenGLSWFrameBuffer::Flip()
 
 bool OpenGLSWFrameBuffer::PaintToWindow()
 {
-	if (LockCount != 0)
+	if (m_Lock != 0)
 	{
 		return false;
 	}
@@ -1437,7 +1452,7 @@ void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 		uint32_t color0, color1;
 		if (Accel2D)
 		{
-			auto &map = swrenderer::CameraLight::Instance()->realfixedcolormap;
+			auto map = swrenderer::CameraLight::Instance()->ShaderColormap();
 			if (map == nullptr)
 			{
 				color0 = 0;
@@ -1698,7 +1713,7 @@ void OpenGLSWFrameBuffer::GetScreenshotBuffer(const uint8_t *&buffer, int &pitch
 
 void OpenGLSWFrameBuffer::ReleaseScreenshotBuffer()
 {
-	if (LockCount > 0)
+	if (m_Lock > 0)
 	{
 		Super::ReleaseScreenshotBuffer();
 	}
@@ -2446,6 +2461,7 @@ bool OpenGLSWFrameBuffer::OpenGLPal::Update()
 
 bool OpenGLSWFrameBuffer::Begin2D(bool copy3d)
 {
+	Super::Begin2D(copy3d);
 	if (!Accel2D)
 	{
 		return false;
@@ -2524,11 +2540,11 @@ FNativePalette *OpenGLSWFrameBuffer::CreatePalette(FRemapTable *remap)
 //
 //==========================================================================
 
-void OpenGLSWFrameBuffer::Clear(int left, int top, int right, int bottom, int palcolor, uint32 color)
+void OpenGLSWFrameBuffer::DoClear(int left, int top, int right, int bottom, int palcolor, uint32_t color)
 {
 	if (In2D < 2)
 	{
-		Super::Clear(left, top, right, bottom, palcolor, color);
+		Super::DoClear(left, top, right, bottom, palcolor, color);
 		return;
 	}
 	if (!InScene)
@@ -2553,7 +2569,7 @@ void OpenGLSWFrameBuffer::Clear(int left, int top, int right, int bottom, int pa
 //
 //==========================================================================
 
-void OpenGLSWFrameBuffer::Dim(PalEntry color, float amount, int x1, int y1, int w, int h)
+void OpenGLSWFrameBuffer::DoDim(PalEntry color, float amount, int x1, int y1, int w, int h)
 {
 	if (amount <= 0)
 	{
@@ -2623,7 +2639,7 @@ void OpenGLSWFrameBuffer::EndLineBatch()
 //
 //==========================================================================
 
-void OpenGLSWFrameBuffer::DrawLine(int x0, int y0, int x1, int y1, int palcolor, uint32 color)
+void OpenGLSWFrameBuffer::DrawLine(int x0, int y0, int x1, int y1, int palcolor, uint32_t color)
 {
 	if (In2D < 2)
 	{
@@ -2671,7 +2687,7 @@ void OpenGLSWFrameBuffer::DrawLine(int x0, int y0, int x1, int y1, int palcolor,
 //
 //==========================================================================
 
-void OpenGLSWFrameBuffer::DrawPixel(int x, int y, int palcolor, uint32 color)
+void OpenGLSWFrameBuffer::DrawPixel(int x, int y, int palcolor, uint32_t color)
 {
 	if (In2D < 2)
 	{
@@ -2807,6 +2823,12 @@ void OpenGLSWFrameBuffer::DrawTextureParms(FTexture *img, DrawParms &parms)
 	quad->NumVerts = 4;
 
 	vert = &VertexData[VertexPos];
+
+	{
+		PalEntry color = color1;
+		color = PalEntry((color.a * parms.color.a) / 255, (color.r * parms.color.r) / 255, (color.g * parms.color.g) / 255, (color.b * parms.color.b) / 255);
+		color1 = color; 
+	}
 
 	// Fill the vertex buffer.
 	vert[0].x = float(x0);
@@ -2981,10 +3003,10 @@ void OpenGLSWFrameBuffer::FlatFill(int left, int top, int right, int bottom, FTe
 
 void OpenGLSWFrameBuffer::FillSimplePoly(FTexture *texture, FVector2 *points, int npoints,
 	double originx, double originy, double scalex, double scaley,
-	DAngle rotation, FDynamicColormap *colormap, int lightlevel, int bottomclip)
+	DAngle rotation, const FColormap &colormap, PalEntry flatcolor, int lightlevel, int bottomclip)
 {
 	// Use an equation similar to player sprites to determine shade
-	double fadelevel = clamp((LIGHT2SHADE(lightlevel) / 65536. - 12) / NUMCOLORMAPS, 0.0, 1.0);
+	double fadelevel = clamp((swrenderer::LightVisibility::LightLevelToShade(lightlevel, true) / 65536. - 12) / NUMCOLORMAPS, 0.0, 1.0);
 
 	BufferedTris *quad;
 	FBVERTEX *verts;
@@ -3002,7 +3024,7 @@ void OpenGLSWFrameBuffer::FillSimplePoly(FTexture *texture, FVector2 *points, in
 	}
 	if (In2D < 2)
 	{
-		Super::FillSimplePoly(texture, points, npoints, originx, originy, scalex, scaley, rotation, colormap, lightlevel, bottomclip);
+		Super::FillSimplePoly(texture, points, npoints, originx, originy, scalex, scaley, rotation, colormap, lightlevel, flatcolor, bottomclip);
 		return;
 	}
 	if (!InScene)
@@ -3030,20 +3052,17 @@ void OpenGLSWFrameBuffer::FillSimplePoly(FTexture *texture, FVector2 *points, in
 	{
 		quad->Flags = BQF_WrapUV | BQF_GamePalette | BQF_DisableAlphaTest;
 		quad->ShaderNum = BQS_PalTex;
-		if (colormap != nullptr)
+		if (colormap.Desaturation != 0)
 		{
-			if (colormap->Desaturate != 0)
-			{
-				quad->Flags |= BQF_Desaturated;
-			}
-			quad->ShaderNum = BQS_InGameColormap;
-			quad->Desat = colormap->Desaturate;
-			color0 = ColorARGB(255, colormap->Color.r, colormap->Color.g, colormap->Color.b);
-			color1 = ColorARGB(uint32_t((1 - fadelevel) * 255),
-				uint32_t(colormap->Fade.r * fadelevel),
-				uint32_t(colormap->Fade.g * fadelevel),
-				uint32_t(colormap->Fade.b * fadelevel));
+			quad->Flags |= BQF_Desaturated;
 		}
+		quad->ShaderNum = BQS_InGameColormap;
+		quad->Desat = colormap.Desaturation;
+		color0 = ColorARGB(255, colormap.LightColor.r, colormap.LightColor.g, colormap.LightColor.b);
+		color1 = ColorARGB(uint32_t((1 - fadelevel) * 255),
+			uint32_t(colormap.FadeColor.r * fadelevel),
+			uint32_t(colormap.FadeColor.g * fadelevel),
+			uint32_t(colormap.FadeColor.b * fadelevel));
 	}
 	else
 	{

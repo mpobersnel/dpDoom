@@ -41,7 +41,6 @@
 #include <ddraw.h>
 #include <stdio.h>
 
-#define USE_WINDOWS_DWORD
 #include "doomtype.h"
 
 #include "c_dispatch.h"
@@ -54,13 +53,12 @@
 #include "doomerrors.h"
 
 #include "win32iface.h"
+#include "win32swiface.h"
 #include "v_palette.h"
 
 // MACROS ------------------------------------------------------------------
 
 // TYPES -------------------------------------------------------------------
-
-IMPLEMENT_CLASS(DDrawFB, false, false)
 
 // EXTERNAL FUNCTION PROTOTYPES --------------------------------------------
 
@@ -162,7 +160,7 @@ DDrawFB::DDrawFB (int width, int height, bool fullscreen)
 		PalEntries[i].peRed = GPalette.BaseColors[i].r;
 		PalEntries[i].peGreen = GPalette.BaseColors[i].g;
 		PalEntries[i].peBlue = GPalette.BaseColors[i].b;
-		GammaTable[0][i] = GammaTable[1][i] = GammaTable[2][i] = (BYTE)i;
+		GammaTable[0][i] = GammaTable[1][i] = GammaTable[2][i] = (uint8_t)i;
 	}
 	memcpy (SourcePalette, GPalette.BaseColors, sizeof(PalEntry)*256);
 
@@ -780,7 +778,7 @@ void DDrawFB::RebuildColorTable ()
 		}
 		for (i = 0; i < 256; i++)
 		{
-			GPfxPal.Pal8[i] = (BYTE)BestColor ((uint32 *)syspal, PalEntries[i].peRed,
+			GPfxPal.Pal8[i] = (uint8_t)BestColor ((uint32_t *)syspal, PalEntries[i].peRed,
 				PalEntries[i].peGreen, PalEntries[i].peBlue);
 		}
 	}
@@ -995,7 +993,7 @@ DDrawFB::LockSurfRes DDrawFB::LockSurf (LPRECT lockrect, LPDIRECTDRAWSURFACE toL
 		LOG1 ("Final result after restoration attempts: %08lx\n", hr);
 		return NoGood;
 	}
-	Buffer = (BYTE *)desc.lpSurface;
+	Buffer = (uint8_t *)desc.lpSurface;
 	Pitch = desc.lPitch;
 	BufferingNow = false;
 	return wasLost ? GoodWasLost : Good;
@@ -1131,7 +1129,7 @@ void DDrawFB::Update ()
 		{
 			if (LockSurf (NULL, NULL) != NoGood)
 			{
-				BYTE *writept = Buffer + (TrueHeight - Height)/2*Pitch;
+				uint8_t *writept = Buffer + (TrueHeight - Height)/2*Pitch;
 				LOG3 ("Copy %dx%d (%d)\n", Width, Height, BufferPitch);
 				if (UsePfx)
 				{
@@ -1196,10 +1194,7 @@ void DDrawFB::Update ()
 	LockCount = 0;
 	UpdatePending = false;
 
-	if (FPSLimitEvent != NULL)
-	{
-		WaitForSingleObject(FPSLimitEvent, 1000);
-	}
+	I_FPSLimit();
 	if (!Windowed && AppActive && !SessionState /*&& !UseBlitter && !MustBuffer*/)
 	{
 		HRESULT hr = PrimarySurf->Flip (NULL, FlipFlags);

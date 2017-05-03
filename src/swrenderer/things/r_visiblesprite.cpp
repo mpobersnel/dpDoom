@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,21 +41,21 @@
 #include "swrenderer/plane/r_visibleplane.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_light.h"
-#include "swrenderer/scene/r_viewport.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
 
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor);
 
 namespace swrenderer
 {
-	void VisibleSprite::Render()
+	void VisibleSprite::Render(RenderThread *thread)
 	{
-		static short clipbot[MAXWIDTH];
-		static short cliptop[MAXWIDTH];
+		short *clipbot = thread->clipbot;
+		short *cliptop = thread->cliptop;
 
 		VisibleSprite *spr = this;
 
-		DrawSegment *ds;
 		int i;
 		int x1, x2;
 		int r1, r2;
@@ -57,7 +65,7 @@ namespace swrenderer
 		int colormapnum = spr->Light.ColormapNum;
 		F3DFloor *rover;
 
-		Clip3DFloors *clip3d = Clip3DFloors::Instance();
+		Clip3DFloors *clip3d = thread->Clip3D.get();
 
 		// [RH] Check for particles
 		if (spr->IsParticle())
@@ -66,7 +74,7 @@ namespace swrenderer
 			if ((clip3d->fake3D & FAKE3D_CLIPBOTTOM) && spr->gpos.Z <= clip3d->sclipBottom) return;
 			if ((clip3d->fake3D & FAKE3D_CLIPTOP) && spr->gpos.Z >= clip3d->sclipTop) return;
 
-			spr->Render(nullptr, nullptr, 0, 0);
+			spr->Render(thread, nullptr, nullptr, 0, 0);
 			return;
 		}
 
@@ -75,6 +83,10 @@ namespace swrenderer
 
 		// [RH] Quickly reject sprites with bad x ranges.
 		if (x1 >= x2)
+			return;
+
+		// Reject sprites outside the slice rendered by the thread
+		if (x2 < thread->X1 || x1 > thread->X2)
 			return;
 
 		// [RH] Sprites split behind a one-sided line can also be discarded.
@@ -87,11 +99,11 @@ namespace swrenderer
 
 		// kg3D - correct colors now
 		CameraLight *cameraLight = CameraLight::Instance();
-		if (!cameraLight->fixedcolormap && cameraLight->fixedlightlev < 0 && spr->sector->e && spr->sector->e->XFloor.lightlist.Size())
+		if (!cameraLight->FixedColormap() && cameraLight->FixedLightLevel() < 0 && spr->sector->e && spr->sector->e->XFloor.lightlist.Size())
 		{
 			if (!(clip3d->fake3D & FAKE3D_CLIPTOP))
 			{
-				clip3d->sclipTop = spr->sector->ceilingplane.ZatPoint(ViewPos);
+				clip3d->sclipTop = spr->sector->ceilingplane.ZatPoint(thread->Viewport->viewpoint.Pos);
 			}
 			sector_t *sec = nullptr;
 			FDynamicColormap *mybasecolormap = nullptr;
@@ -109,11 +121,11 @@ namespace swrenderer
 						sec = rover->model;
 						if (rover->flags & FF_FADEWALLS)
 						{
-							mybasecolormap = sec->ColorMap;
+							mybasecolormap = GetColorTable(sec->Colormap, spr->sector->SpecialColors[sector_t::sprites], true);
 						}
 						else
 						{
-							mybasecolormap = spr->sector->e->XFloor.lightlist[i].extra_colormap;
+							mybasecolormap = GetColorTable(spr->sector->e->XFloor.lightlist[i].extra_colormap, spr->sector->SpecialColors[sector_t::sprites], true);
 						}
 					}
 					break;
@@ -134,9 +146,9 @@ namespace swrenderer
 				bool isFullBright = !foggy && (renderflags & RF_FULLBRIGHT);
 				bool fadeToBlack = spr->RenderStyle == LegacyRenderStyles[STYLE_Add] && mybasecolormap->Fade != 0;
 
-				int spriteshade = LIGHT2SHADE(sec->lightlevel + R_ActualExtraLight(spr->foggy));
+				int spriteshade = LightVisibility::LightLevelToShade(sec->lightlevel + LightVisibility::ActualExtraLight(spr->foggy, thread->Viewport.get()), foggy);
 
-				Light.SetColormap(LightVisibility::Instance()->SpriteGlobVis() / MAX(MINZ, (double)spr->depth), spriteshade, mybasecolormap, isFullBright, invertcolormap, fadeToBlack);
+				Light.SetColormap(thread->Light->SpriteGlobVis(foggy) / MAX(MINZ, (double)spr->depth), spriteshade, mybasecolormap, isFullBright, invertcolormap, fadeToBlack);
 			}
 		}
 
@@ -149,9 +161,11 @@ namespace swrenderer
 		// killough 3/27/98:
 		// Clip the sprite against deep water and/or fake ceilings.
 		// [RH] rewrote this to be based on which part of the sector is really visible
+		
+		auto viewport = thread->Viewport.get();
 
-		double scale = InvZtoScale * spr->idepth;
-		double hzb = DBL_MIN, hzt = DBL_MAX;
+		double scale = viewport->InvZtoScale * spr->idepth;
+		double hzb = -DBL_MAX, hzt = DBL_MAX;
 
 		if (spr->IsVoxel() && spr->floorclip != 0)
 		{
@@ -163,7 +177,7 @@ namespace swrenderer
 			if (spr->FakeFlatStat != WaterFakeSide::AboveCeiling)
 			{
 				double hz = spr->heightsec->floorplane.ZatPoint(spr->gpos);
-				int h = xs_RoundToInt(CenterY - (hz - ViewPos.Z) * scale);
+				int h = xs_RoundToInt(viewport->CenterY - (hz - viewport->viewpoint.Pos.Z) * scale);
 
 				if (spr->FakeFlatStat == WaterFakeSide::BelowFloor)
 				{ // seen below floor: clip top
@@ -185,7 +199,7 @@ namespace swrenderer
 			if (spr->FakeFlatStat != WaterFakeSide::BelowFloor && !(spr->heightsec->MoreFlags & SECF_FAKEFLOORONLY))
 			{
 				double hz = spr->heightsec->ceilingplane.ZatPoint(spr->gpos);
-				int h = xs_RoundToInt(CenterY - (hz - ViewPos.Z) * scale);
+				int h = xs_RoundToInt(viewport->CenterY - (hz - viewport->viewpoint.Pos.Z) * scale);
 
 				if (spr->FakeFlatStat == WaterFakeSide::AboveCeiling)
 				{ // seen above ceiling: clip bottom
@@ -209,7 +223,7 @@ namespace swrenderer
 		else if (!spr->IsVoxel() && spr->floorclip)
 		{ // [RH] Move floorclip stuff from R_DrawVisSprite to here
 		  //int clip = ((FLOAT2FIXED(CenterY) - FixedMul (spr->texturemid - (spr->pic->GetHeight() << FRACBITS) + spr->floorclip, spr->yscale)) >> FRACBITS);
-			int clip = xs_RoundToInt(CenterY - (spr->texturemid - spr->pic->GetHeight() + spr->floorclip) * spr->yscale);
+			int clip = xs_RoundToInt(viewport->CenterY - (spr->texturemid - spr->pic->GetHeight() + spr->floorclip) * spr->yscale);
 			if (clip < botclip)
 			{
 				botclip = MAX<short>(0, clip);
@@ -224,12 +238,12 @@ namespace swrenderer
 				if (spr->fakefloor)
 				{
 					double floorz = spr->fakefloor->top.plane->Zat0();
-					if (ViewPos.Z > floorz && floorz == clip3d->sclipBottom)
+					if (viewport->viewpoint.Pos.Z > floorz && floorz == clip3d->sclipBottom)
 					{
 						hz = spr->fakefloor->bottom.plane->Zat0();
 					}
 				}
-				int h = xs_RoundToInt(CenterY - (hz - ViewPos.Z) * scale);
+				int h = xs_RoundToInt(viewport->CenterY - (hz - viewport->viewpoint.Pos.Z) * scale);
 				if (h < botclip)
 				{
 					botclip = MAX<short>(0, h);
@@ -245,12 +259,12 @@ namespace swrenderer
 				if (spr->fakeceiling != nullptr)
 				{
 					double ceilingZ = spr->fakeceiling->bottom.plane->Zat0();
-					if (ViewPos.Z < ceilingZ && ceilingZ == clip3d->sclipTop)
+					if (viewport->viewpoint.Pos.Z < ceilingZ && ceilingZ == clip3d->sclipTop)
 					{
 						hz = spr->fakeceiling->top.plane->Zat0();
 					}
 				}
-				int h = xs_RoundToInt(CenterY - (hz - ViewPos.Z) * scale);
+				int h = xs_RoundToInt(viewport->CenterY - (hz - viewport->viewpoint.Pos.Z) * scale);
 				if (h > topclip)
 				{
 					topclip = short(MIN(h, viewheight));
@@ -278,75 +292,21 @@ namespace swrenderer
 		// Scan drawsegs from end to start for obscuring segs.
 		// The first drawseg that is closer than the sprite is the clip seg.
 
-		// Modified by Lee Killough:
-		// (pointer check was originally nonportable
-		// and buggy, by going past LEFT end of array):
-
-		//		for (ds=ds_p-1 ; ds >= drawsegs ; ds--)    old buggy code
-
-		DrawSegmentList *segmentlist = DrawSegmentList::Instance();
-		for (ds = segmentlist->ds_p; ds-- > segmentlist->firstdrawseg; )  // new -- killough
+		DrawSegmentList *segmentlist = thread->DrawSegments.get();
+		for (unsigned int groupIndex = 0; groupIndex < segmentlist->SegmentGroups.Size(); groupIndex++)
 		{
-			// [ZZ] portal handling here
-			//if (ds->CurrentPortalUniq != spr->CurrentPortalUniq)
-			//	continue;
-			// [ZZ] WARNING: uncommenting the two above lines, totally breaks sprite clipping
-
-			// kg3D - no clipping on fake segs
-			if (ds->fake) continue;
-			// determine if the drawseg obscures the sprite
-			if (ds->x1 >= x2 || ds->x2 <= x1 ||
-				(!(ds->silhouette & SIL_BOTH) && ds->maskedtexturecol == nullptr &&
-					!ds->bFogBoundary))
-			{
-				// does not cover sprite
+			auto &group = segmentlist->SegmentGroups[groupIndex];
+			if (group.x1 >= x2 || group.x2 <= x1)
 				continue;
-			}
 
-			r1 = MAX<int>(ds->x1, x1);
-			r2 = MIN<int>(ds->x2, x2);
-
-			float neardepth, fardepth;
-			if (!spr->IsWallSprite())
+			if (group.fardepth < spr->depth) 
 			{
-				if (ds->sz1 < ds->sz2)
-				{
-					neardepth = ds->sz1, fardepth = ds->sz2;
-				}
-				else
-				{
-					neardepth = ds->sz2, fardepth = ds->sz1;
-				}
-			}
+				r1 = MAX<int>(group.x1, x1);
+				r2 = MIN<int>(group.x2, x2);
 
-
-			// Check if sprite is in front of draw seg:
-			if ((!spr->IsWallSprite() && neardepth > spr->depth) || ((spr->IsWallSprite() || fardepth > spr->depth) &&
-				(spr->gpos.Y - ds->curline->v1->fY()) * (ds->curline->v2->fX() - ds->curline->v1->fX()) -
-				(spr->gpos.X - ds->curline->v1->fX()) * (ds->curline->v2->fY() - ds->curline->v1->fY()) <= 0))
-			{
-				RenderPortal *renderportal = RenderPortal::Instance();
-
-				// seg is behind sprite, so draw the mid texture if it has one
-				if (ds->CurrentPortalUniq == renderportal->CurrentPortalUniq && // [ZZ] instead, portal uniq check is made here
-					(ds->maskedtexturecol != nullptr || ds->bFogBoundary))
-				{
-					RenderDrawSegment renderer;
-					renderer.Render(ds, r1, r2);
-				}
-
-				continue;
-			}
-
-			// clip this piece of the sprite
-			// killough 3/27/98: optimized and made much shorter
-			// [RH] Optimized further (at least for VC++;
-			// other compilers should be at least as good as before)
-
-			if (ds->silhouette & SIL_BOTTOM) //bottom sil
-			{
+				// Clip bottom
 				clip1 = clipbot + r1;
-				clip2 = ds->sprbottomclip + r1 - ds->x1;
+				clip2 = group.sprbottomclip + r1 - group.x1;
 				i = r2 - r1;
 				do
 				{
@@ -355,12 +315,10 @@ namespace swrenderer
 					clip1++;
 					clip2++;
 				} while (--i);
-			}
 
-			if (ds->silhouette & SIL_TOP)   // top sil
-			{
+				// Clip top
 				clip1 = cliptop + r1;
-				clip2 = ds->sprtopclip + r1 - ds->x1;
+				clip2 = group.sprtopclip + r1 - group.x1;
 				i = r2 - r1;
 				do
 				{
@@ -370,13 +328,109 @@ namespace swrenderer
 					clip2++;
 				} while (--i);
 			}
+			else
+			{
+				//for (unsigned int index = segmentlist->BeginIndex(); index != segmentlist->EndIndex(); index++)
+				for (unsigned int index = group.BeginIndex; index != group.EndIndex; index++)
+				{
+					DrawSegment *ds = segmentlist->Segment(index);
+
+					// [ZZ] portal handling here
+					//if (ds->CurrentPortalUniq != spr->CurrentPortalUniq)
+					//	continue;
+					// [ZZ] WARNING: uncommenting the two above lines, totally breaks sprite clipping
+
+					// kg3D - no clipping on fake segs
+					if (ds->fake) continue;
+					// determine if the drawseg obscures the sprite
+					if (ds->x1 >= x2 || ds->x2 <= x1 ||
+						(!(ds->silhouette & SIL_BOTH) && ds->maskedtexturecol == nullptr &&
+							!ds->bFogBoundary))
+					{
+						// does not cover sprite
+						continue;
+					}
+
+					r1 = MAX<int>(ds->x1, x1);
+					r2 = MIN<int>(ds->x2, x2);
+
+					float neardepth, fardepth;
+					if (!spr->IsWallSprite())
+					{
+						if (ds->sz1 < ds->sz2)
+						{
+							neardepth = ds->sz1, fardepth = ds->sz2;
+						}
+						else
+						{
+							neardepth = ds->sz2, fardepth = ds->sz1;
+						}
+					}
+					else
+					{
+						// GCC complained about this case, is there something missing here?
+						fardepth = neardepth = 0;
+					}
+
+					// Check if sprite is in front of draw seg:
+					if ((!spr->IsWallSprite() && neardepth > spr->depth) || ((spr->IsWallSprite() || fardepth > spr->depth) &&
+						(spr->gpos.Y - ds->curline->v1->fY()) * (ds->curline->v2->fX() - ds->curline->v1->fX()) -
+						(spr->gpos.X - ds->curline->v1->fX()) * (ds->curline->v2->fY() - ds->curline->v1->fY()) <= 0))
+					{
+						RenderPortal *renderportal = thread->Portal.get();
+
+						// seg is behind sprite, so draw the mid texture if it has one
+						if (ds->CurrentPortalUniq == renderportal->CurrentPortalUniq && // [ZZ] instead, portal uniq check is made here
+							(ds->maskedtexturecol != nullptr || ds->bFogBoundary))
+						{
+							RenderDrawSegment renderer(thread);
+							renderer.Render(ds, r1, r2);
+						}
+
+						continue;
+					}
+
+					// clip this piece of the sprite
+					// killough 3/27/98: optimized and made much shorter
+					// [RH] Optimized further (at least for VC++;
+					// other compilers should be at least as good as before)
+
+					if (ds->silhouette & SIL_BOTTOM) //bottom sil
+					{
+						clip1 = clipbot + r1;
+						clip2 = ds->sprbottomclip + r1 - ds->x1;
+						i = r2 - r1;
+						do
+						{
+							if (*clip1 > *clip2)
+								*clip1 = *clip2;
+							clip1++;
+							clip2++;
+						} while (--i);
+					}
+
+					if (ds->silhouette & SIL_TOP)   // top sil
+					{
+						clip1 = cliptop + r1;
+						clip2 = ds->sprtopclip + r1 - ds->x1;
+						i = r2 - r1;
+						do
+						{
+							if (*clip1 < *clip2)
+								*clip1 = *clip2;
+							clip1++;
+							clip2++;
+						} while (--i);
+					}
+				}
+			}
 		}
 
 		// all clipping has been performed, so draw the sprite
 
 		if (!spr->IsVoxel())
 		{
-			spr->Render(clipbot, cliptop, 0, 0);
+			spr->Render(thread, clipbot, cliptop, 0, 0);
 		}
 		else
 		{
@@ -409,7 +463,7 @@ namespace swrenderer
 			}
 			int minvoxely = spr->gzt <= hzt ? 0 : xs_RoundToInt((spr->gzt - hzt) / spr->yscale);
 			int maxvoxely = spr->gzb > hzb ? INT_MAX : xs_RoundToInt((spr->gzt - hzb) / spr->yscale);
-			spr->Render(cliptop, clipbot, minvoxely, maxvoxely);
+			spr->Render(thread, cliptop, clipbot, minvoxely, maxvoxely);
 		}
 		spr->Light.BaseColormap = colormap;
 		spr->Light.ColormapNum = colormapnum;

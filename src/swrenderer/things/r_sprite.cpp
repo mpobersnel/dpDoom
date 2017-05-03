@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,31 +59,34 @@
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
 #include "swrenderer/things/r_sprite.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
+#include "a_dynlight.h"
 
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor)
+EXTERN_CVAR(Bool, gl_light_sprites)
 
 namespace swrenderer
 {
-	void RenderSprite::Project(AActor *thing, const DVector3 &pos, FTexture *tex, const DVector2 &spriteScale, int renderflags, WaterFakeSide fakeside, F3DFloor *fakefloor, F3DFloor *fakeceiling, sector_t *current_sector, int spriteshade, bool foggy, FDynamicColormap *basecolormap)
+	void RenderSprite::Project(RenderThread *thread, AActor *thing, const DVector3 &pos, FTexture *tex, const DVector2 &spriteScale, int renderflags, WaterFakeSide fakeside, F3DFloor *fakefloor, F3DFloor *fakeceiling, sector_t *current_sector, int spriteshade, bool foggy, FDynamicColormap *basecolormap)
 	{
 		// transform the origin point
-		double tr_x = pos.X - ViewPos.X;
-		double tr_y = pos.Y - ViewPos.Y;
+		double tr_x = pos.X - thread->Viewport->viewpoint.Pos.X;
+		double tr_y = pos.Y - thread->Viewport->viewpoint.Pos.Y;
 
-		double tz = tr_x * ViewTanCos + tr_y * ViewTanSin;
+		double tz = tr_x * thread->Viewport->viewpoint.TanCos + tr_y * thread->Viewport->viewpoint.TanSin;
 
 		// thing is behind view plane?
 		if (tz < MINZ)
 			return;
 
-		double tx = tr_x * ViewSin - tr_y * ViewCos;
+		double tx = tr_x * thread->Viewport->viewpoint.Sin - tr_y * thread->Viewport->viewpoint.Cos;
 
 		// [RH] Flip for mirrors
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = thread->Portal.get();
 		if (renderportal->MirrorFlags & RF_XFLIP)
 		{
 			tx = -tx;
@@ -120,11 +131,13 @@ namespace swrenderer
 					return;
 			}
 		}
+		
+		auto viewport = thread->Viewport.get();
 
-		double xscale = CenterX / tz;
+		double xscale = viewport->CenterX / tz;
 
 		// [RH] Reject sprites that are off the top or bottom of the screen
-		if (globaluclip * tz > ViewPos.Z - gzb || globaldclip * tz < ViewPos.Z - gzt)
+		if (viewport->globaluclip * tz > viewport->viewpoint.Pos.Z - gzb || viewport->globaldclip * tz < viewport->viewpoint.Pos.Z - gzt)
 		{
 			return;
 		}
@@ -137,14 +150,14 @@ namespace swrenderer
 
 		tx -= ((renderflags & RF_XFLIP) ? (tex->GetWidth() - tex->LeftOffset - 1) : tex->LeftOffset) * thingxscalemul;
 		double dtx1 = tx * xscale;
-		int x1 = centerx + xs_RoundToInt(dtx1);
+		int x1 = viewport->viewwindow.centerx + xs_RoundToInt(dtx1);
 
 		// off the right side?
 		if (x1 >= renderportal->WindowRight)
 			return;
 
 		tx += tex->GetWidth() * thingxscalemul;
-		int x2 = centerx + xs_RoundToInt(tx * xscale);
+		int x2 = viewport->viewwindow.centerx + xs_RoundToInt(tx * xscale);
 
 		// off the left side or too small?
 		if ((x2 < renderportal->WindowLeft || x2 <= x1))
@@ -156,14 +169,14 @@ namespace swrenderer
 		double yscale = spriteScale.Y / tex->Scale.Y;
 
 		// store information in a vissprite
-		RenderSprite *vis = RenderMemory::NewObject<RenderSprite>();
+		RenderSprite *vis = thread->FrameMemory->NewObject<RenderSprite>();
 
 		vis->CurrentPortalUniq = renderportal->CurrentPortalUniq;
 		vis->xscale = FLOAT2FIXED(xscale);
-		vis->yscale = float(InvZtoScale * yscale / tz);
+		vis->yscale = float(viewport->InvZtoScale * yscale / tz);
 		vis->idepth = float(1 / tz);
 		vis->floorclip = thing->Floorclip / yscale;
-		vis->texturemid = tex->TopOffset - (ViewPos.Z - pos.Z + thing->Floorclip) / yscale;
+		vis->texturemid = tex->TopOffset - (viewport->viewpoint.Pos.Z - pos.Z + thing->Floorclip) / yscale;
 		vis->x1 = x1 < renderportal->WindowLeft ? renderportal->WindowLeft : x1;
 		vis->x2 = x2 > renderportal->WindowRight ? renderportal->WindowRight : x2;
 		//vis->Angle = thing->Angles.Yaw;
@@ -179,7 +192,7 @@ namespace swrenderer
 			vis->xiscale = iscale;
 		}
 
-		vis->startfrac += (fixed_t)(vis->xiscale * (vis->x1 - centerx + 0.5 - dtx1));
+		vis->startfrac += (fixed_t)(vis->xiscale * (vis->x1 - viewport->viewwindow.centerx + 0.5 - dtx1));
 
 		// killough 3/27/98: save sector for special clipping later
 		vis->heightsec = heightsec;
@@ -189,8 +202,8 @@ namespace swrenderer
 		vis->gpos = { (float)pos.X, (float)pos.Y, (float)pos.Z };
 		vis->gzb = (float)gzb;		// [RH] use gzb, not thing->z
 		vis->gzt = (float)gzt;		// killough 3/27/98
-		vis->deltax = float(pos.X - ViewPos.X);
-		vis->deltay = float(pos.Y - ViewPos.Y);
+		vis->deltax = float(pos.X - viewport->viewpoint.Pos.X);
+		vis->deltay = float(pos.Y - viewport->viewpoint.Pos.Y);
 		vis->renderflags = renderflags;
 		if (thing->flags5 & MF5_BRIGHT)
 			vis->renderflags |= RF_FULLBRIGHT; // kg3D
@@ -222,13 +235,65 @@ namespace swrenderer
 
 		bool fullbright = !vis->foggy && ((renderflags & RF_FULLBRIGHT) || (thing->flags5 & MF5_BRIGHT));
 		bool fadeToBlack = (vis->RenderStyle.Flags & STYLEF_FadeToBlack) != 0;
+		
+		if (r_dynlights && gl_light_sprites)
+		{
+			float lit_red = 0;
+			float lit_green = 0;
+			float lit_blue = 0;
+			auto node = vis->sector->lighthead;
+			while (node != nullptr)
+			{
+				ADynamicLight *light = node->lightsource;
+				if (light->visibletoplayer && !(light->flags2&MF2_DORMANT) && (!(light->flags4&MF4_DONTLIGHTSELF) || light->target != thing) && !(light->flags4&MF4_DONTLIGHTACTORS))
+				{
+					float lx = (float)(light->X() - thing->X());
+					float ly = (float)(light->Y() - thing->Y());
+					float lz = (float)(light->Z() - thing->Center());
+					float LdotL = lx * lx + ly * ly + lz * lz;
+					float radius = node->lightsource->GetRadius();
+					if (radius * radius >= LdotL)
+					{
+						float distance = sqrt(LdotL);
+						float attenuation = 1.0f - distance / radius;
+						if (attenuation > 0.0f)
+						{						
+							float red = light->GetRed() * (1.0f / 255.0f);
+							float green = light->GetGreen() * (1.0f / 255.0f);
+							float blue = light->GetBlue() * (1.0f / 255.0f);
+							/*if (light->IsSubtractive())
+							{
+								float bright = FVector3(lr, lg, lb).Length();
+								FVector3 lightColor(lr, lg, lb);
+								red = (bright - lr) * -1;
+								green = (bright - lg) * -1;
+								blue = (bright - lb) * -1;
+							}*/
+						
+							lit_red += red * attenuation;
+							lit_green += green * attenuation;
+							lit_blue += blue * attenuation;
+						}
+					}
+				}
+				node = node->nextLight;
+			}
+			lit_red = clamp(lit_red * 255.0f, 0.0f, 255.0f);
+			lit_green = clamp(lit_green * 255.0f, 0.0f, 255.0f);
+			lit_blue = clamp(lit_blue * 255.0f, 0.0f, 255.0f);
+			vis->dynlightcolor = (((uint32_t)lit_red) << 16) | (((uint32_t)lit_green) << 8) | ((uint32_t)lit_blue);
+		}
+		else
+		{
+			vis->dynlightcolor = 0;
+		}
 
-		vis->Light.SetColormap(LightVisibility::Instance()->SpriteGlobVis() / MAX(tz, MINZ), spriteshade, basecolormap, fullbright, invertcolormap, fadeToBlack);
+		vis->Light.SetColormap(thread->Light->SpriteGlobVis(foggy) / MAX(tz, MINZ), spriteshade, basecolormap, fullbright, invertcolormap, fadeToBlack);
 
-		VisibleSpriteList::Instance()->Push(vis);
+		thread->SpriteList->Push(vis);
 	}
 
-	void RenderSprite::Render(short *mfloorclip, short *mceilingclip, int, int)
+	void RenderSprite::Render(RenderThread *thread, short *mfloorclip, short *mceilingclip, int, int)
 	{
 		auto vis = this;
 
@@ -245,19 +310,13 @@ namespace swrenderer
 			return;
 		}
 
-		fixed_t centeryfrac = FLOAT2FIXED(CenterY);
-		R_SetColorMapLight(vis->Light.BaseColormap, 0, vis->Light.ColormapNum << FRACBITS);
+		SpriteDrawerArgs drawerargs;
+		drawerargs.SetLight(vis->Light.BaseColormap, 0, vis->Light.ColormapNum << FRACBITS);
+		drawerargs.SetDynamicLight(dynlightcolor);
 
 		FDynamicColormap *basecolormap = static_cast<FDynamicColormap*>(vis->Light.BaseColormap);
 
-		bool visible = R_SetPatchStyle(vis->RenderStyle, vis->Alpha, vis->Translation, vis->FillColor, basecolormap);
-
-		if (vis->RenderStyle == LegacyRenderStyles[STYLE_Shaded])
-		{ // For shaded sprites, R_SetPatchStyle sets a dc_colormap to an alpha table, but
-		  // it is the brightest one. We need to get back to the proper light level for
-		  // this sprite.
-			R_SetColorMapLight(drawerargs::dc_fcolormap, 0, vis->Light.ColormapNum << FRACBITS);
-		}
+		bool visible = drawerargs.SetStyle(thread->Viewport.get(), vis->RenderStyle, vis->Alpha, vis->Translation, vis->FillColor, basecolormap, vis->Light.ColormapNum << FRACBITS);
 
 		if (visible)
 		{
@@ -269,18 +328,20 @@ namespace swrenderer
 			xiscale = vis->xiscale;
 			double texturemid = vis->texturemid;
 
+			auto viewport = thread->Viewport.get();
+
 			if (vis->renderflags & RF_YFLIP)
 			{
 				sprflipvert = true;
 				spryscale = -spryscale;
 				iscale = -iscale;
 				texturemid -= vis->pic->GetHeight();
-				sprtopscreen = CenterY + texturemid * spryscale;
+				sprtopscreen = viewport->CenterY + texturemid * spryscale;
 			}
 			else
 			{
 				sprflipvert = false;
-				sprtopscreen = CenterY - texturemid * spryscale;
+				sprtopscreen = viewport->CenterY - texturemid * spryscale;
 			}
 
 			int x = vis->x1;
@@ -288,18 +349,20 @@ namespace swrenderer
 
 			if (x < x2)
 			{
-				RenderTranslucentPass *translucentPass = RenderTranslucentPass::Instance();
+				RenderTranslucentPass *translucentPass = thread->TranslucentPass.get();
 
+				thread->PrepareTexture(tex);
 				while (x < x2)
 				{
 					if (!translucentPass->ClipSpriteColumnWithPortals(x, vis))
-						R_DrawMaskedColumn(x, iscale, tex, frac, spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip, false);
+						drawerargs.DrawMaskedColumn(thread, x, iscale, tex, frac, spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip, false);
 					x++;
 					frac += xiscale;
 				}
 			}
 		}
 
-		NetUpdate();
+		if (thread->MainThread)
+			NetUpdate();
 	}
 }

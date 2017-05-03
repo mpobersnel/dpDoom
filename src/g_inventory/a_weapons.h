@@ -1,7 +1,7 @@
 #pragma once
 
 #include "a_pickups.h"
-class PClassWeapon;
+class PClassActor;
 class AWeapon;
 
 class FWeaponSlot
@@ -12,13 +12,13 @@ public:
 	FWeaponSlot &operator= (const FWeaponSlot &other) { Weapons = other.Weapons; return *this; }
 	void Clear() { Weapons.Clear(); }
 	bool AddWeapon (const char *type);
-	bool AddWeapon (PClassWeapon *type);
+	bool AddWeapon (PClassActor *type);
 	void AddWeaponList (const char *list, bool clear);
 	AWeapon *PickWeapon (player_t *player, bool checkammo = false);
 	int Size () const { return (int)Weapons.Size(); }
-	int LocateWeapon (PClassWeapon *type);
+	int LocateWeapon (PClassActor *type);
 
-	inline PClassWeapon *GetWeapon (int index) const
+	inline PClassActor *GetWeapon (int index) const
 	{
 		if ((unsigned)index < Weapons.Size())
 		{
@@ -35,7 +35,7 @@ public:
 private:
 	struct WeaponInfo
 	{
-		PClassWeapon *Type;
+		PClassActor *Type;
 		int Position;
 	};
 	void SetInitialPositions();
@@ -61,59 +61,45 @@ struct FWeaponSlots
 	AWeapon *PickPrevWeapon (player_t *player);
 
 	void Clear ();
-	bool LocateWeapon (PClassWeapon *type, int *const slot, int *const index);
-	ESlotDef AddDefaultWeapon (int slot, PClassWeapon *type);
+	bool LocateWeapon (PClassActor *type, int *const slot, int *const index);
+	ESlotDef AddDefaultWeapon (int slot, PClassActor *type);
 	void AddExtraWeapons();
 	void SetFromGameInfo();
-	void SetFromPlayer(PClassPlayerPawn *type);
-	void StandardSetup(PClassPlayerPawn *type);
+	void SetFromPlayer(PClassActor *type);
+	void StandardSetup(PClassActor *type);
 	void LocalSetup(PClassActor *type);
 	void SendDifferences(int playernum, const FWeaponSlots &other);
 	int RestoreSlots (FConfigFile *config, const char *section);
 	void PrintSettings();
 
-	void AddSlot(int slot, PClassWeapon *type, bool feedback);
-	void AddSlotDefault(int slot, PClassWeapon *type, bool feedback);
+	void AddSlot(int slot, PClassActor *type, bool feedback);
+	void AddSlotDefault(int slot, PClassActor *type, bool feedback);
 
 };
 
 void P_PlaybackKeyConfWeapons(FWeaponSlots *slots);
-void Net_WriteWeapon(PClassWeapon *type);
-PClassWeapon *Net_ReadWeapon(BYTE **stream);
+void Net_WriteWeapon(PClassActor *type);
+PClassActor *Net_ReadWeapon(uint8_t **stream);
 
 void P_SetupWeapons_ntohton();
-void P_WriteDemoWeaponsChunk(BYTE **demo);
-void P_ReadDemoWeaponsChunk(BYTE **demo);
+void P_WriteDemoWeaponsChunk(uint8_t **demo);
+void P_ReadDemoWeaponsChunk(uint8_t **demo);
 
-
-// A weapon is just that.
-class PClassWeapon : public PClassInventory
-{
-	DECLARE_CLASS(PClassWeapon, PClassInventory);
-protected:
-	virtual void DeriveData(PClass *newclass);
-public:
-	PClassWeapon();
-	void Finalize(FStateDefinitions &statedef);
-
-	int SlotNumber;
-	int SlotPriority;
-};
 
 class AWeapon : public AStateProvider
 {
-	DECLARE_CLASS_WITH_META(AWeapon, AStateProvider, PClassWeapon)
+	DECLARE_CLASS(AWeapon, AStateProvider)
 	HAS_OBJECT_POINTERS
 public:
-	DWORD WeaponFlags;
-	PClassInventory *AmmoType1, *AmmoType2;	// Types of ammo used by this weapon
+	uint32_t WeaponFlags;
+	PClassActor *AmmoType1, *AmmoType2;		// Types of ammo used by this weapon
 	int AmmoGive1, AmmoGive2;				// Amount of each ammo to get when picking up weapon
 	int MinAmmo1, MinAmmo2;					// Minimum ammo needed to switch to this weapon
 	int AmmoUse1, AmmoUse2;					// How much ammo to use with each shot
 	int Kickback;
 	float YAdjust;							// For viewing the weapon fullscreen (visual only so no need to be a double)
 	FSoundIDNoInit UpSound, ReadySound;		// Sounds when coming up and idle
-	PClassWeapon *SisterWeaponType;			// Another weapon to pick up with this one
+	PClassActor *SisterWeaponType;			// Another weapon to pick up with this one
 	PClassActor *ProjectileType;			// Projectile used by primary attack
 	PClassActor *AltProjectileType;			// Projectile used by alternate attack
 	int SelectionOrder;						// Lower-numbered weapons get picked first
@@ -123,10 +109,12 @@ public:
 	int BobStyle;							// [XA] Bobbing style. Defines type of bobbing (e.g. Normal, Alpha)  (visual only so no need to be a double)
 	float BobSpeed;							// [XA] Bobbing speed. Defines how quickly a weapon bobs.
 	float BobRangeX, BobRangeY;				// [XA] Bobbing range. Defines how far a weapon bobs in either direction.
+	int SlotNumber;
+	int SlotPriority;
 
 	// In-inventory instance variables
-	TObjPtr<AInventory> Ammo1, Ammo2;
-	TObjPtr<AWeapon> SisterWeapon;
+	TObjPtr<AInventory*> Ammo1, Ammo2;
+	TObjPtr<AWeapon*> SisterWeapon;
 	float FOVScale;
 	int Crosshair;							// 0 to use player's crosshair
 	bool GivenAsMorphWeapon;
@@ -135,7 +123,8 @@ public:
 
 	virtual void MarkPrecacheSounds() const;
 	
-	virtual void Serialize(FSerializer &arc) override;
+	void Finalize(FStateDefinitions &statedef) override;
+	void Serialize(FSerializer &arc) override;
 
 	void PostMorphWeapon();
 
@@ -143,8 +132,6 @@ public:
 	FState *GetUpState ();
 	FState *GetDownState ();
 	FState *GetReadyState ();
-	FState *GetAtkState (bool hold);
-	FState *GetAltAtkState (bool hold);
 	
 	FState *GetStateForButtonName (FName button);
 

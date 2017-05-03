@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #pragma once
 
@@ -18,7 +26,7 @@
 #include "v_palette.h"
 #include "r_data/colormaps.h"
 #include "r_utility.h"
-#include "r_viewport.h"
+#include "swrenderer/viewport/r_viewport.h"
 
 // Lighting.
 //
@@ -28,11 +36,6 @@
 
 // The size of a single colormap, in bits
 #define COLORMAPSHIFT 8
-
-// Convert a light level into an unbounded colormap index (shade). Result is
-// fixed point. Why the +12? I wish I knew, but experimentation indicates it
-// is necessary in order to best reproduce Doom's original lighting.
-#define LIGHT2SHADE(l) ((NUMCOLORMAPS*2*FRACUNIT)-(((l)+12)*(FRACUNIT*NUMCOLORMAPS/128)))
 
 // MAXLIGHTSCALE from original DOOM, divided by 2.
 #define MAXLIGHTVIS (24.0)
@@ -47,9 +50,6 @@
 // Returns a value between 0 and 1 in fixed point
 #define LIGHTSCALE(vis,shade) FLOAT2FIXED(clamp((FIXED2DBL(shade) - (MIN(MAXLIGHTVIS,double(vis)))) / NUMCOLORMAPS, 0.0, (NUMCOLORMAPS-1)/(double)NUMCOLORMAPS))
 
-// Converts fixedlightlev into a shade value
-#define FIXEDLIGHT2SHADE(lightlev) (((lightlev) >> COLORMAPSHIFT) << FRACBITS)
-
 struct FSWColormap;
 
 namespace swrenderer
@@ -59,38 +59,49 @@ namespace swrenderer
 	public:
 		static CameraLight *Instance();
 
+		int FixedLightLevel() const { return fixedlightlev; }
+		FSWColormap *FixedColormap() const { return fixedcolormap; }
+		FSpecialColormap *ShaderColormap() const { return realfixedcolormap; }
+
+		fixed_t FixedLightLevelShade() const { return (FixedLightLevel() >> COLORMAPSHIFT) << FRACBITS; }
+
+		void SetCamera(FRenderViewpoint &viewpoint, DCanvas *renderTarget, AActor *actor);
+		void ClearShaderColormap() { realfixedcolormap = nullptr; }
+		
+	private:
 		int fixedlightlev = 0;
 		FSWColormap *fixedcolormap = nullptr;
 		FSpecialColormap *realfixedcolormap = nullptr;
-
-		void SetCamera(AActor *actor);
 	};
 
 	class LightVisibility
 	{
 	public:
-		static LightVisibility *Instance();
-
-		void SetVisibility(double visibility);
+		void SetVisibility(RenderViewport *viewport, double visibility);
 		double GetVisibility() const { return CurrentVisibility; }
 
-		double WallGlobVis() const { return WallVisibility; }
-		double SpriteGlobVis() const { return WallVisibility; }
-		double ParticleGlobVis() const { return WallVisibility * 0.5; }
-		double FlatPlaneGlobVis() const { return FloorVisibility; }
-		double SlopePlaneGlobVis() const { return TiltVisibility; }
+		double WallGlobVis(bool foggy) const { return (NoLightFade && !foggy) ? 0.0f : WallVisibility; }
+		double SpriteGlobVis(bool foggy) const { return (NoLightFade && !foggy) ? 0.0f : WallVisibility; }
+		double ParticleGlobVis(bool foggy) const { return (NoLightFade && !foggy) ? 0.0f : (WallVisibility * 0.5); }
+		double FlatPlaneGlobVis(bool foggy) const { return (NoLightFade && !foggy) ? 0.0f : FloorVisibility; }
+		double SlopePlaneGlobVis(bool foggy) const { return (NoLightFade && !foggy) ? 0.0f : TiltVisibility; }
 
 		// The vis value to pass into the GETPALOOKUP or LIGHTSCALE macros
-		double WallVis(double screenZ) const { return WallGlobVis() / screenZ; }
-		double SpriteVis(double screenZ) const { return WallGlobVis() / screenZ; }
-		double ParticleVis(double screenZ) const { return WallGlobVis() / screenZ; }
-		double FlatPlaneVis(int screenY, double planeZ) const { return FlatPlaneGlobVis() / fabs(planeZ - ViewPos.Z) * fabs(CenterY - screenY); }
+		double WallVis(double screenZ, bool foggy) const { return WallGlobVis(foggy) / screenZ; }
+		double SpriteVis(double screenZ, bool foggy) const { return SpriteGlobVis(foggy) / screenZ; }
+		double ParticleVis(double screenZ, bool foggy) const { return ParticleGlobVis(foggy) / screenZ; }
+		double FlatPlaneVis(int screenY, double planeZ, bool foggy, RenderViewport *viewport) const { return FlatPlaneGlobVis(foggy) / fabs(planeZ - viewport->viewpoint.Pos.Z) * fabs(viewport->CenterY - screenY); }
+
+		static fixed_t LightLevelToShade(int lightlevel, bool foggy);
+		static int ActualExtraLight(bool fog, RenderViewport *viewport) { return fog ? 0 : viewport->viewpoint.extralight << 4; }
 
 	private:
 		double BaseVisibility = 0.0;
 		double WallVisibility = 0.0;
 		double FloorVisibility = 0.0;
 		float TiltVisibility = 0.0f;
+
+		bool NoLightFade = false;
 
 		double CurrentVisibility = 8.f;
 		double MaxVisForWall = 0.0;
@@ -105,6 +116,4 @@ namespace swrenderer
 
 		void SetColormap(double visibility, int shade, FDynamicColormap *basecolormap, bool fullbright, bool invertColormap, bool fadeToBlack);
 	};
-
-	inline int R_ActualExtraLight(bool fog) { return fog ? 0 : extralight << 4; }
 }

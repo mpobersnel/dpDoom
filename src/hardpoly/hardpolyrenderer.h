@@ -35,8 +35,7 @@ public:
 	HardpolyRenderer();
 	~HardpolyRenderer();
 
-	bool UsesColormap() const override;
-	void Precache(BYTE *texhitlist, TMap<PClassActor*, bool> &actorhitlist) override;
+	void Precache(uint8_t *texhitlist, TMap<PClassActor*, bool> &actorhitlist) override;
 	void RenderView(player_t *player) override;
 	void RemapVoxels() override;
 	void WriteSavePic (player_t *player, FileWriter *file, int width, int height) override;
@@ -46,8 +45,6 @@ public:
 	void OnModeSet () override;
 	void Init() override;
 	void RenderTextureView (FCanvasTexture *tex, AActor *viewpoint, int fov) override;
-	sector_t *FakeFlat(sector_t *sec, sector_t *tempsec, int *floorlightlevel, int *ceilinglightlevel) override;
-	void StateChanged(AActor *actor) override;
 	void PreprocessLevel() override;
 	void CleanLevelData() override;
 	void SetClearColor(int color) override;

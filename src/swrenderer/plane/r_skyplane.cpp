@@ -1,14 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #include <stdlib.h>
@@ -32,16 +41,17 @@
 #include "v_palette.h"
 #include "r_data/colormaps.h"
 #include "swrenderer/drawers/r_draw_rgba.h"
-#include "gl/dynlights/gl_dynlight.h"
+#include "a_dynlight.h"
 #include "swrenderer/segments/r_clipsegment.h"
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/line/r_wallsetup.h"
 #include "swrenderer/line/r_walldraw.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
 #include "g_levellocals.h"
 
 CVAR(Bool, r_linearsky, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG);
@@ -49,6 +59,11 @@ EXTERN_CVAR(Int, r_skymode)
 
 namespace swrenderer
 {
+	RenderSkyPlane::RenderSkyPlane(RenderThread *thread)
+	{
+		Thread = thread;
+	}
+
 	void RenderSkyPlane::Render(VisiblePlane *pl)
 	{
 		FTextureID sky1tex, sky2tex;
@@ -64,7 +79,7 @@ namespace swrenderer
 		}
 		sky2tex = sky2texture;
 		skymid = skytexturemid;
-		skyangle = ViewAngle.BAMs();
+		skyangle = Thread->Viewport->viewpoint.Angles.Yaw.BAMs();
 
 		if (pl->picnum == skyflatnum)
 		{
@@ -147,109 +162,88 @@ namespace swrenderer
 			backpos = int(fmod(backdpos, sky2cyl * 65536.0));
 		}
 
-		bool fakefixed = false;
 		CameraLight *cameraLight = CameraLight::Instance();
-		if (cameraLight->fixedcolormap)
+		if (cameraLight->FixedColormap())
 		{
-			R_SetColorMapLight(cameraLight->fixedcolormap, 0, 0);
+			drawerargs.SetLight(cameraLight->FixedColormap(), 0, 0);
 		}
 		else
 		{
-			fakefixed = true;
-			cameraLight->fixedcolormap = &NormalLight;
-			R_SetColorMapLight(cameraLight->fixedcolormap, 0, 0);
+			drawerargs.SetLight(&NormalLight, 0, 0);
 		}
 
-		DrawSky(pl);
+		Thread->PrepareTexture(frontskytex);
+		Thread->PrepareTexture(backskytex);
 
-		if (fakefixed)
-			cameraLight->fixedcolormap = nullptr;
+		DrawSky(pl);
 	}
 
-	void RenderSkyPlane::DrawSkyColumnStripe(int start_x, int y1, int y2, int columns, double scale, double texturemid, double yrepeat)
+	void RenderSkyPlane::DrawSkyColumnStripe(int start_x, int y1, int y2, double scale, double texturemid, double yrepeat)
 	{
-		using namespace drawerargs;
-		
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = Thread->Portal.get();
+		auto viewport = Thread->Viewport.get();
 
 		uint32_t height = frontskytex->GetHeight();
 
-		for (int i = 0; i < columns; i++)
+		double uv_stepd = skyiscale * yrepeat;
+		double v = (texturemid + uv_stepd * (y1 - viewport->CenterY + 0.5)) / height;
+		double v_step = uv_stepd / height;
+
+		uint32_t uv_pos = (uint32_t)(int32_t)(v * 0x01000000);
+		uint32_t uv_step = (uint32_t)(int32_t)(v_step * 0x01000000);
+
+		int x = start_x;
+		if (renderportal->MirrorFlags & RF_XFLIP)
+			x = (viewwidth - x);
+
+		uint32_t ang, angle1, angle2;
+
+		if (r_linearsky)
 		{
-			double uv_stepd = skyiscale * yrepeat;
-			double v = (texturemid + uv_stepd * (y1 - CenterY + 0.5)) / height;
-			double v_step = uv_stepd / height;
-
-			uint32_t uv_pos = (uint32_t)(v * 0x01000000);
-			uint32_t uv_step = (uint32_t)(v_step * 0x01000000);
-
-			int x = start_x + i;
-			if (renderportal->MirrorFlags & RF_XFLIP)
-				x = (viewwidth - x);
-
-			uint32_t ang, angle1, angle2;
-
-			if (r_linearsky)
-			{
-				angle_t xangle = (angle_t)((0.5 - x / (double)viewwidth) * FocalTangent * ANGLE_90);
-				ang = (skyangle + xangle) ^ skyflip;
-			}
-			else
-			{
-				ang = (skyangle + xtoviewangle[x]) ^ skyflip;
-			}
-			angle1 = (uint32_t)((UMulScale16(ang, frontcyl) + frontpos) >> FRACBITS);
-			angle2 = (uint32_t)((UMulScale16(ang, backcyl) + backpos) >> FRACBITS);
-
-			if (r_swtruecolor)
-			{
-				dc_wall_source[i] = (const uint8_t *)frontskytex->GetColumnBgra(angle1, nullptr);
-				dc_wall_source2[i] = backskytex ? (const uint8_t *)backskytex->GetColumnBgra(angle2, nullptr) : nullptr;
-			}
-			else
-			{
-				dc_wall_source[i] = (const uint8_t *)frontskytex->GetColumn(angle1, nullptr);
-				dc_wall_source2[i] = backskytex ? (const uint8_t *)backskytex->GetColumn(angle2, nullptr) : nullptr;
-			}
-
-			dc_wall_iscale[i] = uv_step;
-			dc_wall_texturefrac[i] = uv_pos;
+			angle_t xangle = (angle_t)((0.5 - x / (double)viewwidth) * viewport->viewwindow.FocalTangent * ANGLE_90);
+			ang = (skyangle + xangle) ^ skyflip;
 		}
+		else
+		{
+			ang = (skyangle + viewport->xtoviewangle[x]) ^ skyflip;
+		}
+		angle1 = (uint32_t)((UMulScale16(ang, frontcyl) + frontpos) >> FRACBITS);
+		angle2 = (uint32_t)((UMulScale16(ang, backcyl) + backpos) >> FRACBITS);
 
-		dc_wall_sourceheight[0] = height;
-		dc_wall_sourceheight[1] = backskytex ? backskytex->GetHeight() : height;
-		int pixelsize = r_swtruecolor ? 4 : 1;
-		dc_dest = (ylookup[y1] + start_x) * pixelsize + dc_destorg;
-		dc_count = y2 - y1;
-
-		uint32_t solid_top = frontskytex->GetSkyCapColor(false);
-		uint32_t solid_bottom = frontskytex->GetSkyCapColor(true);
-
-		bool fadeSky = (r_skymode == 2 && !(level.flags & LEVEL_FORCETILEDSKY));
+		drawerargs.SetFrontTexture(Thread, frontskytex, angle1);
+		drawerargs.SetBackTexture(Thread, backskytex, angle2);
+		drawerargs.SetTextureVStep(uv_step);
+		drawerargs.SetTextureVPos(uv_pos);
+		drawerargs.SetDest(viewport, start_x, y1);
+		drawerargs.SetCount(y2 - y1);
+		drawerargs.SetFadeSky(r_skymode == 2 && !(level.flags & LEVEL_FORCETILEDSKY));
+		drawerargs.SetSolidTop(frontskytex->GetSkyCapColor(false));
+		drawerargs.SetSolidBottom(frontskytex->GetSkyCapColor(true));
 
 		if (!backskytex)
-			R_Drawers()->DrawSingleSkyColumn(solid_top, solid_bottom, fadeSky);
+			drawerargs.DrawSingleSkyColumn(Thread);
 		else
-			R_Drawers()->DrawDoubleSkyColumn(solid_top, solid_bottom, fadeSky);
+			drawerargs.DrawDoubleSkyColumn(Thread);
 	}
 
-	void RenderSkyPlane::DrawSkyColumn(int start_x, int y1, int y2, int columns)
+	void RenderSkyPlane::DrawSkyColumn(int start_x, int y1, int y2)
 	{
 		if (1 << frontskytex->HeightBits == frontskytex->GetHeight())
 		{
 			double texturemid = skymid * frontskytex->Scale.Y + frontskytex->GetHeight();
-			DrawSkyColumnStripe(start_x, y1, y2, columns, frontskytex->Scale.Y, texturemid, frontskytex->Scale.Y);
+			DrawSkyColumnStripe(start_x, y1, y2, frontskytex->Scale.Y, texturemid, frontskytex->Scale.Y);
 		}
 		else
 		{
+			auto viewport = Thread->Viewport.get();
 			double yrepeat = frontskytex->Scale.Y;
 			double scale = frontskytex->Scale.Y * skyscale;
 			double iscale = 1 / scale;
 			short drawheight = short(frontskytex->GetHeight() * scale);
-			double topfrac = fmod(skymid + iscale * (1 - CenterY), frontskytex->GetHeight());
+			double topfrac = fmod(skymid + iscale * (1 - viewport->CenterY), frontskytex->GetHeight());
 			if (topfrac < 0) topfrac += frontskytex->GetHeight();
-			double texturemid = topfrac - iscale * (1 - CenterY);
-			DrawSkyColumnStripe(start_x, y1, y2, columns, scale, texturemid, yrepeat);
+			double texturemid = topfrac - iscale * (1 - viewport->CenterY);
+			DrawSkyColumnStripe(start_x, y1, y2, scale, texturemid, yrepeat);
 		}
 	}
 
@@ -267,7 +261,7 @@ namespace swrenderer
 			if (y2 <= y1)
 				continue;
 
-			DrawSkyColumn(x, y1, y2, 1);
+			DrawSkyColumn(x, y1, y2);
 		}
 	}
 }

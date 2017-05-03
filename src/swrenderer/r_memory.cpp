@@ -1,15 +1,22 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #include <stdlib.h>
 #include "templates.h"
@@ -31,44 +38,38 @@
 #include "r_data/colormaps.h"
 #include "r_memory.h"
 
-namespace swrenderer
+void *RenderMemory::AllocBytes(int size)
 {
-	void *RenderMemory::AllocBytes(int size)
+	size = (size + 15) / 16 * 16; // 16-byte align
+		
+	if (UsedBlocks.empty() || UsedBlocks.back()->Position + size > BlockSize)
 	{
-		size = (size + 15) / 16 * 16; // 16-byte align
-		
-		if (UsedBlocks.empty() || UsedBlocks.back()->Position + size > BlockSize)
+		if (!FreeBlocks.empty())
 		{
-			if (!FreeBlocks.empty())
-			{
-				auto block = std::move(FreeBlocks.back());
-				block->Position = 0;
-				FreeBlocks.pop_back();
-				UsedBlocks.push_back(std::move(block));
-			}
-			else
-			{
-				UsedBlocks.push_back(std::make_unique<MemoryBlock>());
-			}
+			auto block = std::move(FreeBlocks.back());
+			block->Position = 0;
+			FreeBlocks.pop_back();
+			UsedBlocks.push_back(std::move(block));
 		}
+		else
+		{
+			UsedBlocks.push_back(std::unique_ptr<MemoryBlock>(new MemoryBlock()));
+		}
+	}
 		
-		auto &block = UsedBlocks.back();
-		void *data = block->Data + block->Position;
-		block->Position += size;
+	auto &block = UsedBlocks.back();
+	void *data = block->Data + block->Position;
+	block->Position += size;
 
-		return data;
-	}
+	return data;
+}
 	
-	void RenderMemory::Clear()
+void RenderMemory::Clear()
+{
+	while (!UsedBlocks.empty())
 	{
-		while (!UsedBlocks.empty())
-		{
-			auto block = std::move(UsedBlocks.back());
-			UsedBlocks.pop_back();
-			FreeBlocks.push_back(std::move(block));
-		}
+		auto block = std::move(UsedBlocks.back());
+		UsedBlocks.pop_back();
+		FreeBlocks.push_back(std::move(block));
 	}
-	
-	std::vector<std::unique_ptr<RenderMemory::MemoryBlock>> RenderMemory::UsedBlocks;
-	std::vector<std::unique_ptr<RenderMemory::MemoryBlock>> RenderMemory::FreeBlocks;
 }

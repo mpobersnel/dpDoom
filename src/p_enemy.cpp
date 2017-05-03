@@ -1,20 +1,25 @@
-// Emacs style mode select	 -*- C++ -*- 
 //-----------------------------------------------------------------------------
 //
-// $Id:$
+// Copyright 1993-1996 id Software
+// Copyright 1994-1996 Raven Software
+// Copyright 1998-1998 Chi Hoang, Lee Killough, Jim Flynn, Rand Phares, Ty Halderman
+// Copyright 1999-2016 Randy Heit
+// Copyright 2002-2016 Christoph Oelckers
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
-//
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
-// $Log:$
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 // DESCRIPTION:
 //		Enemy thinking, AI.
@@ -52,7 +57,8 @@
 #include "p_checkposition.h"
 #include "math/cmath.h"
 #include "g_levellocals.h"
-#include "virtual.h"
+#include "vm.h"
+#include "actorinlines.h"
 
 #include "gi.h"
 
@@ -349,7 +355,7 @@ bool AActor::CheckMeleeRange ()
 
 	double dist;
 		
-	if (!pl)
+	if (!pl || (Sector->Flags & SECF_NOATTACK))
 		return false;
 				
 	dist = Distance2D (pl);
@@ -398,7 +404,7 @@ bool P_CheckMeleeRange2 (AActor *actor)
 	double dist;
 
 
-	if (!actor->target)
+	if (!actor->target || (actor->Sector->Flags & SECF_NOATTACK))
 	{
 		return false;
 	}
@@ -445,6 +451,8 @@ bool P_CheckMissileRange (AActor *actor)
 {
 	double dist;
 		
+	if ((actor->Sector->Flags & SECF_NOATTACK)) return false;
+
 	if (!P_CheckSight (actor, actor->target, SF_SEEPASTBLOCKEVERYTHING))
 		return false;
 		
@@ -570,8 +578,9 @@ bool P_Move (AActor *actor)
 		return true;
 	}
 
-	if (actor->movedir == DI_NODIR)
+	if (actor->movedir >= DI_NODIR)
 	{
+		actor->movedir = DI_NODIR;	// make sure it's valid.
 		return false;
 	}
 
@@ -584,9 +593,6 @@ bool P_Move (AActor *actor)
 	{
 		return false;
 	}
-
-	if ((unsigned)actor->movedir >= 8)
-		I_Error ("Weird actor->movedir!");
 
 	// killough 10/98: allow dogs to drop off of taller ledges sometimes.
 	// dropoff==1 means always allow it, dropoff==2 means only up to 128 high,
@@ -1433,7 +1439,7 @@ AActor *LookForTIDInBlock (AActor *lookee, int index, void *extparams)
 	AActor *link;
 	AActor *other;
 	
-	for (block = blocklinks[index]; block != NULL; block = block->NextActor)
+	for (block = level.blockmap.blocklinks[index]; block != NULL; block = block->NextActor)
 	{
 		link = block->Me;
 
@@ -1612,7 +1618,7 @@ AActor *LookForEnemiesInBlock (AActor *lookee, int index, void *extparam)
 	AActor *other;
 	FLookExParams *params = (FLookExParams *)extparam;
 	
-	for (block = blocklinks[index]; block != NULL; block = block->NextActor)
+	for (block = level.blockmap.blocklinks[index]; block != NULL; block = block->NextActor)
 	{
 		link = block->Me;
 
@@ -1882,6 +1888,9 @@ bool P_LookForPlayers (AActor *actor, INTBOOL allaround, FLookExParams *params)
 		if (!(player->mo->flags & MF_SHOOTABLE))
 			continue;			// not shootable (observer or dead)
 
+		if (!((actor->flags ^ player->mo->flags) & MF_FRIENDLY))
+			continue;			// same +MF_FRIENDLY, ignore
+
 		if (player->cheats & CF_NOTARGET)
 			continue;			// no target
 
@@ -1981,7 +1990,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Look)
 			targ = NULL;
 		}
 
-		if (targ && targ->player && (targ->player->cheats & CF_NOTARGET))
+		if (targ && targ->player && ((targ->player->cheats & CF_NOTARGET) || !(targ->flags & MF_FRIENDLY)))
 		{
 			return 0;
 		}
@@ -2049,7 +2058,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Look)
 		}
 	}
 
-	if (self->target)
+	if (self->target && self->SeeState)
 	{
 		self->SetState (self->SeeState);
 	}
@@ -3217,18 +3226,18 @@ DEFINE_ACTION_FUNCTION(AActor, A_ActiveSound)
 //---------------------------------------------------------------------------
 void ModifyDropAmount(AInventory *inv, int dropamount)
 {
-	int flagmask = IF_IGNORESKILL;
+	auto flagmask = IF_IGNORESKILL;
 	double dropammofactor = G_SkillProperty(SKILLP_DropAmmoFactor);
 	// Default drop amount is half of regular amount * regular ammo multiplication
 	if (dropammofactor == -1) 
 	{
 		dropammofactor = 0.5;
-		flagmask = 0;
+		flagmask = ItemFlag(0);
 	}
 
 	if (dropamount > 0)
 	{
-		if (flagmask != 0 && inv->IsKindOf(PClass::FindActor(NAME_Ammo)))
+		if (flagmask != 0 && inv->IsKindOf(NAME_Ammo))
 		{
 			inv->Amount = int(dropamount * dropammofactor);
 			inv->ItemFlags |= IF_IGNORESKILL;
@@ -3254,7 +3263,7 @@ void ModifyDropAmount(AInventory *inv, int dropamount)
 		inv->FloatVar("AmmoFactor") = dropammofactor;
 		inv->ItemFlags |= flagmask;
 	}
-	else if (inv->IsKindOf (RUNTIME_CLASS(AWeapon)))
+	else if (inv->IsKindOf(NAME_Weapon))
 	{
 		// The same goes for ammo from a weapon.
 		static_cast<AWeapon *>(inv)->AmmoGive1 = int(static_cast<AWeapon *>(inv)->AmmoGive1 * dropammofactor);
@@ -3328,7 +3337,7 @@ AInventory *P_DropItem (AActor *source, PClassActor *type, int dropamount, int c
 					VMValue params[2] = { inv, source };
 					int retval;
 					VMReturn ret(&retval);
-					GlobalVMStack.Call(func, params, 2, &ret, 1, nullptr);
+					VMCall(func, params, 2, &ret, 1);
 					if (retval)
 					{
 						// The special action indicates that the item should not spawn

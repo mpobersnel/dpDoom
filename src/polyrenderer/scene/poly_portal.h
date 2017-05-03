@@ -36,8 +36,8 @@ struct PolyPortalVertexRange
 class PolyPortalSegment
 {
 public:
-	PolyPortalSegment(int x1, int x2) : X1(x1), X2(x2) { }
-	int X1, X2;
+	PolyPortalSegment(angle_t start, angle_t end) : Start(start), End(end) { }
+	angle_t Start, End;
 };
 
 class PolyDrawSectorPortal
@@ -52,7 +52,6 @@ public:
 	uint32_t StencilValue = 0;
 	std::vector<PolyPortalVertexRange> Shape;
 	std::vector<PolyPortalSegment> Segments;
-	Vec4f PortalPlane = Vec4f(0.0f);
 
 private:
 	void SaveGlobals();
@@ -63,8 +62,8 @@ private:
 	
 	int savedextralight;
 	DVector3 savedpos;
-	DAngle savedangle;
-	double savedvisibility;
+	DRotator savedangles;
+	//double savedvisibility;
 	AActor *savedcamera;
 	sector_t *savedsector;
 };
@@ -92,7 +91,7 @@ private:
 
 	int savedextralight;
 	DVector3 savedpos;
-	DAngle savedangle;
+	DRotator savedangles;
 	AActor *savedcamera;
 	sector_t *savedsector;
 	bool savedinvisibility;

@@ -52,6 +52,8 @@
 #include "math/cmath.h"
 #include "actorptrselect.h"
 #include "g_levellocals.h"
+#include "actorinlines.h"
+#include "vm.h"
 
 // Set of spawnable things for the Thing_Spawn and Thing_Projectile specials.
 FClassMap SpawnableThings;
@@ -406,7 +408,7 @@ void P_RemoveThing(AActor * actor)
 
 }
 
-bool P_Thing_Raise(AActor *thing, AActor *raiser)
+bool P_Thing_Raise(AActor *thing, AActor *raiser, int nocheck)
 {
 	FState * RaiseState = thing->GetRaiseState();
 	if (RaiseState == NULL)
@@ -426,7 +428,7 @@ bool P_Thing_Raise(AActor *thing, AActor *raiser)
 	thing->flags |= MF_SOLID;
 	thing->Height = info->Height;	// [RH] Use real height
 	thing->radius = info->radius;	// [RH] Use real radius
-	if (!P_CheckPosition (thing, thing->Pos()))
+	if (!nocheck && !P_CheckPosition (thing, thing->Pos()))
 	{
 		thing->flags = oldflags;
 		thing->radius = oldradius;
@@ -525,7 +527,7 @@ DEFINE_ACTION_FUNCTION(AActor, GetSpawnableType)
 {
 	PARAM_PROLOGUE;
 	PARAM_INT(num);
-	ACTION_RETURN_OBJECT(P_GetSpawnableType(num));
+	ACTION_RETURN_POINTER(P_GetSpawnableType(num));
 }
 
 struct MapinfoSpawnItem

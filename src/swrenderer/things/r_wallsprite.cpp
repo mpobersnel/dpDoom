@@ -1,15 +1,23 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,17 +60,18 @@
 #include "swrenderer/segments/r_drawsegment.h"
 #include "swrenderer/scene/r_portal.h"
 #include "swrenderer/scene/r_scene.h"
-#include "swrenderer/scene/r_viewport.h"
 #include "swrenderer/scene/r_light.h"
 #include "swrenderer/line/r_wallsetup.h"
 #include "swrenderer/line/r_walldraw.h"
+#include "swrenderer/viewport/r_viewport.h"
 #include "swrenderer/r_memory.h"
+#include "swrenderer/r_renderthread.h"
 
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor);
 
 namespace swrenderer
 {
-	void RenderWallSprite::Project(AActor *thing, const DVector3 &pos, FTextureID picnum, const DVector2 &scale, int renderflags, int spriteshade, bool foggy, FDynamicColormap *basecolormap)
+	void RenderWallSprite::Project(RenderThread *thread, AActor *thing, const DVector3 &pos, FTextureID picnum, const DVector2 &scale, int renderflags, int spriteshade, bool foggy, FDynamicColormap *basecolormap)
 	{
 		FWallCoords wallc;
 		double x1, x2;
@@ -81,30 +90,30 @@ namespace swrenderer
 		x1 *= scale.X;
 		x2 *= scale.X;
 
-		left.X = pos.X - x1 * angcos - ViewPos.X;
-		left.Y = pos.Y - x1 * angsin - ViewPos.Y;
+		left.X = pos.X - x1 * angcos - thread->Viewport->viewpoint.Pos.X;
+		left.Y = pos.Y - x1 * angsin - thread->Viewport->viewpoint.Pos.Y;
 		right.X = left.X + x2 * angcos;
 		right.Y = right.Y + x2 * angsin;
 
 		// Is it off-screen?
-		if (wallc.Init(left, right, TOO_CLOSE_Z))
+		if (wallc.Init(thread, left, right, TOO_CLOSE_Z))
 			return;
 			
-		RenderPortal *renderportal = RenderPortal::Instance();
+		RenderPortal *renderportal = thread->Portal.get();
 
 		if (wallc.sx1 >= renderportal->WindowRight || wallc.sx2 <= renderportal->WindowLeft)
 			return;
 
 		// Sprite sorting should probably treat these as walls, not sprites,
 		// but right now, I just want to get them drawing.
-		tz = (pos.X - ViewPos.X) * ViewTanCos + (pos.Y - ViewPos.Y) * ViewTanSin;
+		tz = (pos.X - thread->Viewport->viewpoint.Pos.X) * thread->Viewport->viewpoint.TanCos + (pos.Y - thread->Viewport->viewpoint.Pos.Y) * thread->Viewport->viewpoint.TanSin;
 
 		int scaled_to = pic->GetScaledTopOffset();
 		int scaled_bo = scaled_to - pic->GetScaledHeight();
 		gzt = pos.Z + scale.Y * scaled_to;
 		gzb = pos.Z + scale.Y * scaled_bo;
 
-		RenderWallSprite *vis = RenderMemory::NewObject<RenderWallSprite>();
+		RenderWallSprite *vis = thread->FrameMemory->NewObject<RenderWallSprite>();
 		vis->CurrentPortalUniq = renderportal->CurrentPortalUniq;
 		vis->x1 = wallc.sx1 < renderportal->WindowLeft ? renderportal->WindowLeft : wallc.sx1;
 		vis->x2 = wallc.sx2 >= renderportal->WindowRight ? renderportal->WindowRight : wallc.sx2;
@@ -116,8 +125,8 @@ namespace swrenderer
 		vis->gpos = { (float)pos.X, (float)pos.Y, (float)pos.Z };
 		vis->gzb = (float)gzb;
 		vis->gzt = (float)gzt;
-		vis->deltax = float(pos.X - ViewPos.X);
-		vis->deltay = float(pos.Y - ViewPos.Y);
+		vis->deltax = float(pos.X - thread->Viewport->viewpoint.Pos.X);
+		vis->deltay = float(pos.Y - thread->Viewport->viewpoint.Pos.Y);
 		vis->renderflags = renderflags;
 		if (thing->flags5 & MF5_BRIGHT) vis->renderflags |= RF_FULLBRIGHT; // kg3D
 		vis->RenderStyle = thing->RenderStyle;
@@ -132,12 +141,12 @@ namespace swrenderer
 		vis->wallc = wallc;
 		vis->foggy = foggy;
 
-		vis->Light.SetColormap(LightVisibility::Instance()->SpriteGlobVis() / MAX(tz, MINZ), spriteshade, basecolormap, false, false, false);
+		vis->Light.SetColormap(thread->Light->SpriteGlobVis(foggy) / MAX(tz, MINZ), spriteshade, basecolormap, false, false, false);
 
-		VisibleSpriteList::Instance()->Push(vis);
+		thread->SpriteList->Push(vis);
 	}
 
-	void RenderWallSprite::Render(short *mfloorclip, short *mceilingclip, int, int)
+	void RenderWallSprite::Render(RenderThread *thread, short *mfloorclip, short *mceilingclip, int, int)
 	{
 		auto spr = this;
 
@@ -151,13 +160,13 @@ namespace swrenderer
 			return;
 
 		FWallTmapVals WallT;
-		WallT.InitFromWallCoords(&spr->wallc);
+		WallT.InitFromWallCoords(thread, &spr->wallc);
 
 		ProjectedWallTexcoords walltexcoords;
-		walltexcoords.Project(spr->pic->GetWidth() << FRACBITS, x1, x2, WallT);
+		walltexcoords.Project(thread->Viewport.get(), spr->pic->GetWidth() << FRACBITS, x1, x2, WallT);
 
 		iyscale = 1 / spr->yscale;
-		double texturemid = (spr->gzt - ViewPos.Z) * iyscale;
+		double texturemid = (spr->gzt - thread->Viewport->viewpoint.Pos.Z) * iyscale;
 		if (spr->renderflags & RF_XFLIP)
 		{
 			int right = (spr->pic->GetWidth() << FRACBITS) - 1;
@@ -179,18 +188,20 @@ namespace swrenderer
 			rereadcolormap = false;
 		}
 
-		int shade = LIGHT2SHADE(spr->sector->lightlevel + R_ActualExtraLight(spr->foggy));
-		double GlobVis = LightVisibility::Instance()->WallGlobVis();
+		SpriteDrawerArgs drawerargs;
+
+		int shade = LightVisibility::LightLevelToShade(spr->sector->lightlevel + LightVisibility::ActualExtraLight(spr->foggy, thread->Viewport.get()), spr->foggy);
+		double GlobVis = thread->Light->WallGlobVis(foggy);
 		float lightleft = float(GlobVis / spr->wallc.sz1);
 		float lightstep = float((GlobVis / spr->wallc.sz2 - lightleft) / (spr->wallc.sx2 - spr->wallc.sx1));
 		float light = lightleft + (x1 - spr->wallc.sx1) * lightstep;
 		CameraLight *cameraLight = CameraLight::Instance();
-		if (cameraLight->fixedlightlev >= 0)
-			R_SetColorMapLight(usecolormap, 0, FIXEDLIGHT2SHADE(cameraLight->fixedlightlev));
-		else if (cameraLight->fixedcolormap != NULL)
-			R_SetColorMapLight(cameraLight->fixedcolormap, 0, 0);
+		if (cameraLight->FixedLightLevel() >= 0)
+			drawerargs.SetLight(usecolormap, 0, cameraLight->FixedLightLevelShade());
+		else if (cameraLight->FixedColormap() != NULL)
+			drawerargs.SetLight(cameraLight->FixedColormap(), 0, 0);
 		else if (!spr->foggy && (spr->renderflags & RF_FULLBRIGHT))
-			R_SetColorMapLight((r_fullbrightignoresectorcolor) ? &FullNormalLight : usecolormap, 0, 0);
+			drawerargs.SetLight((r_fullbrightignoresectorcolor) ? &FullNormalLight : usecolormap, 0, 0);
 		else
 			calclighting = true;
 
@@ -213,7 +224,7 @@ namespace swrenderer
 
 		FDynamicColormap *basecolormap = static_cast<FDynamicColormap*>(spr->Light.BaseColormap);
 
-		bool visible = R_SetPatchStyle(spr->RenderStyle, spr->Alpha, spr->Translation, spr->FillColor, basecolormap);
+		bool visible = drawerargs.SetStyle(thread->Viewport.get(), spr->RenderStyle, spr->Alpha, spr->Translation, spr->FillColor, basecolormap);
 
 		// R_SetPatchStyle can modify basecolormap.
 		if (rereadcolormap)
@@ -227,32 +238,35 @@ namespace swrenderer
 		}
 		else
 		{
-			RenderTranslucentPass *translucentPass = RenderTranslucentPass::Instance();
+			RenderTranslucentPass *translucentPass = thread->TranslucentPass.get();
 
+			thread->PrepareTexture(WallSpriteTile);
 			while (x < x2)
 			{
 				if (calclighting)
 				{ // calculate lighting
-					R_SetColorMapLight(usecolormap, light, shade);
+					drawerargs.SetLight(usecolormap, light, shade);
 				}
 				if (!translucentPass->ClipSpriteColumnWithPortals(x, spr))
-					DrawColumn(x, WallSpriteTile, walltexcoords, texturemid, maskedScaleY, sprflipvert, mfloorclip, mceilingclip);
+					DrawColumn(thread, drawerargs, x, WallSpriteTile, walltexcoords, texturemid, maskedScaleY, sprflipvert, mfloorclip, mceilingclip);
 				light += lightstep;
 				x++;
 			}
 		}
 	}
 
-	void RenderWallSprite::DrawColumn(int x, FTexture *WallSpriteTile, const ProjectedWallTexcoords &walltexcoords, double texturemid, float maskedScaleY, bool sprflipvert, const short *mfloorclip, const short *mceilingclip)
+	void RenderWallSprite::DrawColumn(RenderThread *thread, SpriteDrawerArgs &drawerargs, int x, FTexture *WallSpriteTile, const ProjectedWallTexcoords &walltexcoords, double texturemid, float maskedScaleY, bool sprflipvert, const short *mfloorclip, const short *mceilingclip)
 	{
+		auto viewport = thread->Viewport.get();
+		
 		float iscale = walltexcoords.VStep[x] * maskedScaleY;
 		double spryscale = 1 / iscale;
 		double sprtopscreen;
 		if (sprflipvert)
-			sprtopscreen = CenterY + texturemid * spryscale;
+			sprtopscreen = viewport->CenterY + texturemid * spryscale;
 		else
-			sprtopscreen = CenterY - texturemid * spryscale;
+			sprtopscreen = viewport->CenterY - texturemid * spryscale;
 
-		R_DrawMaskedColumn(x, FLOAT2FIXED(iscale), WallSpriteTile, walltexcoords.UPos[x], spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip);
+		drawerargs.DrawMaskedColumn(thread, x, FLOAT2FIXED(iscale), WallSpriteTile, walltexcoords.UPos[x], spryscale, sprtopscreen, sprflipvert, mfloorclip, mceilingclip);
 	}
 }

@@ -1,26 +1,41 @@
+//-----------------------------------------------------------------------------
 //
-// Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright 1993-1996 id Software
+// Copyright 1999-2016 Randy Heit
+// Copyright 2016 Magnus Norddahl
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/
+//
+//-----------------------------------------------------------------------------
 //
 
 #pragma once
 
 #include "r_planerenderer.h"
+#include "swrenderer/viewport/r_spandrawer.h"
 
 namespace swrenderer
 {
+	class RenderThread;
+
 	class RenderSlopePlane : PlaneRenderer
 	{
 	public:
-		void Render(VisiblePlane *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *basecolormap);
+		RenderSlopePlane(RenderThread *thread);
+		void Render(VisiblePlane *pl, double _xscale, double _yscale, fixed_t alpha, bool additive, bool masked, FDynamicColormap *basecolormap, FTexture *texture);
+
+		RenderThread *Thread = nullptr;
 
 	private:
 		void RenderLine(int y, int x1, int x2) override;
@@ -32,5 +47,6 @@ namespace swrenderer
 		fixed_t pviewx, pviewy;
 		fixed_t xscale, yscale;
 		FDynamicColormap *basecolormap;
+		SpanDrawerArgs drawerargs;
 	};
 }

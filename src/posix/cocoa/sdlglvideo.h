@@ -66,15 +66,15 @@ public:
 	int GetClientHeight();
 
 protected:
-	int                 m_lock;
-	bool                m_isUpdatePending;
+	int                 m_Lock;
+	bool                UpdatePending;
 
 	static const uint32_t GAMMA_CHANNEL_SIZE = 256;
 	static const uint32_t GAMMA_CHANNEL_COUNT = 3;
 	static const uint32_t GAMMA_TABLE_SIZE = GAMMA_CHANNEL_SIZE * GAMMA_CHANNEL_COUNT;
 
 	bool				m_supportsGamma;
-	WORD				m_originalGamma[GAMMA_TABLE_SIZE];
+	uint16_t			m_originalGamma[GAMMA_TABLE_SIZE];
 
 	SDLGLFB();
 
@@ -83,7 +83,7 @@ protected:
 	bool CanUpdate();
 	void SwapBuffers();
 
-	void SetGammaTable(WORD* table);
+	void SetGammaTable(uint16_t* table);
 	void ResetGammaTable();
 };
 

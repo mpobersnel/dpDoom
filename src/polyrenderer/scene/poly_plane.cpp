@@ -29,16 +29,18 @@
 #include "poly_portal.h"
 #include "polyrenderer/poly_renderer.h"
 #include "r_sky.h"
-#include "swrenderer/scene/r_light.h"
+#include "polyrenderer/scene/poly_light.h"
 
 EXTERN_CVAR(Int, r_3dfloors)
 
-void RenderPolyPlane::RenderPlanes(const TriMatrix &worldToClip, const Vec4f &clipPlane, PolyCull &cull, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue, double skyCeilingHeight, double skyFloorHeight, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
+void RenderPolyPlane::RenderPlanes(const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, PolyCull &cull, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue, double skyCeilingHeight, double skyFloorHeight, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
 {
 	RenderPolyPlane plane;
 
 	if (r_3dfloors)
 	{
+		const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+
 		auto frontsector = sub->sector;
 		auto &ffloors = frontsector->e->XFloor.ffloors;
 
@@ -57,7 +59,7 @@ void RenderPolyPlane::RenderPlanes(const TriMatrix &worldToClip, const Vec4f &cl
 			//fakeFloor->alpha
 
 			double fakeHeight = fakeFloor->top.plane->ZatPoint(frontsector->centerspot);
-			if (fakeHeight < ViewPos.Z && fakeHeight > frontsector->floorplane.ZatPoint(frontsector->centerspot))
+			if (fakeHeight < viewpoint.Pos.Z && fakeHeight > frontsector->floorplane.ZatPoint(frontsector->centerspot))
 			{
 				plane.Render3DFloor(worldToClip, clipPlane, sub, subsectorDepth, stencilValue, false, fakeFloor);
 			}
@@ -78,7 +80,7 @@ void RenderPolyPlane::RenderPlanes(const TriMatrix &worldToClip, const Vec4f &cl
 			//fakeFloor->alpha
 
 			double fakeHeight = fakeFloor->bottom.plane->ZatPoint(frontsector->centerspot);
-			if (fakeHeight > ViewPos.Z && fakeHeight < frontsector->ceilingplane.ZatPoint(frontsector->centerspot))
+			if (fakeHeight > viewpoint.Pos.Z && fakeHeight < frontsector->ceilingplane.ZatPoint(frontsector->centerspot))
 			{
 				plane.Render3DFloor(worldToClip, clipPlane, sub, subsectorDepth, stencilValue, true, fakeFloor);
 			}
@@ -89,17 +91,18 @@ void RenderPolyPlane::RenderPlanes(const TriMatrix &worldToClip, const Vec4f &cl
 	plane.Render(worldToClip, clipPlane, cull, sub, subsectorDepth, stencilValue, false, skyFloorHeight, sectorPortals);
 }
 
-void RenderPolyPlane::Render3DFloor(const TriMatrix &worldToClip, const Vec4f &clipPlane, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue, bool ceiling, F3DFloor *fakeFloor)
+void RenderPolyPlane::Render3DFloor(const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue, bool ceiling, F3DFloor *fakeFloor)
 {
 	FTextureID picnum = ceiling ? *fakeFloor->bottom.texture : *fakeFloor->top.texture;
 	FTexture *tex = TexMan(picnum);
 	if (tex->UseType == FTexture::TEX_Null)
 		return;
 
-	swrenderer::CameraLight *cameraLight = swrenderer::CameraLight::Instance();
+	PolyCameraLight *cameraLight = PolyCameraLight::Instance();
 
 	int lightlevel = 255;
-	if (cameraLight->fixedlightlev < 0 && sub->sector->e->XFloor.lightlist.Size())
+	bool foggy = false;
+	if (cameraLight->FixedLightLevel() < 0 && sub->sector->e->XFloor.lightlist.Size())
 	{
 		lightlist_t *light = P_GetPlaneLight(sub->sector, &sub->sector->ceilingplane, false);
 		//basecolormap = light->extra_colormap;
@@ -108,18 +111,7 @@ void RenderPolyPlane::Render3DFloor(const TriMatrix &worldToClip, const Vec4f &c
 
 	UVTransform xform(ceiling ? fakeFloor->top.model->planes[sector_t::ceiling].xform : fakeFloor->top.model->planes[sector_t::floor].xform, tex);
 
-	PolyDrawArgs args;
-	args.uniforms.globvis = (float)swrenderer::LightVisibility::Instance()->SlopePlaneGlobVis() * 48.0f;
-	args.uniforms.light = (uint32_t)(lightlevel / 255.0f * 256.0f);
-	if (cameraLight->fixedlightlev >= 0 || cameraLight->fixedcolormap)
-		args.uniforms.light = 256;
-	args.uniforms.flags = 0;
-	args.uniforms.subsectorDepth = subsectorDepth;
-
-	TriVertex *vertices = PolyVertexBuffer::GetVertices(sub->numlines);
-	if (!vertices)
-		return;
-
+	TriVertex *vertices = PolyRenderer::Instance()->FrameMemory.AllocMemory<TriVertex>(sub->numlines);
 	if (ceiling)
 	{
 		for (uint32_t i = 0; i < sub->numlines; i++)
@@ -137,91 +129,23 @@ void RenderPolyPlane::Render3DFloor(const TriMatrix &worldToClip, const Vec4f &c
 		}
 	}
 
-	args.objectToClip = &worldToClip;
-	args.vinput = vertices;
-	args.vcount = sub->numlines;
-	args.mode = TriangleDrawMode::Fan;
-	args.ccw = true;
-	args.stenciltestvalue = stencilValue;
-	args.stencilwritevalue = stencilValue + 1;
+	PolyDrawArgs args;
+	args.SetLight(GetColorTable(sub->sector->Colormap), lightlevel, PolyRenderer::Instance()->Light.WallGlobVis(foggy), false);
+	args.SetSubsectorDepth(subsectorDepth);
+	args.SetTransform(&worldToClip);
+	args.SetStyle(TriBlendMode::TextureOpaque);
+	args.SetFaceCullCCW(true);
+	args.SetStencilTestValue(stencilValue);
+	args.SetWriteStencil(true, stencilValue + 1);
 	args.SetTexture(tex);
-	args.SetColormap(sub->sector->ColorMap);
-	args.SetClipPlane(clipPlane.x, clipPlane.y, clipPlane.z, clipPlane.w);
-	args.blendmode = TriBlendMode::Copy;
-	PolyTriangleDrawer::draw(args);
+	args.SetClipPlane(clipPlane);
+	args.DrawArray(vertices, sub->numlines, PolyDrawMode::TriangleFan);
 }
 
-void RenderPolyPlane::Render(const TriMatrix &worldToClip, const Vec4f &clipPlane, PolyCull &cull, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue, bool ceiling, double skyHeight, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
+void RenderPolyPlane::Render(const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, PolyCull &cull, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue, bool ceiling, double skyHeight, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
 {
-	std::vector<PolyPortalSegment> portalSegments;
-	FSectorPortal *portal = nullptr;// sub->sector->ValidatePortal(ceiling ? sector_t::ceiling : sector_t::floor);
-	PolyDrawSectorPortal *polyportal = nullptr;
-	if (portal && (portal->mFlags & PORTSF_INSKYBOX) == PORTSF_INSKYBOX) // Do not recurse into portals we already recursed into
-		portal = nullptr;
-	if (portal)
-	{
-		for (auto &p : sectorPortals)
-		{
-			if (p->Portal == portal) // To do: what other criteria do we need to check for?
-			{
-				polyportal = p.get();
-				break;
-			}
-		}
-		if (!polyportal)
-		{
-			sectorPortals.push_back(std::make_unique<PolyDrawSectorPortal>(portal, ceiling));
-			polyportal = sectorPortals.back().get();
-		}
-
-		// Calculate portal clipping
-
-		DVector2 v;
-		bool inside = true;
-		double vdist = 1.0e10;
-
-		portalSegments.reserve(sub->numlines);
-		for (uint32_t i = 0; i < sub->numlines; i++)
-		{
-			seg_t *line = &sub->firstline[i];
-
-			DVector2 pt1 = line->v1->fPos() - ViewPos;
-			DVector2 pt2 = line->v2->fPos() - ViewPos;
-			if (pt1.Y * (pt1.X - pt2.X) + pt1.X * (pt2.Y - pt1.Y) >= 0)
-				inside = false;
-
-			double dist = pt1.LengthSquared();
-			if (dist < vdist)
-			{
-				v = line->v1->fPos();
-				vdist = dist;
-			}
-			dist = pt2.LengthSquared();
-			if (dist < vdist)
-			{
-				v = line->v2->fPos();
-				vdist = dist;
-			}
-
-			int sx1, sx2;
-			LineSegmentRange range = cull.GetSegmentRangeForLine(line->v1->fX(), line->v1->fY(), line->v2->fX(), line->v2->fY(), sx1, sx2);
-			if (range == LineSegmentRange::HasSegment)
-				portalSegments.push_back({ sx1, sx2 });
-		}
-
-		if (inside)
-		{
-			polyportal->PortalPlane = Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
-		}
-		else if(polyportal->PortalPlane == Vec4f(0.0f) || Vec4f::dot(polyportal->PortalPlane, Vec4f((float)v.X, (float)v.Y, 0.0f, 1.0f)) > 0.0f)
-		{
-			DVector2 planePos = v;
-			DVector2 planeNormal = v - ViewPos;
-			planeNormal.MakeUnit();
-			double planeD = -(planeNormal | (planePos + planeNormal * 0.001));
-			polyportal->PortalPlane = Vec4f((float)planeNormal.X, (float)planeNormal.Y, 0.0f, (float)planeD);
-		}
-	}
+	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
+	bool foggy = false;
 	
 	sector_t *fakesector = sub->sector->heightsec;
 	if (fakesector && (fakesector == sub->sector || (fakesector->MoreFlags & SECF_IGNOREHEIGHTSEC) == SECF_IGNOREHEIGHTSEC))
@@ -236,7 +160,7 @@ void RenderPolyPlane::Render(const TriMatrix &worldToClip, const Vec4f &clipPlan
 	{
 		// Floor and ceiling texture needs to be swapped sometimes? Why?? :(
 
-		if (ViewPos.Z < fakesector->floorplane.Zat0()) // In water
+		if (viewpoint.Pos.Z < fakesector->floorplane.Zat0()) // In water
 		{
 			if (ceiling)
 			{
@@ -252,7 +176,7 @@ void RenderPolyPlane::Render(const TriMatrix &worldToClip, const Vec4f &clipPlan
 				ccw = true;
 			}
 		}
-		else if (ViewPos.Z >= fakesector->ceilingplane.Zat0() && !fakeflooronly) // In ceiling water
+		else if (viewpoint.Pos.Z >= fakesector->ceilingplane.Zat0() && !fakeflooronly) // In ceiling water
 		{
 			if (ceiling)
 			{
@@ -298,23 +222,66 @@ void RenderPolyPlane::Render(const TriMatrix &worldToClip, const Vec4f &clipPlan
 	if (tex->UseType == FTexture::TEX_Null)
 		return;
 
-	bool isSky = picnum == skyflatnum;
+	std::vector<PolyPortalSegment> portalSegments;
+	FSectorPortal *portal = sub->sector->ValidatePortal(ceiling ? sector_t::ceiling : sector_t::floor);
+	PolyDrawSectorPortal *polyportal = nullptr;
+	if (portal && (portal->mFlags & PORTSF_INSKYBOX) == PORTSF_INSKYBOX) // Do not recurse into portals we already recursed into
+		portal = nullptr;
+
+	bool isSky = portal || picnum == skyflatnum;
+
+	if (portal)
+	{
+		// Skip portals not facing the camera
+		if ((ceiling && frontsector->ceilingplane.PointOnSide(viewpoint.Pos) < 0) ||
+			(!ceiling && frontsector->floorplane.PointOnSide(viewpoint.Pos) < 0))
+		{
+			return;
+		}
+
+		for (auto &p : sectorPortals)
+		{
+			if (p->Portal == portal) // To do: what other criteria do we need to check for?
+			{
+				polyportal = p.get();
+				break;
+			}
+		}
+		if (!polyportal)
+		{
+			sectorPortals.push_back(std::unique_ptr<PolyDrawSectorPortal>(new PolyDrawSectorPortal(portal, ceiling)));
+			polyportal = sectorPortals.back().get();
+		}
+
+#if 0
+		// Calculate portal clipping
+		portalSegments.reserve(sub->numlines);
+		for (uint32_t i = 0; i < sub->numlines; i++)
+		{
+			seg_t *line = &sub->firstline[i];
+
+			DVector2 pt1 = line->v1->fPos() - viewpoint.Pos;
+			DVector2 pt2 = line->v2->fPos() - viewpoint.Pos;
+			bool backside = pt1.Y * (pt1.X - pt2.X) + pt1.X * (pt2.Y - pt1.Y) >= 0;
+			if (!backside)
+			{
+				angle_t angle1, angle2;
+				if (cull.GetAnglesForLine(line->v1->fX(), line->v1->fY(), line->v2->fX(), line->v2->fY(), angle1, angle2))
+					portalSegments.push_back({ angle1, angle2 });
+			}
+			else
+			{
+				angle_t angle1, angle2;
+				if (cull.GetAnglesForLine(line->v2->fX(), line->v2->fY(), line->v1->fX(), line->v1->fY(), angle1, angle2))
+					portalSegments.push_back({ angle1, angle2 });
+			}
+		}
+#endif
+	}
 
 	UVTransform transform(ceiling ? frontsector->planes[sector_t::ceiling].xform : frontsector->planes[sector_t::floor].xform, tex);
 
-	swrenderer::CameraLight *cameraLight = swrenderer::CameraLight::Instance();
-
-	PolyDrawArgs args;
-	args.uniforms.globvis = (float)swrenderer::LightVisibility::Instance()->SlopePlaneGlobVis() * 48.0f;
-	args.uniforms.light = (uint32_t)(frontsector->lightlevel / 255.0f * 256.0f);
-	if (cameraLight->fixedlightlev >= 0 || cameraLight->fixedcolormap)
-		args.uniforms.light = 256;
-	args.uniforms.flags = 0;
-	args.uniforms.subsectorDepth = isSky ? RenderPolyScene::SkySubsectorDepth : subsectorDepth;
-
-	TriVertex *vertices = PolyVertexBuffer::GetVertices(sub->numlines);
-	if (!vertices)
-		return;
+	TriVertex *vertices = PolyRenderer::Instance()->FrameMemory.AllocMemory<TriVertex>(sub->numlines);
 
 	if (ceiling)
 	{
@@ -333,56 +300,40 @@ void RenderPolyPlane::Render(const TriMatrix &worldToClip, const Vec4f &clipPlan
 		}
 	}
 
-	args.objectToClip = &worldToClip;
-	args.vinput = vertices;
-	args.vcount = sub->numlines;
-	args.mode = TriangleDrawMode::Fan;
-	args.ccw = ccw;
-	args.stenciltestvalue = stencilValue;
-	args.stencilwritevalue = stencilValue + 1;
-	args.SetColormap(frontsector->ColorMap);
-	args.SetClipPlane(clipPlane.x, clipPlane.y, clipPlane.z, clipPlane.w);
+	PolyDrawArgs args;
+	args.SetLight(GetColorTable(frontsector->Colormap, frontsector->SpecialColors[ceiling]), frontsector->lightlevel, PolyRenderer::Instance()->Light.WallGlobVis(foggy), false);
+	args.SetSubsectorDepth(isSky ? RenderPolyScene::SkySubsectorDepth : subsectorDepth);
+	args.SetTransform(&worldToClip);
+	args.SetFaceCullCCW(ccw);
+	args.SetStencilTestValue(stencilValue);
+	args.SetWriteStencil(true, stencilValue + 1);
+	args.SetClipPlane(clipPlane);
 
 	if (!isSky)
 	{
-		if (!portal)
-		{
-			args.SetTexture(tex);
-			args.blendmode = TriBlendMode::Copy;
-			PolyTriangleDrawer::draw(args);
-		}
-		else
-		{
-			args.stencilwritevalue = polyportal->StencilValue;
-			args.writeColor = false;
-			args.writeSubsector = false;
-			PolyTriangleDrawer::draw(args);
-			polyportal->Shape.push_back({ args.vinput, args.vcount, args.ccw, subsectorDepth });
-			polyportal->Segments.insert(polyportal->Segments.end(), portalSegments.begin(), portalSegments.end());
-		}
+		args.SetTexture(tex);
+		args.SetStyle(TriBlendMode::TextureOpaque);
+		args.DrawArray(vertices, sub->numlines, PolyDrawMode::TriangleFan);
 	}
 	else
 	{
 		if (portal)
 		{
-			args.stencilwritevalue = polyportal->StencilValue;
-			polyportal->Shape.push_back({ args.vinput, args.vcount, args.ccw, subsectorDepth });
-			polyportal->Segments.insert(polyportal->Segments.end(), portalSegments.begin(), portalSegments.end());
+			args.SetWriteStencil(true, polyportal->StencilValue);
+			polyportal->Shape.push_back({ vertices, (int)sub->numlines, ccw, subsectorDepth });
 		}
 		else
 		{
-			args.stencilwritevalue = 255;
+			args.SetWriteStencil(true, 255);
 		}
 
-		args.writeColor = false;
-		args.writeSubsector = false;
-		PolyTriangleDrawer::draw(args);
+		args.SetWriteColor(false);
+		args.SetWriteSubsectorDepth(false);
+		args.DrawArray(vertices, sub->numlines, PolyDrawMode::TriangleFan);
 
 		for (uint32_t i = 0; i < sub->numlines; i++)
 		{
-			TriVertex *wallvert = PolyVertexBuffer::GetVertices(4);
-			if (!wallvert)
-				return;
+			TriVertex *wallvert = PolyRenderer::Instance()->FrameMemory.AllocMemory<TriVertex>(4);
 
 			seg_t *line = &sub->firstline[i];
 
@@ -442,14 +393,11 @@ void RenderPolyPlane::Render(const TriMatrix &worldToClip, const Vec4f &clipPlan
 				wallvert[3] = PlaneVertex(line->v1, skyHeight, transform);
 			}
 
-			args.vinput = wallvert;
-			args.vcount = 4;
-			PolyTriangleDrawer::draw(args);
+			args.DrawArray(wallvert, 4, PolyDrawMode::TriangleFan);
 			
 			if (portal)
 			{
-				polyportal->Shape.push_back({ args.vinput, args.vcount, args.ccw, subsectorDepth });
-				polyportal->Segments.insert(polyportal->Segments.end(), portalSegments.begin(), portalSegments.end());
+				polyportal->Shape.push_back({ wallvert, 4, ccw, subsectorDepth });
 			}
 		}
 	}
@@ -462,8 +410,8 @@ TriVertex RenderPolyPlane::PlaneVertex(vertex_t *v1, double height, const UVTran
 	v.y = (float)v1->fPos().Y;
 	v.z = (float)height;
 	v.w = 1.0f;
-	v.varying[0] = transform.GetU(v.x, v.y);
-	v.varying[1] = transform.GetV(v.x, v.y);
+	v.u = transform.GetU(v.x, v.y);
+	v.v = transform.GetV(v.x, v.y);
 	return v;
 }
 
