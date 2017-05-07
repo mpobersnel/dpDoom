@@ -117,7 +117,9 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 			double frontfloorz1 = frontsector->floorplane.ZatPoint(line->v1);
 			double frontceilz2 = frontsector->ceilingplane.ZatPoint(line->v2);
 			double frontfloorz2 = frontsector->floorplane.ZatPoint(line->v2);
-			
+			double topTexZ = frontsector->GetPlaneTexZ(sector_t::ceiling);
+			double bottomTexZ = frontsector->GetPlaneTexZ(sector_t::floor);
+
 			ceilingVertices.push_back({ (float)line->v1->fX(), (float)line->v1->fY(), (float)frontceilz1 });
 			floorVertices.push_back({ (float)line->v1->fX(), (float)line->v1->fY(), (float)frontfloorz1 });
 			
@@ -128,7 +130,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::mid);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, false);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, topTexZ, bottomTexZ, false);
 				}
 			}
 			else
@@ -160,7 +162,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::top);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, false);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, topTexZ, MIN(topfloorz1, topfloorz2), false);
 				}
 
 				if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && line->sidedef)
@@ -168,7 +170,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::bottom);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, false);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, MAX(bottomceilz1, bottomceilz2), bottomTexZ, false);
 				}
 
 				if (line->sidedef)
@@ -176,7 +178,7 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 					FTexture *texture = TexMan(line->sidedef->GetTexture(side_t::mid), true);
 					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, true);
+						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, MAX(middleceilz1, middleceilz2), MIN(middlefloorz1, middlefloorz2), true);
 				}
 			}
 		}
@@ -219,12 +221,14 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 	}
 }
 
-void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, bool masked)
+void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked)
 {
 	DVector2 v1 = lineseg->v1->fPos();
 	DVector2 v2 = lineseg->v2->fPos();
 
-	WallTextureCoords walltexcoords(texture, lineseg, line, side, texpart, ceilz1, floorz1, unpeggedceil1);
+	WallTextureCoordsU texcoordsU(texture, lineseg, line, side, texpart);
+	WallTextureCoordsV texcoordsVLeft(texture, line, side, texpart, ceilz1, floorz1, unpeggedceil1, topTexZ, bottomTexZ);
+	WallTextureCoordsV texcoordsVRght(texture, line, side, texpart, ceilz2, floorz2, unpeggedceil2, topTexZ, bottomTexZ);
 
 	Vec3f vertices[4] =
 	{
@@ -236,10 +240,10 @@ void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg
 
 	Vec4f texcoords[4] =
 	{
-		{ (float)walltexcoords.u1, (float)walltexcoords.v1, sectornum, 0.0f },
-		{ (float)walltexcoords.u2, (float)walltexcoords.v1, sectornum, 0.0f },
-		{ (float)walltexcoords.u1, (float)walltexcoords.v2, sectornum, 0.0f },
-		{ (float)walltexcoords.u2, (float)walltexcoords.v2, sectornum, 0.0f }
+		{ (float)texcoordsU.u1, (float)texcoordsVLeft.v1, sectornum, 0.0f },
+		{ (float)texcoordsU.u2, (float)texcoordsVRght.v1, sectornum, 0.0f },
+		{ (float)texcoordsU.u1, (float)texcoordsVLeft.v2, sectornum, 0.0f },
+		{ (float)texcoordsU.u2, (float)texcoordsVRght.v2, sectornum, 0.0f }
 	};
 
 	// Masked walls clamp to the 0-1 range (no texture repeat)
@@ -365,13 +369,7 @@ float PlaneUVTransform::GetV(float x, float y) const
 
 /////////////////////////////////////////////////////////////////////////////
 
-WallTextureCoords::WallTextureCoords(FTexture *tex, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double topz, double bottomz, double unpeggedceil)
-{
-	CalcU(tex, lineseg, line, side, texpart);
-	CalcV(tex, line, side, texpart, topz, bottomz, unpeggedceil);
-}
-
-void WallTextureCoords::CalcU(FTexture *tex, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart)
+WallTextureCoordsU::WallTextureCoordsU(FTexture *tex, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart)
 {
 	double lineLength = side->TexelLength;
 	double lineStart = 0.0;
@@ -393,7 +391,9 @@ void WallTextureCoords::CalcU(FTexture *tex, const seg_t *lineseg, const line_t 
 	u2 /= texWidth;
 }
 
-void WallTextureCoords::CalcV(FTexture *tex, const line_t *line, const side_t *side, side_t::ETexpart texpart, double topz, double bottomz, double unpeggedceil)
+/////////////////////////////////////////////////////////////////////////////
+
+WallTextureCoordsV::WallTextureCoordsV(FTexture *tex, const line_t *line, const side_t *side, side_t::ETexpart texpart, double topz, double bottomz, double unpeggedceil, double topTexZ, double bottomTexZ)
 {
 	double vscale = side->GetTextureYScale(texpart) * tex->Scale.Y;
 
@@ -405,22 +405,33 @@ void WallTextureCoords::CalcV(FTexture *tex, const line_t *line, const side_t *s
 	{
 	default:
 	case side_t::mid:
-		CalcVMidPart(tex, line, side, topz, bottomz, vscale, yoffset);
+		CalcVMidPart(tex, line, side, topTexZ, bottomTexZ, vscale, yoffset);
 		break;
 	case side_t::top:
-		CalcVTopPart(tex, line, side, topz, bottomz, vscale, yoffset);
+		CalcVTopPart(tex, line, side, topTexZ, bottomTexZ, vscale, yoffset);
 		break;
 	case side_t::bottom:
-		CalcVBottomPart(tex, line, side, topz, bottomz, unpeggedceil, vscale, yoffset);
+		CalcVBottomPart(tex, line, side, topTexZ, bottomTexZ, unpeggedceil, vscale, yoffset);
 		break;
 	}
 
 	int texHeight = tex->GetHeight();
 	v1 /= texHeight;
 	v2 /= texHeight;
+
+	double texZHeight = (bottomTexZ - topTexZ);
+	if (texZHeight > 0.0f || texZHeight < -0.0f)
+	{
+		double t1 = (topz - topTexZ) / texZHeight;
+		double t2 = (bottomz - topTexZ) / texZHeight;
+		double vorig1 = v1;
+		double vorig2 = v2;
+		v1 = vorig1 * (1.0f - t1) + vorig2 * t1;
+		v2 = vorig1 * (1.0f - t2) + vorig2 * t2;
+	}
 }
 
-void WallTextureCoords::CalcVTopPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double vscale, double yoffset)
+void WallTextureCoordsV::CalcVTopPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double vscale, double yoffset)
 {
 	bool pegged = (line->flags & ML_DONTPEGTOP) == 0;
 	if (pegged) // bottom to top
@@ -443,7 +454,7 @@ void WallTextureCoords::CalcVTopPart(FTexture *tex, const line_t *line, const si
 	}
 }
 
-void WallTextureCoords::CalcVMidPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double vscale, double yoffset)
+void WallTextureCoordsV::CalcVMidPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double vscale, double yoffset)
 {
 	bool pegged = (line->flags & ML_DONTPEGBOTTOM) == 0;
 	if (pegged) // top to bottom
@@ -459,7 +470,7 @@ void WallTextureCoords::CalcVMidPart(FTexture *tex, const line_t *line, const si
 	}
 }
 
-void WallTextureCoords::CalcVBottomPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double unpeggedceil, double vscale, double yoffset)
+void WallTextureCoordsV::CalcVBottomPart(FTexture *tex, const line_t *line, const side_t *side, double topz, double bottomz, double unpeggedceil, double vscale, double yoffset)
 {
 	bool pegged = (line->flags & ML_DONTPEGBOTTOM) == 0;
 	if (pegged) // top to bottom
