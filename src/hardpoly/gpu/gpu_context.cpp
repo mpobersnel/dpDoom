@@ -38,7 +38,12 @@ void GPUContext::Begin()
 	ClearError();
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldDrawFramebufferBinding);
 	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &oldReadFramebufferBinding);
-	
+	glGetIntegerv(GL_CURRENT_PROGRAM, &oldProgram);
+	glActiveTexture(GL_TEXTURE0);
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTextureBinding0);
+	glActiveTexture(GL_TEXTURE1);
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTextureBinding1);
+
 	// To do: move elsewhere
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_CULL_FACE);
@@ -54,6 +59,11 @@ void GPUContext::End()
 
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, oldDrawFramebufferBinding);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, oldReadFramebufferBinding);
+	glUseProgram(oldProgram);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, oldTextureBinding1);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, oldTextureBinding0);
 	CheckError();
 }
 

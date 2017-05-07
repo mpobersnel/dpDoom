@@ -24,6 +24,7 @@
 
 #include "r_renderer.h"
 #include "hardpoly/gpu/gpu_context.h"
+#include "hardpoly/playersprite.h"
 #include <set>
 
 struct LevelMeshDrawRun;
@@ -92,4 +93,5 @@ private:
 	std::vector<LevelMeshDrawRun> mDynamicDrawRuns;
 	std::set<sector_t*> dynamicSectors;
 	std::vector<subsector_t*> dynamicSubsectors;
+	HardpolyRenderPlayerSprites mPlayerSprites;
 };

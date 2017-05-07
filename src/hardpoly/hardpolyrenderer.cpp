@@ -86,6 +86,8 @@ void HardpolyRenderer::RenderView(player_t *player)
 	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
 	swframebuffer->SetViewFB(mSceneFB->Handle());
 
+	mPlayerSprites.Render();
+
 	FCanvasTextureInfo::UpdateAll();
 }
 
@@ -399,6 +401,7 @@ void HardpolyRenderer::WriteSavePic(player_t *player, FileWriter *file, int widt
 
 void HardpolyRenderer::DrawRemainingPlayerSprites()
 {
+	mPlayerSprites.RenderRemainingSprites();
 }
 
 int HardpolyRenderer::GetMaxViewPitch(bool down)

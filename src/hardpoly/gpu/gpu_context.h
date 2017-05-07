@@ -95,7 +95,11 @@ private:
 
 	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
 	
-	int oldDrawFramebufferBinding = 0, oldReadFramebufferBinding = 0;
+	int oldDrawFramebufferBinding = 0;
+	int oldReadFramebufferBinding = 0;
+	int oldProgram = 0;
+	int oldTextureBinding0 = 0;
+	int oldTextureBinding1 = 0;
 };
 
 typedef std::shared_ptr<GPUContext> GPUContextPtr;
