@@ -435,10 +435,10 @@ void HardpolyRenderer::RenderTextureView(FCanvasTexture *tex, AActor *viewpoint,
 
 void HardpolyRenderer::PreprocessLevel()
 {
-	//gl_PreprocessLevel();
+	gl_PreprocessLevel();
 }
 
 void HardpolyRenderer::CleanLevelData()
 {
-	//gl_CleanLevelData();
+	gl_CleanLevelData();
 }
