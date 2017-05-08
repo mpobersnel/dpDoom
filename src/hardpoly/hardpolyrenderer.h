@@ -25,6 +25,7 @@
 #include "r_renderer.h"
 #include "hardpoly/gpu/gpu_context.h"
 #include "hardpoly/playersprite.h"
+#include "hardpoly/bspcull.h"
 #include <set>
 
 struct LevelMeshDrawRun;
@@ -65,6 +66,7 @@ private:
 	void CompileShaders();
 	void CreateSamplers();
 	void UploadSectorTexture();
+	void RenderBspMesh();
 	void RenderDynamicMesh();
 	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId);
 	GPUTexture2DPtr GetTexture(FTexture *texture);
@@ -94,4 +96,5 @@ private:
 	std::set<sector_t*> dynamicSectors;
 	std::vector<subsector_t*> dynamicSubsectors;
 	HardpolyRenderPlayerSprites mPlayerSprites;
+	HardpolyBSPCull mBspCull;
 };

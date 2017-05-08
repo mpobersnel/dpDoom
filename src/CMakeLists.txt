@@ -778,6 +778,7 @@ set( FASTMATH_SOURCES
 	hardpoly/hardpolyrenderer.cpp
 	hardpoly/levelmeshbuilder.cpp
 	hardpoly/playersprite.cpp
+	hardpoly/bspcull.cpp
 	hardpoly/gpu/gpu_context.cpp
 	hardpoly/gpu/gpu_framebuffer.cpp
 	hardpoly/gpu/gpu_indexbuffer.cpp

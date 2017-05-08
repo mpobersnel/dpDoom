@@ -768,6 +768,7 @@ void OpenGLSWFrameBuffer::Present()
 void OpenGLSWFrameBuffer::SetInitialState()
 {
 	if (gl.es) UseMappedMemBuffer = false;
+	if (vid_renderer == 2) UseMappedMemBuffer = false;
 
 	AlphaBlendEnabled = false;
 	AlphaBlendOp = GL_FUNC_ADD;
@@ -1356,7 +1357,7 @@ void OpenGLSWFrameBuffer::BgraToRgba(uint32_t *dest, const uint32_t *src, int wi
 
 void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 {
-	if (copy3d)
+	if (copy3d && vid_renderer != 2)
 	{
 		BindFBBuffer();
 		FBTexture->CurrentBuffer = (FBTexture->CurrentBuffer + 1) & 1;

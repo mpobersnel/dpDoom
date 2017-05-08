@@ -75,8 +75,9 @@ void HardpolyRenderer::RenderView(player_t *player)
 	CompileShaders();
 	CreateSamplers();
 	UploadSectorTexture();
-	RenderLevelMesh(mVertexArray, mDrawRuns, 1.0f);
-	RenderDynamicMesh();
+	RenderBspMesh();
+	//RenderLevelMesh(mVertexArray, mDrawRuns, 1.0f);
+	//RenderDynamicMesh();
 
 	mContext->SetFrameBuffer(nullptr);
 	mContext->End();
@@ -89,6 +90,21 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mPlayerSprites.Render();
 
 	FCanvasTextureInfo::UpdateAll();
+}
+
+void HardpolyRenderer::RenderBspMesh()
+{
+	mBspCull.MarkViewFrustum();
+	mBspCull.ClearSolidSegments();
+	mBspCull.CullScene({ 0.0f, 0.0f, 0.0f, 1.0f });
+	mBspCull.ClearSolidSegments();
+
+	if (!mBspCull.PvsSectors.empty())
+	{
+		LevelMeshBuilder dynamicMesh;
+		dynamicMesh.Generate(mBspCull.PvsSectors);
+		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.DrawRuns, 0.0f);
+	}
 }
 
 void HardpolyRenderer::RenderDynamicMesh()
@@ -139,6 +155,7 @@ void HardpolyRenderer::UploadSectorTexture()
 				dynamicSector *= (cpuStaticSectorFloor[k] == line->backsector->floorplane.Zat0()) ? 1.0 : 0.0;
 			}
 		}
+		dynamicSector = 0.0; // To do: remove this as it is only here to make RenderBspMesh work
 		if (dynamicSector == 0.0)
 			dynamicSectors.insert(sector);
 		cpuSectors[i] = Vec4f(sector->lightlevel, dynamicSector, 0.0f, 0.0f);
