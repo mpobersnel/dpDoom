@@ -41,6 +41,7 @@
 #include "p_effect.h"
 #include "g_levellocals.h"
 #include "levelmeshbuilder.h"
+#include "hardpolysprite.h"
 
 EXTERN_CVAR(Float, maxviewpitch)
 
@@ -68,6 +69,8 @@ void HardpolyRenderer::RenderView(player_t *player)
 	PO_LinkToSubsectors();
 	R_SetupFrame(r_viewpoint, r_viewwindow, player->mo);
 
+	FrameMemory.Clear();
+
 	mContext->Begin();
 
 	SetupFramebuffer();
@@ -78,6 +81,8 @@ void HardpolyRenderer::RenderView(player_t *player)
 	RenderBspMesh();
 	//RenderLevelMesh(mVertexArray, mDrawRuns, 1.0f);
 	//RenderDynamicMesh();
+	UpdateAutoMap();
+	RenderTranslucent();
 
 	mContext->SetFrameBuffer(nullptr);
 	mContext->End();
@@ -105,6 +110,130 @@ void HardpolyRenderer::RenderBspMesh()
 		dynamicMesh.Generate(mBspCull.PvsSectors);
 		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.DrawRuns, 0.0f);
 	}
+}
+
+void HardpolyRenderer::UpdateAutoMap()
+{
+	for (subsector_t *sub : mBspCull.PvsSectors)
+	{
+		sector_t *frontsector = sub->sector;
+		frontsector->MoreFlags |= SECF_DRAWN;
+		for (uint32_t i = 0; i < sub->numlines; i++)
+		{
+			seg_t *line = &sub->firstline[i];
+
+			// To do: somehow only mark lines seen by the clipper
+			if ((line->sidedef == nullptr || !(line->sidedef->Flags & WALLF_POLYOBJ)) && line->linedef != nullptr)
+			{
+				line->linedef->flags |= ML_MAPPED;
+				sub->flags |= SSECF_DRAWN;
+			}
+		}
+	}
+}
+
+void HardpolyRenderer::RenderTranslucent()
+{
+	SeenSectors.clear();
+	SubsectorDepths.clear();
+	TranslucentObjects.clear();
+
+	uint32_t nextSubsectorDepth = 0;
+	for (subsector_t *sub : mBspCull.PvsSectors)
+	{
+		SeenSectors.insert(sub->sector);
+		SubsectorDepths[sub] = nextSubsectorDepth++;
+	}
+
+	const auto &viewpoint = r_viewpoint;
+	for (sector_t *sector : SeenSectors)
+	{
+		for (AActor *thing = sector->thinglist; thing != nullptr; thing = thing->snext)
+		{
+			DVector2 left, right;
+			if (!HardpolyRenderSprite::GetLine(thing, left, right))
+				continue;
+			double distanceSquared = (thing->Pos() - viewpoint.Pos).LengthSquared();
+			RenderSprite(thing, distanceSquared, left, right);
+		}
+	}
+
+	std::stable_sort(TranslucentObjects.begin(), TranslucentObjects.end(), [](auto a, auto b) { return *a < *b; });
+
+	for (auto it = TranslucentObjects.rbegin(); it != TranslucentObjects.rend(); ++it)
+	{
+		HardpolyTranslucentObject *obj = *it;
+		if (obj->particle)
+		{
+			//HardpolyRenderParticle spr;
+			//spr.Render(obj->particle, obj->sub, obj->subsectorDepth, StencilValue + 1);
+		}
+		else if (!obj->thing)
+		{
+			//obj->wall.Render();
+		}
+		else if ((obj->thing->renderflags & RF_SPRITETYPEMASK) == RF_WALLSPRITE)
+		{
+			//HardpolyRenderWallSprite wallspr;
+			//wallspr.Render(obj->thing, obj->sub, obj->subsectorDepth, StencilValue + 1);
+		}
+		else
+		{
+			HardpolyRenderSprite spr;
+			spr.Render(obj->thing, obj->sub, obj->subsectorDepth, obj->SpriteLeft, obj->SpriteRight);
+		}
+	}
+}
+
+void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, const DVector2 &left, const DVector2 &right)
+{
+	if (level.nodes.Size() == 0)
+	{
+		subsector_t *sub = &level.subsectors[0];
+		auto it = SubsectorDepths.find(sub);
+		if (it != SubsectorDepths.end())
+			TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyTranslucentObject>(thing, sub, it->second, sortDistance, 0.0f, 1.0f));
+	}
+	else
+	{
+		RenderSprite(thing, sortDistance, left, right, 0.0, 1.0, level.HeadNode());
+	}
+}
+
+void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, DVector2 left, DVector2 right, double t1, double t2, void *node)
+{
+	while (!((size_t)node & 1))  // Keep going until found a subsector
+	{
+		node_t *bsp = (node_t *)node;
+
+		DVector2 planePos(FIXED2DBL(bsp->x), FIXED2DBL(bsp->y));
+		DVector2 planeNormal = DVector2(FIXED2DBL(-bsp->dy), FIXED2DBL(bsp->dx));
+		double planeD = planeNormal | planePos;
+
+		int sideLeft = (left | planeNormal) > planeD;
+		int sideRight = (right | planeNormal) > planeD;
+
+		if (sideLeft != sideRight)
+		{
+			double dotLeft = planeNormal | left;
+			double dotRight = planeNormal | right;
+			double t = (planeD - dotLeft) / (dotRight - dotLeft);
+
+			DVector2 mid = left * (1.0 - t) + right * t;
+			double tmid = t1 * (1.0 - t) + t2 * t;
+
+			RenderSprite(thing, sortDistance, mid, right, tmid, t2, bsp->children[sideRight]);
+			right = mid;
+			t2 = tmid;
+		}
+		node = bsp->children[sideLeft];
+	}
+
+	subsector_t *sub = (subsector_t *)((uint8_t *)node - 1);
+
+	auto it = SubsectorDepths.find(sub);
+	if (it != SubsectorDepths.end())
+		TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyTranslucentObject>(thing, sub, it->second, sortDistance, (float)t1, (float)t2));
 }
 
 void HardpolyRenderer::RenderDynamicMesh()
