@@ -22,14 +22,28 @@
 
 #pragma once
 
-#include "bspcull.h"
+#include "hardpolyrenderer.h"
 
-class HardpolyRenderSprite
+class HardpolyRenderer;
+class AActor;
+
+class HardpolyRenderSprite : public HardpolyTranslucentObject
 {
 public:
-	void Render(AActor *thing, subsector_t *sub, uint32_t subsectorDepth, float t1, float t2);
+	HardpolyRenderSprite(AActor *thing, subsector_t *sub, uint32_t subsectorDepth, double dist, float t1, float t2);
+
+	void Setup(HardpolyRenderer *renderer) override;
+	void Render(HardpolyRenderer *renderer) override;
 
 	static bool GetLine(AActor *thing, DVector2 &left, DVector2 &right);
 	static bool IsThingCulled(AActor *thing);
 	static FTexture *GetSpriteTexture(AActor *thing, /*out*/ bool &flipX);
+
+private:
+	AActor *thing = nullptr;
+	subsector_t *sub = nullptr;
+	float SpriteLeft = 0.0f, SpriteRight = 1.0f;
+
+	int startVertex = 0;
+	FTexture *tex = nullptr;
 };

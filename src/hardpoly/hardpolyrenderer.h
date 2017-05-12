@@ -33,29 +33,48 @@
 struct LevelMeshDrawRun;
 struct subsector_t;
 struct particle_t;
+class HardpolyRenderer;
 
 class HardpolyTranslucentObject
 {
 public:
-	HardpolyTranslucentObject(particle_t *particle, subsector_t *sub, uint32_t subsectorDepth) : particle(particle), sub(sub), subsectorDepth(subsectorDepth) { }
-	HardpolyTranslucentObject(AActor *thing, subsector_t *sub, uint32_t subsectorDepth, double dist, float t1, float t2) : thing(thing), sub(sub), subsectorDepth(subsectorDepth), DistanceSquared(dist), SpriteLeft(t1), SpriteRight(t2) { }
-	//HardpolyTranslucentObject(HardpolyRenderWall wall) : wall(wall), subsectorDepth(wall.SubsectorDepth), DistanceSquared(1.e6) { }
+	virtual void Setup(HardpolyRenderer *renderer) = 0;
+	virtual void Render(HardpolyRenderer *renderer) = 0;
 
 	bool operator<(const HardpolyTranslucentObject &other) const
 	{
 		return subsectorDepth != other.subsectorDepth ? subsectorDepth < other.subsectorDepth : DistanceSquared < other.DistanceSquared;
 	}
 
-	particle_t *particle = nullptr;
-	AActor *thing = nullptr;
-	subsector_t *sub = nullptr;
-
-	//HardpolyRenderWall wall;
-
 	uint32_t subsectorDepth = 0;
 	double DistanceSquared = 0.0;
+};
 
-	float SpriteLeft = 0.0f, SpriteRight = 1.0f;
+/*
+class HardpolyRenderParticle : public HardpolyTranslucentObject
+{
+public:
+	HardpolyRenderParticle(particle_t *particle, subsector_t *sub, uint32_t initSubsectorDepth) : particle(particle), sub(sub) { subsectorDepth = initSubsectorDepth; }
+
+	particle_t *particle = nullptr;
+	subsector_t *sub = nullptr;
+};
+
+class HardpolyTranslucentWall : public HardpolyTranslucentObject
+{
+public:
+	HardpolyTranslucentWall(HardpolyRenderWall wall) : wall(wall), subsectorDepth(wall.SubsectorDepth), DistanceSquared(1.e6) { }
+
+	HardpolyRenderWall wall;
+};
+*/
+
+struct TranslucentVertex
+{
+	Vec4f Position;
+	Vec2f UV;
+	float LightLevel;
+	float Padding;
 };
 
 class HardpolyRenderer : public FRenderer
@@ -77,7 +96,12 @@ public:
 	void PreprocessLevel() override;
 	void CleanLevelData() override;
 	void SetClearColor(int color) override;
-	
+
+	GPUTexture2DPtr GetTexture(FTexture *texture);
+
+	std::vector<TranslucentVertex> TranslucentVertices;
+	GPUContextPtr mContext;
+
 private:
 	struct FrameUniforms
 	{
@@ -97,7 +121,6 @@ private:
 	void RenderDynamicMesh();
 	void UpdateAutoMap();
 	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId);
-	GPUTexture2DPtr GetTexture(FTexture *texture);
 
 	void RenderTranslucent();
 	void RenderSprite(AActor *thing, double sortDistance, const DVector2 &left, const DVector2 &right);
@@ -105,7 +128,6 @@ private:
 
 	RenderMemory FrameMemory;
 
-	GPUContextPtr mContext;
 	GPUTexture2DPtr mAlbedoBuffer;
 	GPUTexture2DPtr mDepthStencilBuffer;
 	GPUTexture2DPtr mNormalBuffer;
@@ -122,6 +144,7 @@ private:
 	GPUTexture2DPtr mSectorTexture[3];
 	int mCurrentSectorTexture = 0;
 	GPUProgramPtr mProgram;
+	GPUProgramPtr mTranslucentProgram;
 	GPUSamplerPtr mSamplerLinear;
 	GPUSamplerPtr mSamplerNearest;
 

@@ -32,39 +32,14 @@
 EXTERN_CVAR(Float, transsouls)
 EXTERN_CVAR(Int, r_drawfuzz)
 
-bool HardpolyRenderSprite::GetLine(AActor *thing, DVector2 &left, DVector2 &right)
+HardpolyRenderSprite::HardpolyRenderSprite(AActor *thing, subsector_t *sub, uint32_t initSubsectorDepth, double dist, float t1, float t2)
+	: thing(thing), sub(sub), SpriteLeft(t1), SpriteRight(t2)
 {
-	if (IsThingCulled(thing))
-		return false;
-
-	const auto &viewpoint = r_viewpoint;
-	DVector3 pos = thing->InterpolatedPosition(viewpoint.TicFrac);
-
-	bool flipTextureX = false;
-	FTexture *tex = GetSpriteTexture(thing, flipTextureX);
-	if (tex == nullptr)
-		return false;
-
-	DVector2 spriteScale = thing->Scale;
-	double thingxscalemul = spriteScale.X / tex->Scale.X;
-	double thingyscalemul = spriteScale.Y / tex->Scale.Y;
-
-	if (flipTextureX)
-		pos.X -= (tex->GetWidth() - tex->LeftOffset) * thingxscalemul;
-	else
-		pos.X -= tex->LeftOffset * thingxscalemul;
-
-	double spriteHalfWidth = thingxscalemul * tex->GetWidth() * 0.5;
-	double spriteHeight = thingyscalemul * tex->GetHeight();
-
-	pos.X += spriteHalfWidth;
-
-	left = DVector2(pos.X - viewpoint.Sin * spriteHalfWidth, pos.Y + viewpoint.Cos * spriteHalfWidth);
-	right = DVector2(pos.X + viewpoint.Sin * spriteHalfWidth, pos.Y - viewpoint.Cos * spriteHalfWidth);
-	return true;
+	subsectorDepth = initSubsectorDepth;
+	DistanceSquared = dist;
 }
 
-void HardpolyRenderSprite::Render(AActor *thing, subsector_t *sub, uint32_t subsectorDepth, float t1, float t2)
+void HardpolyRenderSprite::Setup(HardpolyRenderer *renderer)
 {
 	DVector2 line[2];
 	if (!GetLine(thing, line[0], line[1]))
@@ -75,7 +50,7 @@ void HardpolyRenderSprite::Render(AActor *thing, subsector_t *sub, uint32_t subs
 	pos.Z += thing->GetBobOffset(viewpoint.TicFrac);
 
 	bool flipTextureX = false;
-	FTexture *tex = GetSpriteTexture(thing, flipTextureX);
+	tex = GetSpriteTexture(thing, flipTextureX);
 	if (tex == nullptr || tex->UseType == FTexture::TEX_Null)
 		return;
 
@@ -100,43 +75,56 @@ void HardpolyRenderSprite::Render(AActor *thing, subsector_t *sub, uint32_t subs
 	// Rumor has it that AlterWeaponSprite needs to be called with visstyle passed in somewhere around here..
 	//R_SetColorMapLight(visstyle.BaseColormap, 0, visstyle.ColormapNum << FRACBITS);
 
-	/*
-	TriVertex *vertices = PolyRenderer::Instance()->FrameMemory.AllocMemory<TriVertex>(4);
-
 	bool foggy = false;
 	int actualextralight = foggy ? 0 : viewpoint.extralight << 4;
 
 	std::pair<float, float> offsets[4] =
 	{
-		{ t1,  1.0f },
-		{ t2,  1.0f },
-		{ t2,  0.0f },
-		{ t1,  0.0f },
+		{ SpriteLeft,  1.0f },
+		{ SpriteRight,  1.0f },
+		{ SpriteRight,  0.0f },
+		{ SpriteLeft,  0.0f },
 	};
 
 	DVector2 points[2] =
 	{
-		line[0] * (1.0 - t1) + line[1] * t1,
-		line[0] * (1.0 - t2) + line[1] * t2
+		line[0] * (1.0 - SpriteLeft) + line[1] * SpriteLeft,
+		line[0] * (1.0 - SpriteRight) + line[1] * SpriteRight
 	};
+
+	bool fullbrightSprite = ((thing->renderflags & RF_FULLBRIGHT) || (thing->flags5 & MF5_BRIGHT));
+	float lightlevel = (float)(fullbrightSprite ? 255 : thing->Sector->lightlevel + actualextralight);
+
+	startVertex = (int)renderer->TranslucentVertices.size();
 
 	for (int i = 0; i < 4; i++)
 	{
 		auto &p = (i == 0 || i == 3) ? points[0] : points[1];
 
-		vertices[i].x = (float)p.X;
-		vertices[i].y = (float)p.Y;
-		vertices[i].z = (float)(pos.Z + spriteHeight * offsets[i].second);
-		vertices[i].w = 1.0f;
-		vertices[i].u = (float)(offsets[i].first * tex->Scale.X);
-		vertices[i].v = (float)((1.0f - offsets[i].second) * tex->Scale.Y);
+		TranslucentVertex vertex;
+		vertex.Position.X = (float)p.X;
+		vertex.Position.Y = (float)p.Y;
+		vertex.Position.Z = (float)(pos.Z + spriteHeight * offsets[i].second);
+		vertex.Position.W = 1.0f;
+		vertex.UV.X = (float)(offsets[i].first * tex->Scale.X);
+		vertex.UV.Y = (float)((1.0f - offsets[i].second) * tex->Scale.Y);
 		if (flipTextureX)
-			vertices[i].u = 1.0f - vertices[i].u;
+			vertex.UV.X = 1.0f - vertex.UV.X;
+		vertex.LightLevel = lightlevel;
+
+		renderer->TranslucentVertices.push_back(vertex);
 	}
+}
 
-	bool fullbrightSprite = ((thing->renderflags & RF_FULLBRIGHT) || (thing->flags5 & MF5_BRIGHT));
-	int lightlevel = fullbrightSprite ? 255 : thing->Sector->lightlevel + actualextralight;
+void HardpolyRenderSprite::Render(HardpolyRenderer *renderer)
+{
+	if (tex == nullptr || tex->UseType == FTexture::TEX_Null)
+		return;
 
+	renderer->mContext->SetTexture(0, renderer->GetTexture(tex));
+	renderer->mContext->Draw(GPUDrawMode::TriangleFan, startVertex, 4);
+
+	/*
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sub->sector->Colormap, sub->sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
 	args.SetSubsectorDepth(subsectorDepth);
@@ -241,4 +229,36 @@ FTexture *HardpolyRenderSprite::GetSpriteTexture(AActor *thing, /*out*/ bool &fl
 			return TexMan[tex];
 		}
 	}
+}
+
+bool HardpolyRenderSprite::GetLine(AActor *thing, DVector2 &left, DVector2 &right)
+{
+	if (IsThingCulled(thing))
+		return false;
+
+	const auto &viewpoint = r_viewpoint;
+	DVector3 pos = thing->InterpolatedPosition(viewpoint.TicFrac);
+
+	bool flipTextureX = false;
+	FTexture *tex = GetSpriteTexture(thing, flipTextureX);
+	if (tex == nullptr)
+		return false;
+
+	DVector2 spriteScale = thing->Scale;
+	double thingxscalemul = spriteScale.X / tex->Scale.X;
+	double thingyscalemul = spriteScale.Y / tex->Scale.Y;
+
+	if (flipTextureX)
+		pos.X -= (tex->GetWidth() - tex->LeftOffset) * thingxscalemul;
+	else
+		pos.X -= tex->LeftOffset * thingxscalemul;
+
+	double spriteHalfWidth = thingxscalemul * tex->GetWidth() * 0.5;
+	double spriteHeight = thingyscalemul * tex->GetHeight();
+
+	pos.X += spriteHalfWidth;
+
+	left = DVector2(pos.X - viewpoint.Sin * spriteHalfWidth, pos.Y + viewpoint.Cos * spriteHalfWidth);
+	right = DVector2(pos.X + viewpoint.Sin * spriteHalfWidth, pos.Y - viewpoint.Cos * spriteHalfWidth);
+	return true;
 }

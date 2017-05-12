@@ -137,6 +137,7 @@ void HardpolyRenderer::RenderTranslucent()
 	SeenSectors.clear();
 	SubsectorDepths.clear();
 	TranslucentObjects.clear();
+	TranslucentVertices.clear();
 
 	uint32_t nextSubsectorDepth = 0;
 	for (subsector_t *sub : mBspCull.PvsSectors)
@@ -162,27 +163,40 @@ void HardpolyRenderer::RenderTranslucent()
 
 	for (auto it = TranslucentObjects.rbegin(); it != TranslucentObjects.rend(); ++it)
 	{
-		HardpolyTranslucentObject *obj = *it;
-		if (obj->particle)
-		{
-			//HardpolyRenderParticle spr;
-			//spr.Render(obj->particle, obj->sub, obj->subsectorDepth, StencilValue + 1);
-		}
-		else if (!obj->thing)
-		{
-			//obj->wall.Render();
-		}
-		else if ((obj->thing->renderflags & RF_SPRITETYPEMASK) == RF_WALLSPRITE)
-		{
-			//HardpolyRenderWallSprite wallspr;
-			//wallspr.Render(obj->thing, obj->sub, obj->subsectorDepth, StencilValue + 1);
-		}
-		else
-		{
-			HardpolyRenderSprite spr;
-			spr.Render(obj->thing, obj->sub, obj->subsectorDepth, obj->SpriteLeft, obj->SpriteRight);
-		}
+		(*it)->Setup(this);
 	}
+
+	auto vertices = std::make_shared<GPUVertexBuffer>(TranslucentVertices.data(), (int)(TranslucentVertices.size() * sizeof(TranslucentVertex)));
+
+	std::vector<GPUVertexAttributeDesc> attributes =
+	{
+		{ 0, 4, GPUVertexAttributeType::Float, false, sizeof(TranslucentVertex), offsetof(TranslucentVertex, Position), vertices },
+		{ 1, 4, GPUVertexAttributeType::Float, false, sizeof(TranslucentVertex), offsetof(TranslucentVertex, UV), vertices }
+	};
+
+	auto vertexArray = std::make_shared<GPUVertexArray>(attributes);
+
+	mContext->SetVertexArray(vertexArray);
+	mContext->SetProgram(mTranslucentProgram);
+	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
+	glUniform1i(glGetUniformLocation(mTranslucentProgram->Handle(), "DiffuseTexture"), 0);
+	mContext->SetSampler(0, mSamplerLinear);
+
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+
+	for (auto it = TranslucentObjects.rbegin(); it != TranslucentObjects.rend(); ++it)
+	{
+		(*it)->Render(this);
+	}
+
+	glDisable(GL_BLEND);
+
+	mContext->SetTexture(0, nullptr);
+	mContext->SetSampler(0, nullptr);
+	mContext->SetUniforms(0, nullptr);
+	mContext->SetVertexArray(nullptr);
+	mContext->SetProgram(nullptr);
 }
 
 void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, const DVector2 &left, const DVector2 &right)
@@ -192,7 +206,7 @@ void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, const DV
 		subsector_t *sub = &level.subsectors[0];
 		auto it = SubsectorDepths.find(sub);
 		if (it != SubsectorDepths.end())
-			TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyTranslucentObject>(thing, sub, it->second, sortDistance, 0.0f, 1.0f));
+			TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyRenderSprite>(thing, sub, it->second, sortDistance, 0.0f, 1.0f));
 	}
 	else
 	{
@@ -233,7 +247,7 @@ void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, DVector2
 
 	auto it = SubsectorDepths.find(sub);
 	if (it != SubsectorDepths.end())
-		TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyTranslucentObject>(thing, sub, it->second, sortDistance, (float)t1, (float)t2));
+		TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyRenderSprite>(thing, sub, it->second, sortDistance, (float)t1, (float)t2));
 }
 
 void HardpolyRenderer::RenderDynamicMesh()
@@ -534,6 +548,65 @@ void HardpolyRenderer::CompileShaders()
 		mProgram->SetFragOutput("FragAlbedo", 0);
 		mProgram->SetFragOutput("FragNormal", 1);
 		mProgram->Link("program");
+	}
+
+	if (!mTranslucentProgram)
+	{
+		mTranslucentProgram = std::make_shared<GPUProgram>();
+
+		mTranslucentProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
+				layout(std140) uniform FrameUniforms
+				{
+					mat4 WorldToView;
+					mat4 ViewToProjection;
+					float MeshId;
+					float Padding1, Padding2, Padding3;
+				};
+
+				in vec4 Position;
+				in vec4 Texcoord;
+				out vec2 UV;
+				out float LightLevel;
+				out vec3 PositionInView;
+
+				void main()
+				{
+					vec4 posInView = WorldToView * Position;
+					PositionInView = posInView.xyz;
+					gl_Position = ViewToProjection * posInView;
+					UV = Texcoord.xy;
+					LightLevel = Texcoord.z;
+				}
+			)");
+		mTranslucentProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+				in vec2 UV;
+				in float LightLevel;
+				in vec3 PositionInView;
+				out vec4 FragAlbedo;
+				uniform sampler2D DiffuseTexture;
+				
+				float SoftwareLight()
+				{
+					float globVis = 1706.0;
+					float z = -PositionInView.z;
+					float vis = globVis / z;
+					float shade = 64.0 - (LightLevel + 12.0) * 32.0/128.0;
+					float lightscale = clamp((shade - min(24.0, vis)) / 32.0, 0.0, 31.0/32.0);
+					return 1.0 - lightscale;
+				}
+				
+				void main()
+				{
+					FragAlbedo = texture(DiffuseTexture, UV);
+					FragAlbedo.rgb *= SoftwareLight();
+				}
+			)");
+
+		mTranslucentProgram->SetAttribLocation("Position", 0);
+		mTranslucentProgram->SetAttribLocation("UV", 1);
+		mTranslucentProgram->SetFragOutput("FragAlbedo", 0);
+		mTranslucentProgram->SetFragOutput("FragNormal", 1);
+		mTranslucentProgram->Link("program");
 	}
 }
 
