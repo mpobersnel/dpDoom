@@ -32,6 +32,14 @@ struct LevelMeshDrawRun
 	int NumVertices = 0;
 };
 
+struct SubsectorMeshLocation
+{
+	int VertexStart = 0;
+	int VertexCount = 0;
+	int LineStart = 0;
+	int LineCount = 0;
+};
+
 class LevelMeshBuilder
 {
 public:
@@ -88,6 +96,11 @@ public:
 	WallTextureCoordsU(FTexture *tex, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart);
 
 	double u1, u2;
+
+	static void PreprocessLevel();
+
+private:
+	static std::vector<DVector2> SideU;
 };
 
 class WallTextureCoordsV
