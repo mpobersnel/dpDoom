@@ -30,6 +30,9 @@ public:
 	GPUVertexBuffer(const void *data, int size);
 	~GPUVertexBuffer();
 
+	void *MapWriteOnly();
+	void Unmap();
+
 	int Handle() const { return mHandle; }
 
 private:

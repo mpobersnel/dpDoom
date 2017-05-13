@@ -26,6 +26,7 @@
 #include "hardpoly/gpu/gpu_context.h"
 #include "hardpoly/playersprite.h"
 #include "hardpoly/bspcull.h"
+#include "hardpoly/levelmeshbuilder.h"
 #include "swrenderer/r_memory.h"
 #include <set>
 #include <unordered_map>
@@ -154,6 +155,7 @@ private:
 	std::vector<subsector_t*> dynamicSubsectors;
 	HardpolyRenderPlayerSprites mPlayerSprites;
 	HardpolyBSPCull mBspCull;
+	LevelMeshBuilder mBspMesh;
 
 	std::set<sector_t *> SeenSectors;
 	std::unordered_map<subsector_t *, uint32_t> SubsectorDepths;

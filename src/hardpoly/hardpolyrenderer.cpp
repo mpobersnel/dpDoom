@@ -65,9 +65,15 @@ void HardpolyRenderer::Precache(uint8_t *texhitlist, TMap<PClassActor*, bool> &a
 
 void HardpolyRenderer::RenderView(player_t *player)
 {
+	R_SetupFrame(r_viewpoint, r_viewwindow, player->mo);
+
 	P_FindParticleSubsectors();
 	PO_LinkToSubsectors();
-	R_SetupFrame(r_viewpoint, r_viewwindow, player->mo);
+
+	// Never draw the player unless in chasecam mode
+	ActorRenderFlags savedflags = r_viewpoint.camera->renderflags;
+	if (!r_viewpoint.showviewer)
+		r_viewpoint.camera->renderflags |= RF_INVISIBLE;
 
 	FrameMemory.Clear();
 
@@ -86,29 +92,29 @@ void HardpolyRenderer::RenderView(player_t *player)
 
 	mContext->SetFrameBuffer(nullptr);
 	mContext->End();
-	
+
+	mPlayerSprites.Render();
+
+	r_viewpoint.camera->renderflags = savedflags;
 	interpolator.RestoreInterpolations ();
 
 	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
 	swframebuffer->SetViewFB(mSceneFB->Handle());
-
-	mPlayerSprites.Render();
 
 	FCanvasTextureInfo::UpdateAll();
 }
 
 void HardpolyRenderer::RenderBspMesh()
 {
-	mBspCull.MarkViewFrustum();
 	mBspCull.ClearSolidSegments();
+	mBspCull.MarkViewFrustum();
 	mBspCull.CullScene({ 0.0f, 0.0f, 0.0f, 1.0f });
 	mBspCull.ClearSolidSegments();
 
 	if (!mBspCull.PvsSectors.empty())
 	{
-		LevelMeshBuilder dynamicMesh;
-		dynamicMesh.Generate(mBspCull.PvsSectors);
-		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.DrawRuns, 0.0f);
+		mBspMesh.Generate(mBspCull.PvsSectors);
+		RenderLevelMesh(mBspMesh.VertexArray, mBspMesh.DrawRuns, 0.0f);
 	}
 }
 

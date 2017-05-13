@@ -41,3 +41,27 @@ GPUVertexBuffer::~GPUVertexBuffer()
 {
 	glDeleteBuffers(1, (GLuint*)&mHandle);
 }
+
+void *GPUVertexBuffer::MapWriteOnly()
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_ARRAY_BUFFER, mHandle);
+	void *data = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+
+	glBindBuffer(GL_ARRAY_BUFFER, oldHandle);
+
+	return data;
+}
+
+void GPUVertexBuffer::Unmap()
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_ARRAY_BUFFER, mHandle);
+	glUnmapBuffer(GL_ARRAY_BUFFER);
+
+	glBindBuffer(GL_ARRAY_BUFFER, oldHandle);
+}

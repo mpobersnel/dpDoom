@@ -42,6 +42,7 @@ public:
 	std::vector<LevelMeshDrawRun> DrawRuns;
 	
 private:
+	void Clear();
 	void Upload();
 	void ProcessBSP();
 	void ProcessNode(void *node);
@@ -58,6 +59,9 @@ private:
 	};
 
 	std::map<FTexture*, MaterialVertices> mMaterials;
+
+	std::vector<Vec3f> ceilingVertices;
+	std::vector<Vec3f> floorVertices;
 };
 
 class PlaneUVTransform

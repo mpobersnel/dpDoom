@@ -36,38 +36,67 @@
 
 void LevelMeshBuilder::Generate()
 {
+	Clear();
 	ProcessBSP();
 	Upload();
 }
 
 void LevelMeshBuilder::Generate(const std::vector<subsector_t*> &subsectors)
 {
+	Clear();
 	for (auto subsector : subsectors)
 		ProcessSubsector(subsector);
 	Upload();
 }
 
+void LevelMeshBuilder::Clear()
+{
+	VertexArray.reset();
+
+	DrawRuns.clear();
+	for (auto &it : mMaterials)
+	{
+		it.second.Vertices.clear();
+		it.second.Texcoords.clear();
+	}
+}
+
 void LevelMeshBuilder::Upload()
 {
-	std::vector<Vec3f> cpuVertices;
-	std::vector<Vec4f> cpuTexcoords;
-
-	for (auto it : mMaterials)
+	int totalVertices = 0;
+	for (auto &it : mMaterials)
 	{
 		auto &material = it.second;
-
-		LevelMeshDrawRun run;
-		run.Start = (int)cpuVertices.size();
-		run.NumVertices = (int)material.Vertices.size();
-		run.Texture = it.first;
-		DrawRuns.push_back(run);
-
-		cpuVertices.insert(cpuVertices.end(), material.Vertices.begin(), material.Vertices.end());
-		cpuTexcoords.insert(cpuTexcoords.end(), material.Texcoords.begin(), material.Texcoords.end());
+		totalVertices += (int)material.Vertices.size();
 	}
 
-	auto vertices = std::make_shared<GPUVertexBuffer>(cpuVertices.data(), (int)(cpuVertices.size() * sizeof(Vec3f)));
-	auto texcoords = std::make_shared<GPUVertexBuffer>(cpuTexcoords.data(), (int)(cpuTexcoords.size() * sizeof(Vec4f)));
+	auto vertices = std::make_shared<GPUVertexBuffer>(nullptr, (int)(totalVertices * sizeof(Vec3f)));
+	auto texcoords = std::make_shared<GPUVertexBuffer>(nullptr, (int)(totalVertices * sizeof(Vec4f)));
+
+	Vec3f *cpuVertices = (Vec3f*)vertices->MapWriteOnly();
+	Vec4f *cpuTexcoords = (Vec4f*)texcoords->MapWriteOnly();
+
+	int vertexStart = 0;
+	for (auto &it : mMaterials)
+	{
+		auto &material = it.second;
+		if (!material.Vertices.empty())
+		{
+			LevelMeshDrawRun run;
+			run.Start = vertexStart;
+			run.NumVertices = (int)material.Vertices.size();
+			run.Texture = it.first;
+			DrawRuns.push_back(run);
+
+			memcpy(cpuVertices + run.Start, material.Vertices.data(), run.NumVertices * sizeof(Vec3f));
+			memcpy(cpuTexcoords + run.Start, material.Texcoords.data(), run.NumVertices * sizeof(Vec4f));
+
+			vertexStart += run.NumVertices;
+		}
+	}
+
+	vertices->Unmap();
+	texcoords->Unmap();
 
 	std::vector<GPUVertexAttributeDesc> attributes =
 	{
@@ -105,9 +134,9 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 	sector_t *frontsector = sub->sector;
 	float sectornum = (float)frontsector->sectornum;
 	
-	std::vector<Vec3f> ceilingVertices;
-	std::vector<Vec3f> floorVertices;
-	
+	ceilingVertices.clear();
+	floorVertices.clear();
+
 	for (uint32_t i = 0; i < sub->numlines; i++)
 	{
 		seg_t *line = &sub->firstline[i];
