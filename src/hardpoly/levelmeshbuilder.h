@@ -96,11 +96,6 @@ public:
 	WallTextureCoordsU(FTexture *tex, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart);
 
 	double u1, u2;
-
-	static void PreprocessLevel();
-
-private:
-	static std::vector<DVector2> SideU;
 };
 
 class WallTextureCoordsV
