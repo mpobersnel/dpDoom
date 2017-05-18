@@ -47,6 +47,7 @@ public:
 	void Generate(const std::vector<subsector_t*> &subsectors);
 
 	GPUVertexArrayPtr VertexArray;
+	GPUIndexBufferPtr IndexBuffer;
 	std::vector<LevelMeshDrawRun> DrawRuns;
 	
 private:
@@ -62,14 +63,16 @@ private:
 
 	struct MaterialVertices
 	{
-		std::vector<Vec3f> Vertices;
-		std::vector<Vec4f> Texcoords;
+		std::vector<int32_t> Indices;
 	};
 
 	std::map<FTexture*, MaterialVertices> mMaterials;
 
 	std::vector<Vec3f> ceilingVertices;
 	std::vector<Vec3f> floorVertices;
+
+	std::vector<Vec3f> mVertices;
+	std::vector<Vec4f> mTexcoords;
 };
 
 class PlaneUVTransform

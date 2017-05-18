@@ -41,3 +41,27 @@ GPUIndexBuffer::~GPUIndexBuffer()
 {
 	glDeleteBuffers(1, (GLuint*)&mHandle);
 }
+
+void *GPUIndexBuffer::MapWriteOnly()
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mHandle);
+	void *data = glMapBuffer(GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, oldHandle);
+
+	return data;
+}
+
+void GPUIndexBuffer::Unmap()
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mHandle);
+	glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, oldHandle);
+}

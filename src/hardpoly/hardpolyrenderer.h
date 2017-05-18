@@ -121,7 +121,7 @@ private:
 	void RenderBspMesh();
 	void RenderDynamicMesh();
 	void UpdateAutoMap();
-	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId);
+	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId);
 
 	void RenderTranslucent();
 	void RenderSprite(AActor *thing, double sortDistance, const DVector2 &left, const DVector2 &right);

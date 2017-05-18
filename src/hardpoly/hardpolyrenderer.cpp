@@ -114,7 +114,7 @@ void HardpolyRenderer::RenderBspMesh()
 	if (!mBspCull.PvsSectors.empty())
 	{
 		mBspMesh.Generate(mBspCull.PvsSectors);
-		RenderLevelMesh(mBspMesh.VertexArray, mBspMesh.DrawRuns, 0.0f);
+		RenderLevelMesh(mBspMesh.VertexArray, mBspMesh.IndexBuffer, mBspMesh.DrawRuns, 0.0f);
 	}
 }
 
@@ -270,7 +270,7 @@ void HardpolyRenderer::RenderDynamicMesh()
 	{
 		LevelMeshBuilder dynamicMesh;
 		dynamicMesh.Generate(dynamicSubsectors);
-		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.DrawRuns, 0.0f);
+		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.IndexBuffer, dynamicMesh.DrawRuns, 0.0f);
 	}
 }
 
@@ -372,11 +372,12 @@ void HardpolyRenderer::CreateSamplers()
 	}
 }
 
-void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId)
+void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId)
 {
 	SetupPerspectiveMatrix(meshId);
 
 	mContext->SetVertexArray(vertexArray);
+	mContext->SetIndexBuffer(indexBuffer, GPUIndexFormat::Uint32);
 	mContext->SetProgram(mProgram);
 	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
 
@@ -389,7 +390,7 @@ void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, con
 	for (const auto &run : drawRuns)
 	{
 		mContext->SetTexture(1, GetTexture(run.Texture));
-		mContext->Draw(GPUDrawMode::Triangles, run.Start, run.NumVertices);
+		mContext->DrawIndexed(GPUDrawMode::Triangles, run.Start, run.NumVertices);
 	}
 	mContext->SetTexture(0, nullptr);
 	mContext->SetTexture(1, nullptr);
@@ -397,6 +398,7 @@ void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, con
 	mContext->SetSampler(1, nullptr);
 
 	mContext->SetUniforms(0, nullptr);
+	mContext->SetIndexBuffer(nullptr);
 	mContext->SetVertexArray(nullptr);
 	mContext->SetProgram(nullptr);
 }

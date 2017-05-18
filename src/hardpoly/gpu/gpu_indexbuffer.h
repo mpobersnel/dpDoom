@@ -32,6 +32,9 @@ public:
 
 	int Handle() const { return mHandle; }
 
+	void *MapWriteOnly();
+	void Unmap();
+
 private:
 	GPUIndexBuffer(const GPUIndexBuffer &) = delete;
 	GPUIndexBuffer &operator =(const GPUIndexBuffer &) = delete;

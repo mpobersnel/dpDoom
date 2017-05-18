@@ -75,7 +75,7 @@ public:
 	void SetStorage(int index, const GPUStorageBufferPtr &storage);
 
 	void SetVertexArray(const GPUVertexArrayPtr &vertexarray);
-	void SetIndexBuffer(const GPUIndexBufferPtr &indexbuffer, GPUIndexFormat format);
+	void SetIndexBuffer(const GPUIndexBufferPtr &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16);
 
 	void Draw(GPUDrawMode mode, int vertexStart, int vertexCount);
 	void DrawIndexed(GPUDrawMode mode, int indexStart, int indexCount);
