@@ -35,7 +35,7 @@
 #include "g_levellocals.h"
 #include "hardpolyrenderer.h"
 
-void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::set<sector_t *> &seenSectors)
+void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::vector<sector_t *> &seenSectors)
 {
 	mRenderer = renderer;
 	mCurrentFrameBatches.swap(mLastFrameBatches);

@@ -52,7 +52,7 @@ struct LevelMeshVertex
 class LevelMeshBuilder
 {
 public:
-	void Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::set<sector_t *> &seenSectors);
+	void Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::vector<sector_t *> &seenSectors);
 
 private:
 	void Flush();

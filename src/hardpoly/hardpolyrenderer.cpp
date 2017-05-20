@@ -148,8 +148,19 @@ void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, con
 
 void HardpolyRenderer::UpdateAutoMap()
 {
-	for (subsector_t *sub : mBspCull.PvsSectors)
+	// It is not decisive that the automap is fully updated every single frame.
+	//
+	// To reduce the time marking this for very complex maps (infamous Frozen Time)
+	// we skip most of the subsectors seen. After a few frames all the lines should
+	// be marked.
+	
+	uint32_t skip = 10; // The number of rendered frames it takes to mark all seen sectors
+
+	uint32_t count = (uint32_t)mBspCull.PvsSectors.size();
+	subsector_t **subsectors = mBspCull.PvsSectors.data();
+	for (uint32_t subIndex = NextAutomapUpdate; subIndex < count; subIndex += skip)
 	{
+		subsector_t *sub = subsectors[subIndex];
 		sector_t *frontsector = sub->sector;
 		frontsector->MoreFlags |= SECF_DRAWN;
 		for (uint32_t i = 0; i < sub->numlines; i++)
@@ -164,19 +175,27 @@ void HardpolyRenderer::UpdateAutoMap()
 			}
 		}
 	}
+
+	NextAutomapUpdate = (NextAutomapUpdate + 1) % skip;
 }
 
 void HardpolyRenderer::FindSeenSectors()
 {
 	SubsectorDepthsGeneration = ((SubsectorDepthsGeneration >> 24) + 1) << 24;
 
+	SeenSectorFlags.clear();
+	SeenSectorFlags.resize(level.sectors.Size(), false);
 	SeenSectors.clear();
 	SubsectorDepths.resize(level.subsectors.Size(), 0);
 
 	uint32_t nextSubsectorDepth = 0;
 	for (subsector_t *sub : mBspCull.PvsSectors)
 	{
-		SeenSectors.insert(sub->sector);
+		if (!SeenSectorFlags[sub->sector->Index()])
+		{
+			SeenSectorFlags[sub->sector->Index()] = true;
+			SeenSectors.push_back(sub->sector);
+		}
 		SubsectorDepths[sub->Index()] = SubsectorDepthsGeneration | (nextSubsectorDepth++);
 	}
 }

@@ -148,8 +148,11 @@ private:
 	HardpolyBSPCull mBspCull;
 	LevelMeshBuilder mBspMesh;
 
-	std::set<sector_t *> SeenSectors;
+	std::vector<sector_t *> SeenSectors;
+	std::vector<bool> SeenSectorFlags;
 	std::vector<uint32_t> SubsectorDepths;
 	uint32_t SubsectorDepthsGeneration = 0;
 	std::vector<HardpolyTranslucentObject *> TranslucentObjects;
+
+	uint32_t NextAutomapUpdate = 0;
 };
