@@ -98,6 +98,8 @@ public:
 	void CleanLevelData() override;
 	void SetClearColor(int color) override;
 
+	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns);
+
 	GPUTexture2DPtr GetTexture(FTexture *texture);
 
 	std::vector<TranslucentVertex> TranslucentVertices;
@@ -108,20 +110,15 @@ private:
 	{
 		Mat4f WorldToView;
 		Mat4f ViewToProjection;
-		float MeshId;
-		float Padding1, Padding2, Padding3;
 	};
 	
 	void SetupFramebuffer();
-	void SetupStaticLevelMesh();
-	void SetupPerspectiveMatrix(float meshId);
+	void SetupPerspectiveMatrix();
 	void CompileShaders();
 	void CreateSamplers();
 	void UploadSectorTexture();
 	void RenderBspMesh();
-	void RenderDynamicMesh();
 	void UpdateAutoMap();
-	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId);
 
 	void RenderTranslucent();
 	void RenderSprite(AActor *thing, double sortDistance, const DVector2 &left, const DVector2 &right);
@@ -137,11 +134,8 @@ private:
 	int mCurrentFrameUniforms = 0;
 	int mMeshLevel = 0;
 	GPUVertexArrayPtr mVertexArray;
-	std::vector<LevelMeshDrawRun> mDrawRuns;
 	std::map<FTexture*, GPUTexture2DPtr> mTextures;
 	std::vector<Vec4f> cpuSectors;
-	std::vector<double> cpuStaticSectorCeiling;
-	std::vector<double> cpuStaticSectorFloor;
 	GPUTexture2DPtr mSectorTexture[3];
 	int mCurrentSectorTexture = 0;
 	GPUProgramPtr mProgram;
@@ -149,10 +143,6 @@ private:
 	GPUSamplerPtr mSamplerLinear;
 	GPUSamplerPtr mSamplerNearest;
 
-	GPUVertexArrayPtr mDynamicVertexArray;
-	std::vector<LevelMeshDrawRun> mDynamicDrawRuns;
-	std::set<sector_t*> dynamicSectors;
-	std::vector<subsector_t*> dynamicSubsectors;
 	HardpolyRenderPlayerSprites mPlayerSprites;
 	HardpolyBSPCull mBspCull;
 	LevelMeshBuilder mBspMesh;

@@ -80,13 +80,11 @@ void HardpolyRenderer::RenderView(player_t *player)
 	mContext->Begin();
 
 	SetupFramebuffer();
-	SetupStaticLevelMesh();
 	CompileShaders();
 	CreateSamplers();
 	UploadSectorTexture();
+	SetupPerspectiveMatrix();
 	RenderBspMesh();
-	//RenderLevelMesh(mVertexArray, mDrawRuns, 1.0f);
-	//RenderDynamicMesh();
 	UpdateAutoMap();
 	RenderTranslucent();
 
@@ -113,9 +111,37 @@ void HardpolyRenderer::RenderBspMesh()
 
 	if (!mBspCull.PvsSectors.empty())
 	{
-		mBspMesh.Generate(mBspCull.PvsSectors);
-		RenderLevelMesh(mBspMesh.VertexArray, mBspMesh.IndexBuffer, mBspMesh.DrawRuns, 0.0f);
+		mBspMesh.Render(this, mBspCull.PvsSectors);
 	}
+}
+
+void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns)
+{
+	mContext->SetVertexArray(vertexArray);
+	mContext->SetIndexBuffer(indexBuffer, GPUIndexFormat::Uint32);
+	mContext->SetProgram(mProgram);
+	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
+
+	glUniform1i(glGetUniformLocation(mProgram->Handle(), "SectorTexture"), 0);
+	glUniform1i(glGetUniformLocation(mProgram->Handle(), "DiffuseTexture"), 1);
+
+	mContext->SetSampler(0, mSamplerNearest);
+	mContext->SetTexture(0, mSectorTexture[mCurrentSectorTexture]);
+	mContext->SetSampler(1, mSamplerLinear);
+	for (const auto &run : drawRuns)
+	{
+		mContext->SetTexture(1, GetTexture(run.Texture));
+		mContext->DrawIndexed(GPUDrawMode::Triangles, run.Start, run.NumVertices);
+	}
+	mContext->SetTexture(0, nullptr);
+	mContext->SetTexture(1, nullptr);
+	mContext->SetSampler(0, nullptr);
+	mContext->SetSampler(1, nullptr);
+
+	mContext->SetUniforms(0, nullptr);
+	mContext->SetIndexBuffer(nullptr);
+	mContext->SetVertexArray(nullptr);
+	mContext->SetProgram(nullptr);
 }
 
 void HardpolyRenderer::UpdateAutoMap()
@@ -256,58 +282,17 @@ void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, DVector2
 		TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyRenderSprite>(thing, sub, it->second, sortDistance, (float)t1, (float)t2));
 }
 
-void HardpolyRenderer::RenderDynamicMesh()
-{
-	dynamicSubsectors.clear();
-	for (auto sector : dynamicSectors)
-	{
-		for (int i = 0; i < sector->subsectorcount; i++)
-		{
-			dynamicSubsectors.push_back(sector->subsectors[i]);
-		}
-	}
-	if (!dynamicSubsectors.empty())
-	{
-		LevelMeshBuilder dynamicMesh;
-		dynamicMesh.Generate(dynamicSubsectors);
-		RenderLevelMesh(dynamicMesh.VertexArray, dynamicMesh.IndexBuffer, dynamicMesh.DrawRuns, 0.0f);
-	}
-}
-
 void HardpolyRenderer::UploadSectorTexture()
 {
 	mCurrentSectorTexture = (mCurrentSectorTexture + 1) % 3;
 	if (!mSectorTexture[mCurrentSectorTexture])
 		mSectorTexture[mCurrentSectorTexture] = std::make_shared<GPUTexture2D>(256, 16, false, 0, GPUPixelFormat::RGBA32f);
 
-	dynamicSectors.clear();
-
 	cpuSectors.resize((level.sectors.Size() / 256 + 1) * 256);
 	for (unsigned int i = 0; i < level.sectors.Size(); i++)
 	{
 		sector_t *sector = &level.sectors[i];
-		float dynamicSector = (cpuStaticSectorCeiling[i] == sector->ceilingplane.Zat0()) ? 1.0 : 0.0;
-		dynamicSector *= (cpuStaticSectorFloor[i] == sector->floorplane.Zat0()) ? 1.0 : 0.0;
-		for (unsigned int j = 0; j < sector->Lines.Size(); j++)
-		{
-			line_t *line = sector->Lines[j];
-			if (line->frontsector != sector)
-			{
-				int k = line->frontsector->sectornum;
-				dynamicSector *= (cpuStaticSectorCeiling[k] == line->frontsector->ceilingplane.Zat0()) ? 1.0 : 0.0;
-				dynamicSector *= (cpuStaticSectorFloor[k] == line->frontsector->floorplane.Zat0()) ? 1.0 : 0.0;
-			}
-			else if (line->backsector && line->backsector != sector)
-			{
-				int k = line->backsector->sectornum;
-				dynamicSector *= (cpuStaticSectorCeiling[k] == line->backsector->ceilingplane.Zat0()) ? 1.0 : 0.0;
-				dynamicSector *= (cpuStaticSectorFloor[k] == line->backsector->floorplane.Zat0()) ? 1.0 : 0.0;
-			}
-		}
-		dynamicSector = 0.0; // To do: remove this as it is only here to make RenderBspMesh work
-		if (dynamicSector == 0.0)
-			dynamicSectors.insert(sector);
-		cpuSectors[i] = Vec4f(sector->lightlevel, dynamicSector, 0.0f, 0.0f);
+		cpuSectors[i] = Vec4f(sector->lightlevel, 0.0f, 0.0f, 0.0f);
 	}
 	mSectorTexture[mCurrentSectorTexture]->Upload(0, 0, 256, MAX(((int)level.sectors.Size() + 255) / 256, 1), 0, cpuSectors.data());
 }
@@ -339,30 +324,6 @@ void HardpolyRenderer::SetupFramebuffer()
 	mContext->ClearDepthStencilBuffer(1.0f, 0);
 }
 
-void HardpolyRenderer::SetupStaticLevelMesh()
-{
-	if (!mVertexArray || mMeshLevel != level.levelnum)
-	{
-		mVertexArray.reset();
-
-		LevelMeshBuilder builder;
-		builder.Generate();
-
-		mVertexArray = builder.VertexArray;
-		mDrawRuns = builder.DrawRuns;
-		mMeshLevel = level.levelnum;
-
-		cpuStaticSectorCeiling.resize(level.sectors.Size());
-		cpuStaticSectorFloor.resize(level.sectors.Size());
-		for (unsigned int i = 0; i < level.sectors.Size(); i++)
-		{
-			sector_t *sector = &level.sectors[i];
-			cpuStaticSectorCeiling[i] = sector->ceilingplane.Zat0();
-			cpuStaticSectorFloor[i] = sector->floorplane.Zat0();
-		}
-	}
-}
-
 void HardpolyRenderer::CreateSamplers()
 {
 	if (!mSamplerNearest)
@@ -370,37 +331,6 @@ void HardpolyRenderer::CreateSamplers()
 		mSamplerLinear = std::make_shared<GPUSampler>(GPUSampleMode::Linear, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
 		mSamplerNearest = std::make_shared<GPUSampler>(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
 	}
-}
-
-void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, float meshId)
-{
-	SetupPerspectiveMatrix(meshId);
-
-	mContext->SetVertexArray(vertexArray);
-	mContext->SetIndexBuffer(indexBuffer, GPUIndexFormat::Uint32);
-	mContext->SetProgram(mProgram);
-	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
-
-	glUniform1i(glGetUniformLocation(mProgram->Handle(), "SectorTexture"), 0);
-	glUniform1i(glGetUniformLocation(mProgram->Handle(), "DiffuseTexture"), 1);
-
-	mContext->SetSampler(0, mSamplerNearest);
-	mContext->SetTexture(0, mSectorTexture[mCurrentSectorTexture]);
-	mContext->SetSampler(1, mSamplerLinear);
-	for (const auto &run : drawRuns)
-	{
-		mContext->SetTexture(1, GetTexture(run.Texture));
-		mContext->DrawIndexed(GPUDrawMode::Triangles, run.Start, run.NumVertices);
-	}
-	mContext->SetTexture(0, nullptr);
-	mContext->SetTexture(1, nullptr);
-	mContext->SetSampler(0, nullptr);
-	mContext->SetSampler(1, nullptr);
-
-	mContext->SetUniforms(0, nullptr);
-	mContext->SetIndexBuffer(nullptr);
-	mContext->SetVertexArray(nullptr);
-	mContext->SetProgram(nullptr);
 }
 
 GPUTexture2DPtr HardpolyRenderer::GetTexture(FTexture *ztexture)
@@ -446,7 +376,7 @@ GPUTexture2DPtr HardpolyRenderer::GetTexture(FTexture *ztexture)
 	return texture;
 }
 
-void HardpolyRenderer::SetupPerspectiveMatrix(float meshId)
+void HardpolyRenderer::SetupPerspectiveMatrix()
 {
 	static bool bDidSetup = false;
 
@@ -484,7 +414,6 @@ void HardpolyRenderer::SetupPerspectiveMatrix(float meshId)
 	FrameUniforms frameUniforms;
 	frameUniforms.WorldToView = worldToView;
 	frameUniforms.ViewToProjection = viewToClip;
-	frameUniforms.MeshId = meshId;
 
 	mFrameUniforms[mCurrentFrameUniforms]->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
 }
@@ -500,8 +429,6 @@ void HardpolyRenderer::CompileShaders()
 				{
 					mat4 WorldToView;
 					mat4 ViewToProjection;
-					float MeshId;
-					float Padding1, Padding2, Padding3;
 				};
 
 				in vec4 Position;
@@ -521,7 +448,6 @@ void HardpolyRenderer::CompileShaders()
 					int sector = int(Texcoord.z);
 					vec4 sectorData = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0);
 					LightLevel = sectorData.x;
-					if (sectorData.y != MeshId) gl_Position = vec4(0.0);
 					AlphaTest = Texcoord.w;
 				}
 			)");
@@ -567,8 +493,6 @@ void HardpolyRenderer::CompileShaders()
 				{
 					mat4 WorldToView;
 					mat4 ViewToProjection;
-					float MeshId;
-					float Padding1, Padding2, Padding3;
 				};
 
 				in vec4 Position;

@@ -33,101 +33,93 @@
 #include "d_player.h"
 #include "r_sky.h"
 #include "g_levellocals.h"
+#include "hardpolyrenderer.h"
 
-void LevelMeshBuilder::Generate()
+void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors)
 {
-	Clear();
-	ProcessBSP();
-	Upload();
-}
-
-void LevelMeshBuilder::Generate(const std::vector<subsector_t*> &subsectors)
-{
-	Clear();
+	mRenderer = renderer;
+	mCurrentFrameBatches.swap(mLastFrameBatches);
+	mNextBatch = 0;
 	for (auto subsector : subsectors)
 		ProcessSubsector(subsector);
-	Upload();
+	Flush();
 }
 
-void LevelMeshBuilder::Clear()
+void LevelMeshBuilder::GetVertices(int numVertices, int numIndices)
 {
-	VertexArray.reset();
-	IndexBuffer.reset();
-
-	DrawRuns.clear();
-	mVertices.clear();
-	mTexcoords.clear();
-	for (auto &it : mMaterials)
+	if (mNextVertex + numVertices > MaxVertices || mNextElementIndex + numIndices > MaxIndices)
 	{
-		it.second.Indices.clear();
-	}
-}
-
-void LevelMeshBuilder::Upload()
-{
-	int totalIndices = 0;
-	for (auto &it : mMaterials)
-	{
-		auto &material = it.second;
-		totalIndices += (int)material.Indices.size();
+		Flush();
 	}
 
-	auto vertices = std::make_shared<GPUVertexBuffer>(mVertices.data(), (int)(mVertices.size() * sizeof(Vec3f)));
-	auto texcoords = std::make_shared<GPUVertexBuffer>(mTexcoords.data(), (int)(mTexcoords.size() * sizeof(Vec4f)));
-
-	std::vector<GPUVertexAttributeDesc> attributes =
+	if (mVertices == nullptr)
 	{
-		{ 0, 3, GPUVertexAttributeType::Float, false, 3 * sizeof(float), 0, vertices },
-		{ 1, 4, GPUVertexAttributeType::Float, false, 4 * sizeof(float), 0, texcoords }
-	};
-
-	VertexArray = std::make_shared<GPUVertexArray>(attributes);
-
-	IndexBuffer = std::make_shared<GPUIndexBuffer>(nullptr, (int)(totalIndices * sizeof(int32_t)));
-
-	int32_t *cpuIndices = (int32_t*)IndexBuffer->MapWriteOnly();
-
-	int indexStart = 0;
-	for (auto &it : mMaterials)
-	{
-		auto &material = it.second;
-		if (!material.Indices.empty())
+		if (mNextBatch == mCurrentFrameBatches.size())
 		{
-			LevelMeshDrawRun run;
-			run.Start = indexStart;
-			run.NumVertices = (int)material.Indices.size();
-			run.Texture = it.first;
-			DrawRuns.push_back(run);
+			auto newBatch = std::unique_ptr<LevelMeshBatch>(new LevelMeshBatch());
+			newBatch->Vertices = std::make_shared<GPUVertexBuffer>(nullptr, MaxVertices * (int)sizeof(LevelMeshVertex));
 
-			memcpy(cpuIndices + run.Start, material.Indices.data(), run.NumVertices * sizeof(int32_t));
+			std::vector<GPUVertexAttributeDesc> attributes =
+			{
+				{ 0, 3, GPUVertexAttributeType::Float, false, sizeof(LevelMeshVertex), offsetof(LevelMeshVertex, Position), newBatch->Vertices },
+				{ 1, 4, GPUVertexAttributeType::Float, false, sizeof(LevelMeshVertex), offsetof(LevelMeshVertex, TexCoord), newBatch->Vertices }
+			};
 
-			indexStart += run.NumVertices;
+			newBatch->VertexArray = std::make_shared<GPUVertexArray>(attributes);
+			newBatch->IndexBuffer = std::make_shared<GPUIndexBuffer>(nullptr, (int)(MaxIndices * sizeof(int32_t)));
+
+			mCurrentFrameBatches.push_back(std::move(newBatch));
 		}
+
+		mCurrentBatch = mCurrentFrameBatches[mNextBatch++].get();
+		mCurrentBatch->DrawRuns.clear();
+
+		mVertices = (LevelMeshVertex*)mCurrentBatch->Vertices->MapWriteOnly();
 	}
 
-	IndexBuffer->Unmap();
+	mNextElementIndex += numIndices;
 }
 
-void LevelMeshBuilder::ProcessBSP()
+void LevelMeshBuilder::Flush()
 {
-	if (level.nodes.Size() == 0)
-		ProcessSubsector(&level.subsectors[0]);
-	else
-		ProcessNode(level.HeadNode());	// The head node is the last node output.
-}
-
-void LevelMeshBuilder::ProcessNode(void *node)
-{
-	while (!((size_t)node & 1))  // Keep going until found a subsector
+	if (mVertices)
 	{
-		node_t *bsp = (node_t *)node;
-
-		ProcessNode(bsp->children[0]);
-		node = bsp->children[1];
+		mCurrentBatch->Vertices->Unmap();
+		mVertices = nullptr;
 	}
 
-	subsector_t *sub = (subsector_t *)((uint8_t *)node - 1);
-	ProcessSubsector(sub);
+	if (mNextElementIndex != 0)
+	{
+		int32_t *cpuIndices = (int32_t*)mCurrentBatch->IndexBuffer->MapWriteOnly();
+
+		int indexStart = 0;
+		for (auto &it : mMaterials)
+		{
+			auto &material = it.second;
+			if (!material.Indices.empty())
+			{
+				LevelMeshDrawRun run;
+				run.Start = indexStart;
+				run.NumVertices = (int)material.Indices.size();
+				run.Texture = it.first;
+				mCurrentBatch->DrawRuns.push_back(run);
+
+				memcpy(cpuIndices + run.Start, material.Indices.data(), run.NumVertices * sizeof(int32_t));
+
+				indexStart += run.NumVertices;
+			}
+		}
+
+		mCurrentBatch->IndexBuffer->Unmap();
+
+		mRenderer->RenderLevelMesh(mCurrentBatch->VertexArray, mCurrentBatch->IndexBuffer, mCurrentBatch->DrawRuns);
+	}
+
+	mCurrentBatch = nullptr;
+	mNextVertex = 0;
+	mNextElementIndex = 0;
+	for (auto &it : mMaterials)
+		it.second.Indices.clear();
 }
 
 void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
@@ -151,70 +143,67 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 		ceilingVertices[i] = { (float)line->v1->fX(), (float)line->v1->fY(), (float)frontceilz1 };
 		floorVertices[i] = { (float)line->v1->fX(), (float)line->v1->fY(), (float)frontfloorz1 };
 
-		if (line->sidedef == nullptr || !(line->sidedef->Flags & WALLF_POLYOBJ))
+		double frontceilz2 = frontsector->ceilingplane.ZatPoint(line->v2);
+		double frontfloorz2 = frontsector->floorplane.ZatPoint(line->v2);
+		double topTexZ = frontsector->GetPlaneTexZ(sector_t::ceiling);
+		double bottomTexZ = frontsector->GetPlaneTexZ(sector_t::floor);
+
+		if (!line->backsector)
 		{
-			double frontceilz2 = frontsector->ceilingplane.ZatPoint(line->v2);
-			double frontfloorz2 = frontsector->floorplane.ZatPoint(line->v2);
-			double topTexZ = frontsector->GetPlaneTexZ(sector_t::ceiling);
-			double bottomTexZ = frontsector->GetPlaneTexZ(sector_t::floor);
-			
-			if (!line->backsector)
+			if (line->sidedef)
 			{
-				if (line->sidedef)
-				{
-					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::mid);
-					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
-					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, topTexZ, bottomTexZ, false);
-				}
+				FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::mid);
+				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+				if (texture)
+					ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, topTexZ, bottomTexZ, false);
 			}
-			else
+		}
+		else
+		{
+			sector_t *backsector = (line->backsector != line->frontsector) ? line->backsector : line->frontsector;
+
+			double backceilz1 = backsector->ceilingplane.ZatPoint(line->v1);
+			double backfloorz1 = backsector->floorplane.ZatPoint(line->v1);
+			double backceilz2 = backsector->ceilingplane.ZatPoint(line->v2);
+			double backfloorz2 = backsector->floorplane.ZatPoint(line->v2);
+
+			double topceilz1 = frontceilz1;
+			double topceilz2 = frontceilz2;
+			double topfloorz1 = MIN(backceilz1, frontceilz1);
+			double topfloorz2 = MIN(backceilz2, frontceilz2);
+			double bottomceilz1 = MAX(frontfloorz1, backfloorz1);
+			double bottomceilz2 = MAX(frontfloorz2, backfloorz2);
+			double bottomfloorz1 = frontfloorz1;
+			double bottomfloorz2 = frontfloorz2;
+			double middleceilz1 = topfloorz1;
+			double middleceilz2 = topfloorz2;
+			double middlefloorz1 = MIN(bottomceilz1, middleceilz1);
+			double middlefloorz2 = MIN(bottomceilz2, middleceilz2);
+
+			bool bothSkyCeiling = frontsector->GetTexture(sector_t::ceiling) == skyflatnum && backsector->GetTexture(sector_t::ceiling) == skyflatnum;
+
+			if ((topceilz1 > topfloorz1 || topceilz2 > topfloorz2) && line->sidedef && !bothSkyCeiling)
 			{
-				sector_t *backsector = (line->backsector != line->frontsector) ? line->backsector : line->frontsector;
+				FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::top);
+				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+				if (texture)
+					ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, topTexZ, MIN(topfloorz1, topfloorz2), false);
+			}
 
-				double backceilz1 = backsector->ceilingplane.ZatPoint(line->v1);
-				double backfloorz1 = backsector->floorplane.ZatPoint(line->v1);
-				double backceilz2 = backsector->ceilingplane.ZatPoint(line->v2);
-				double backfloorz2 = backsector->floorplane.ZatPoint(line->v2);
+			if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && line->sidedef)
+			{
+				FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::bottom);
+				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+				if (texture)
+					ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, MAX(bottomceilz1, bottomceilz2), bottomTexZ, false);
+			}
 
-				double topceilz1 = frontceilz1;
-				double topceilz2 = frontceilz2;
-				double topfloorz1 = MIN(backceilz1, frontceilz1);
-				double topfloorz2 = MIN(backceilz2, frontceilz2);
-				double bottomceilz1 = MAX(frontfloorz1, backfloorz1);
-				double bottomceilz2 = MAX(frontfloorz2, backfloorz2);
-				double bottomfloorz1 = frontfloorz1;
-				double bottomfloorz2 = frontfloorz2;
-				double middleceilz1 = topfloorz1;
-				double middleceilz2 = topfloorz2;
-				double middlefloorz1 = MIN(bottomceilz1, middleceilz1);
-				double middlefloorz2 = MIN(bottomceilz2, middleceilz2);
-
-				bool bothSkyCeiling = frontsector->GetTexture(sector_t::ceiling) == skyflatnum && backsector->GetTexture(sector_t::ceiling) == skyflatnum;
-
-				if ((topceilz1 > topfloorz1 || topceilz2 > topfloorz2) && line->sidedef && !bothSkyCeiling)
-				{
-					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::top);
-					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
-					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, topTexZ, MIN(topfloorz1, topfloorz2), false);
-				}
-
-				if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && line->sidedef)
-				{
-					FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::bottom);
-					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
-					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, MAX(bottomceilz1, bottomceilz2), bottomTexZ, false);
-				}
-
-				if (line->sidedef)
-				{
-					FTexture *texture = TexMan(line->sidedef->GetTexture(side_t::mid), true);
-					if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
-					if (texture)
-						ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, MAX(middleceilz1, middleceilz2), MIN(middlefloorz1, middlefloorz2), true);
-				}
+			if (line->sidedef)
+			{
+				FTexture *texture = TexMan(line->sidedef->GetTexture(side_t::mid), true);
+				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+				if (texture)
+					ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, MAX(middleceilz1, middleceilz2), MIN(middlefloorz1, middlefloorz2), true);
 			}
 		}
 	}
@@ -225,11 +214,14 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 	{
 		PlaneUVTransform planeUV(frontsector->planes[sector_t::ceiling].xform, ceilingTexture);
 
-		int vertexStart = (int)mVertices.size();
+		GetVertices(sub->numlines, (sub->numlines - 2) * 3);
+
+		int vertexStart = mNextVertex;
 		for (uint32_t i = 0; i < sub->numlines; i++)
 		{
-			mVertices.push_back(ceilingVertices[i]);
-			mTexcoords.push_back(Vec4f(planeUV.GetUV(ceilingVertices[i]), sectornum, 0.0f));
+			mVertices[mNextVertex].Position = ceilingVertices[i];
+			mVertices[mNextVertex].TexCoord = Vec4f(planeUV.GetUV(ceilingVertices[i]), sectornum, 0.0f);
+			mNextVertex++;
 		}
 
 		auto &ceilingRun = mMaterials[ceilingTexture];
@@ -247,11 +239,14 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 	{
 		PlaneUVTransform planeUV(frontsector->planes[sector_t::floor].xform, floorTexture);
 
-		int vertexStart = (int)mVertices.size();
+		GetVertices(sub->numlines, (sub->numlines - 2) * 3);
+
+		int vertexStart = mNextVertex;
 		for (uint32_t i = 0; i < sub->numlines; i++)
 		{
-			mVertices.push_back(floorVertices[i]);
-			mTexcoords.push_back(Vec4f(planeUV.GetUV(floorVertices[i]), sectornum, 0.0f));
+			mVertices[mNextVertex].Position = floorVertices[i];
+			mVertices[mNextVertex].TexCoord = Vec4f(planeUV.GetUV(floorVertices[i]), sectornum, 0.0f);
+			mNextVertex++;
 		}
 
 		auto &floorRun = mMaterials[floorTexture];
@@ -273,24 +268,53 @@ void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg
 	WallTextureCoordsV texcoordsVLeft(texture, line, side, texpart, ceilz1, floorz1, unpeggedceil1, topTexZ, bottomTexZ);
 	WallTextureCoordsV texcoordsVRght(texture, line, side, texpart, ceilz2, floorz2, unpeggedceil2, topTexZ, bottomTexZ);
 
-	int vertexStart = (int)mVertices.size();
+	GetVertices(4, 6);
 
-	mVertices.push_back({ (float)v1.X, (float)v1.Y, (float)ceilz1 });
-	mVertices.push_back({ (float)v2.X, (float)v2.Y, (float)ceilz2 });
-	mVertices.push_back({ (float)v1.X, (float)v1.Y, (float)floorz1 });
-	mVertices.push_back({ (float)v2.X, (float)v2.Y, (float)floorz2 });
-
-	mTexcoords.push_back({ (float)texcoordsU.u1, (float)texcoordsVLeft.v1, sectornum, 0.0f });
-	mTexcoords.push_back({ (float)texcoordsU.u2, (float)texcoordsVRght.v1, sectornum, 0.0f });
-	mTexcoords.push_back({ (float)texcoordsU.u1, (float)texcoordsVLeft.v2, sectornum, 0.0f });
-	mTexcoords.push_back({ (float)texcoordsU.u2, (float)texcoordsVRght.v2, sectornum, 0.0f });
+	int vertexStart = mNextVertex;
 
 	// Masked walls clamp to the 0-1 range (no texture repeat)
 	if (masked)
 	{
-		ClampWallHeight(mVertices[vertexStart + 0], mVertices[vertexStart + 3], mTexcoords[vertexStart + 0], mTexcoords[vertexStart + 3]);
-		ClampWallHeight(mVertices[vertexStart + 1], mVertices[vertexStart + 2], mTexcoords[vertexStart + 1], mTexcoords[vertexStart + 2]);
+		Vec3f positions[4] =
+		{
+			{ (float)v1.X, (float)v1.Y, (float)ceilz1 },
+			{ (float)v2.X, (float)v2.Y, (float)ceilz2 },
+			{ (float)v1.X, (float)v1.Y, (float)floorz1 },
+			{ (float)v2.X, (float)v2.Y, (float)floorz2 }
+		};
+		Vec4f texcoords[4] =
+		{
+			{ (float)texcoordsU.u1, (float)texcoordsVLeft.v1, sectornum, 0.0f },
+			{ (float)texcoordsU.u2, (float)texcoordsVRght.v1, sectornum, 0.0f },
+			{ (float)texcoordsU.u1, (float)texcoordsVLeft.v2, sectornum, 0.0f },
+			{ (float)texcoordsU.u2, (float)texcoordsVRght.v2, sectornum, 0.0f }
+		};
+
+		ClampWallHeight(positions[0], positions[3], texcoords[0], texcoords[3]);
+		ClampWallHeight(positions[1], positions[2], texcoords[1], texcoords[2]);
+
+		for (int i = 0; i < 4; i++)
+		{
+			mVertices[vertexStart + i].Position = positions[i];
+			mVertices[vertexStart + i].TexCoord = texcoords[i];
+		}
 	}
+	else
+	{
+		mVertices[vertexStart + 0].Position = { (float)v1.X, (float)v1.Y, (float)ceilz1 };
+		mVertices[vertexStart + 0].TexCoord = { (float)texcoordsU.u1, (float)texcoordsVLeft.v1, sectornum, 0.0f };
+
+		mVertices[vertexStart + 1].Position = { (float)v2.X, (float)v2.Y, (float)ceilz2 };
+		mVertices[vertexStart + 1].TexCoord = { (float)texcoordsU.u2, (float)texcoordsVRght.v1, sectornum, 0.0f };
+
+		mVertices[vertexStart + 2].Position = { (float)v1.X, (float)v1.Y, (float)floorz1 };
+		mVertices[vertexStart + 2].TexCoord = { (float)texcoordsU.u1, (float)texcoordsVLeft.v2, sectornum, 0.0f };
+
+		mVertices[vertexStart + 3].Position = { (float)v2.X, (float)v2.Y, (float)floorz2 };
+		mVertices[vertexStart + 3].TexCoord = { (float)texcoordsU.u2, (float)texcoordsVRght.v2, sectornum, 0.0f };
+	}
+
+	mNextVertex += 4;
 
 	auto &run = mMaterials[texture];
 
