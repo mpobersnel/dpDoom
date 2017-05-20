@@ -81,6 +81,9 @@ CUSTOM_CVAR (Int, vid_renderer, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINI
 		case 1:
 			Printf("Switching to OpenGL renderer...\n");
 			break;
+		case 2:
+			Printf("Switching to hardpoly renderer...\n");
+			break;
 		default:
 			Printf("Unknown renderer (%d).  Falling back to software renderer...\n", (int) vid_renderer);
 			self = 0; // make sure to actually switch to the software renderer

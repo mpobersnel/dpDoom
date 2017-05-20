@@ -35,13 +35,15 @@
 #include "g_levellocals.h"
 #include "hardpolyrenderer.h"
 
-void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors)
+void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::set<sector_t *> &seenSectors)
 {
 	mRenderer = renderer;
 	mCurrentFrameBatches.swap(mLastFrameBatches);
 	mNextBatch = 0;
 	for (auto subsector : subsectors)
-		ProcessSubsector(subsector);
+		ProcessPlanes(subsector);
+	for (auto sector : seenSectors)
+		ProcessLines(sector);
 	Flush();
 }
 
@@ -122,7 +124,92 @@ void LevelMeshBuilder::Flush()
 		it.second.Indices.clear();
 }
 
-void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
+void LevelMeshBuilder::ProcessLines(sector_t *frontsector)
+{
+	float sectornum = (float)frontsector->sectornum;
+
+	uint32_t numlines = frontsector->Lines.Size();
+	for (uint32_t i = 0; i < numlines; i++)
+	{
+		line_t *linedef = frontsector->Lines[i];
+		bool backside = linedef->frontsector != frontsector;
+		side_t *sidedef = linedef->sidedef[backside];
+
+		double frontceilz1 = frontsector->ceilingplane.ZatPoint(linedef->v1);
+		double frontfloorz1 = frontsector->floorplane.ZatPoint(linedef->v1);
+		double frontceilz2 = frontsector->ceilingplane.ZatPoint(linedef->v2);
+		double frontfloorz2 = frontsector->floorplane.ZatPoint(linedef->v2);
+		double topTexZ = frontsector->GetPlaneTexZ(sector_t::ceiling);
+		double bottomTexZ = frontsector->GetPlaneTexZ(sector_t::floor);
+
+		if (!linedef->backsector)
+		{
+			if (sidedef)
+			{
+				// Reject lines not facing viewer
+				DVector2 pt1 = (backside ? linedef->v2->fPos() : linedef->v1->fPos()) - r_viewpoint.Pos;
+				DVector2 pt2 = (backside ? linedef->v1->fPos() : linedef->v2->fPos()) - r_viewpoint.Pos;
+				if (pt1.Y * (pt1.X - pt2.X) + pt1.X * (pt2.Y - pt1.Y) >= 0)
+					continue;
+
+				FTexture *texture = GetWallTexture(linedef, sidedef, side_t::mid);
+				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+				if (texture)
+					ProcessWall(sectornum, texture, linedef, sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, topTexZ, bottomTexZ, false);
+			}
+		}
+		else
+		{
+			sector_t *backsector = (linedef->backsector != frontsector) ? linedef->backsector : linedef->frontsector;
+
+			double backceilz1 = backsector->ceilingplane.ZatPoint(linedef->v1);
+			double backfloorz1 = backsector->floorplane.ZatPoint(linedef->v1);
+			double backceilz2 = backsector->ceilingplane.ZatPoint(linedef->v2);
+			double backfloorz2 = backsector->floorplane.ZatPoint(linedef->v2);
+
+			double topceilz1 = frontceilz1;
+			double topceilz2 = frontceilz2;
+			double topfloorz1 = MIN(backceilz1, frontceilz1);
+			double topfloorz2 = MIN(backceilz2, frontceilz2);
+			double bottomceilz1 = MAX(frontfloorz1, backfloorz1);
+			double bottomceilz2 = MAX(frontfloorz2, backfloorz2);
+			double bottomfloorz1 = frontfloorz1;
+			double bottomfloorz2 = frontfloorz2;
+			double middleceilz1 = topfloorz1;
+			double middleceilz2 = topfloorz2;
+			double middlefloorz1 = MIN(bottomceilz1, middleceilz1);
+			double middlefloorz2 = MIN(bottomceilz2, middleceilz2);
+
+			bool bothSkyCeiling = frontsector->GetTexture(sector_t::ceiling) == skyflatnum && backsector->GetTexture(sector_t::ceiling) == skyflatnum;
+
+			if ((topceilz1 > topfloorz1 || topceilz2 > topfloorz2) && sidedef && !bothSkyCeiling)
+			{
+				FTexture *texture = GetWallTexture(linedef, sidedef, side_t::top);
+				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+				if (texture)
+					ProcessWall(sectornum, texture, linedef, sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, topTexZ, MIN(topfloorz1, topfloorz2), false);
+			}
+
+			if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && sidedef)
+			{
+				FTexture *texture = GetWallTexture(linedef, sidedef, side_t::bottom);
+				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+				if (texture)
+					ProcessWall(sectornum, texture, linedef, sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, MAX(bottomceilz1, bottomceilz2), bottomTexZ, false);
+			}
+
+			if (sidedef)
+			{
+				FTexture *texture = TexMan(sidedef->GetTexture(side_t::mid), true);
+				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
+				if (texture)
+					ProcessWall(sectornum, texture, linedef, sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, MAX(middleceilz1, middleceilz2), MIN(middlefloorz1, middlefloorz2), true);
+			}
+		}
+	}
+}
+
+void LevelMeshBuilder::ProcessPlanes(subsector_t *sub)
 {
 	sector_t *frontsector = sub->sector;
 	float sectornum = (float)frontsector->sectornum;
@@ -142,70 +229,6 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 
 		ceilingVertices[i] = { (float)line->v1->fX(), (float)line->v1->fY(), (float)frontceilz1 };
 		floorVertices[i] = { (float)line->v1->fX(), (float)line->v1->fY(), (float)frontfloorz1 };
-
-		double frontceilz2 = frontsector->ceilingplane.ZatPoint(line->v2);
-		double frontfloorz2 = frontsector->floorplane.ZatPoint(line->v2);
-		double topTexZ = frontsector->GetPlaneTexZ(sector_t::ceiling);
-		double bottomTexZ = frontsector->GetPlaneTexZ(sector_t::floor);
-
-		if (!line->backsector)
-		{
-			if (line->sidedef)
-			{
-				FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::mid);
-				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
-				if (texture)
-					ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, topTexZ, bottomTexZ, false);
-			}
-		}
-		else
-		{
-			sector_t *backsector = (line->backsector != line->frontsector) ? line->backsector : line->frontsector;
-
-			double backceilz1 = backsector->ceilingplane.ZatPoint(line->v1);
-			double backfloorz1 = backsector->floorplane.ZatPoint(line->v1);
-			double backceilz2 = backsector->ceilingplane.ZatPoint(line->v2);
-			double backfloorz2 = backsector->floorplane.ZatPoint(line->v2);
-
-			double topceilz1 = frontceilz1;
-			double topceilz2 = frontceilz2;
-			double topfloorz1 = MIN(backceilz1, frontceilz1);
-			double topfloorz2 = MIN(backceilz2, frontceilz2);
-			double bottomceilz1 = MAX(frontfloorz1, backfloorz1);
-			double bottomceilz2 = MAX(frontfloorz2, backfloorz2);
-			double bottomfloorz1 = frontfloorz1;
-			double bottomfloorz2 = frontfloorz2;
-			double middleceilz1 = topfloorz1;
-			double middleceilz2 = topfloorz2;
-			double middlefloorz1 = MIN(bottomceilz1, middleceilz1);
-			double middlefloorz2 = MIN(bottomceilz2, middleceilz2);
-
-			bool bothSkyCeiling = frontsector->GetTexture(sector_t::ceiling) == skyflatnum && backsector->GetTexture(sector_t::ceiling) == skyflatnum;
-
-			if ((topceilz1 > topfloorz1 || topceilz2 > topfloorz2) && line->sidedef && !bothSkyCeiling)
-			{
-				FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::top);
-				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
-				if (texture)
-					ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, topTexZ, MIN(topfloorz1, topfloorz2), false);
-			}
-
-			if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && line->sidedef)
-			{
-				FTexture *texture = GetWallTexture(line->linedef, line->sidedef, side_t::bottom);
-				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
-				if (texture)
-					ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, MAX(bottomceilz1, bottomceilz2), bottomTexZ, false);
-			}
-
-			if (line->sidedef)
-			{
-				FTexture *texture = TexMan(line->sidedef->GetTexture(side_t::mid), true);
-				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
-				if (texture)
-					ProcessWall(sectornum, texture, line, line->linedef, line->sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, MAX(middleceilz1, middleceilz2), MIN(middlefloorz1, middlefloorz2), true);
-			}
-		}
 	}
 	
 	FTexture *ceilingTexture = TexMan(frontsector->GetTexture(sector_t::ceiling));
@@ -259,12 +282,12 @@ void LevelMeshBuilder::ProcessSubsector(subsector_t *sub)
 	}
 }
 
-void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const seg_t *lineseg, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked)
+void LevelMeshBuilder::ProcessWall(float sectornum, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked)
 {
-	DVector2 v1 = lineseg->v1->fPos();
-	DVector2 v2 = lineseg->v2->fPos();
+	DVector2 v1 = line->v1->fPos();
+	DVector2 v2 = line->v2->fPos();
 
-	WallTextureCoordsU texcoordsU(texture, lineseg, line, side, texpart);
+	WallTextureCoordsU texcoordsU(texture, line, side, texpart);
 	WallTextureCoordsV texcoordsVLeft(texture, line, side, texpart, ceilz1, floorz1, unpeggedceil1, topTexZ, bottomTexZ);
 	WallTextureCoordsV texcoordsVRght(texture, line, side, texpart, ceilz2, floorz2, unpeggedceil2, topTexZ, bottomTexZ);
 
@@ -444,6 +467,18 @@ WallTextureCoordsU::WallTextureCoordsU(FTexture *tex, const seg_t *lineseg, cons
 	double uscale = side->GetTextureXScale(texpart) * tex->Scale.X;
 	u1 = t1 * side->TexelLength + side->GetTextureXOffset(texpart);
 	u2 = t2 * side->TexelLength + side->GetTextureXOffset(texpart);
+	u1 *= uscale;
+	u2 *= uscale;
+	u1 /= texWidth;
+	u2 /= texWidth;
+}
+
+WallTextureCoordsU::WallTextureCoordsU(FTexture *tex, const line_t *line, const side_t *side, side_t::ETexpart texpart)
+{
+	int texWidth = tex->GetWidth();
+	double uscale = side->GetTextureXScale(texpart) * tex->Scale.X;
+	u1 = side->GetTextureXOffset(texpart);
+	u2 = side->GetTextureXOffset(texpart) + side->TexelLength;
 	u1 *= uscale;
 	u2 *= uscale;
 	u1 /= texWidth;

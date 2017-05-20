@@ -119,6 +119,7 @@ private:
 	void UploadSectorTexture();
 	void RenderBspMesh();
 	void UpdateAutoMap();
+	void FindSeenSectors();
 
 	void RenderTranslucent();
 	void RenderSprite(AActor *thing, double sortDistance, const DVector2 &left, const DVector2 &right);
@@ -148,6 +149,7 @@ private:
 	LevelMeshBuilder mBspMesh;
 
 	std::set<sector_t *> SeenSectors;
-	std::unordered_map<subsector_t *, uint32_t> SubsectorDepths;
+	std::vector<uint32_t> SubsectorDepths;
+	uint32_t SubsectorDepthsGeneration = 0;
 	std::vector<HardpolyTranslucentObject *> TranslucentObjects;
 };

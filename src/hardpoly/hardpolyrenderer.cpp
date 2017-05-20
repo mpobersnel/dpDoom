@@ -109,9 +109,11 @@ void HardpolyRenderer::RenderBspMesh()
 	mBspCull.CullScene({ 0.0f, 0.0f, 0.0f, 1.0f });
 	mBspCull.ClearSolidSegments();
 
+	FindSeenSectors();
+
 	if (!mBspCull.PvsSectors.empty())
 	{
-		mBspMesh.Render(this, mBspCull.PvsSectors);
+		mBspMesh.Render(this, mBspCull.PvsSectors, SeenSectors);
 	}
 }
 
@@ -155,7 +157,7 @@ void HardpolyRenderer::UpdateAutoMap()
 			seg_t *line = &sub->firstline[i];
 
 			// To do: somehow only mark lines seen by the clipper
-			if ((line->sidedef == nullptr || !(line->sidedef->Flags & WALLF_POLYOBJ)) && line->linedef != nullptr)
+			if (line->linedef)
 			{
 				line->linedef->flags |= ML_MAPPED;
 				sub->flags |= SSECF_DRAWN;
@@ -164,19 +166,25 @@ void HardpolyRenderer::UpdateAutoMap()
 	}
 }
 
-void HardpolyRenderer::RenderTranslucent()
+void HardpolyRenderer::FindSeenSectors()
 {
+	SubsectorDepthsGeneration = ((SubsectorDepthsGeneration >> 24) + 1) << 24;
+
 	SeenSectors.clear();
-	SubsectorDepths.clear();
-	TranslucentObjects.clear();
-	TranslucentVertices.clear();
+	SubsectorDepths.resize(level.subsectors.Size(), 0);
 
 	uint32_t nextSubsectorDepth = 0;
 	for (subsector_t *sub : mBspCull.PvsSectors)
 	{
 		SeenSectors.insert(sub->sector);
-		SubsectorDepths[sub] = nextSubsectorDepth++;
+		SubsectorDepths[sub->Index()] = SubsectorDepthsGeneration | (nextSubsectorDepth++);
 	}
+}
+
+void HardpolyRenderer::RenderTranslucent()
+{
+	TranslucentObjects.clear();
+	TranslucentVertices.clear();
 
 	const auto &viewpoint = r_viewpoint;
 	for (sector_t *sector : SeenSectors)
@@ -236,9 +244,8 @@ void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, const DV
 	if (level.nodes.Size() == 0)
 	{
 		subsector_t *sub = &level.subsectors[0];
-		auto it = SubsectorDepths.find(sub);
-		if (it != SubsectorDepths.end())
-			TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyRenderSprite>(thing, sub, it->second, sortDistance, 0.0f, 1.0f));
+		if ((SubsectorDepths[0] & 0xff000000) == SubsectorDepthsGeneration)
+			TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyRenderSprite>(thing, sub, SubsectorDepths[0] & 0x00ffffff, sortDistance, 0.0f, 1.0f));
 	}
 	else
 	{
@@ -277,9 +284,9 @@ void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, DVector2
 
 	subsector_t *sub = (subsector_t *)((uint8_t *)node - 1);
 
-	auto it = SubsectorDepths.find(sub);
-	if (it != SubsectorDepths.end())
-		TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyRenderSprite>(thing, sub, it->second, sortDistance, (float)t1, (float)t2));
+	int subsectorindex = sub->Index();
+	if ((SubsectorDepths[subsectorindex] & 0xff000000) == SubsectorDepthsGeneration)
+		TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyRenderSprite>(thing, sub, SubsectorDepths[subsectorindex] & 0x00ffffff, sortDistance, (float)t1, (float)t2));
 }
 
 void HardpolyRenderer::UploadSectorTexture()

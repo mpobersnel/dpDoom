@@ -46,7 +46,8 @@ void GPUContext::Begin()
 
 	// To do: move elsewhere
 	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_CULL_FACE);
+	glDisable(GL_CULL_FACE);
+	//glEnable(GL_CULL_FACE);
 	glDisable(GL_BLEND);
 }
 
@@ -54,7 +55,7 @@ void GPUContext::End()
 {
 	// To do: move elsewhere
 	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_CULL_FACE);
+	//glDisable(GL_CULL_FACE);
 	glEnable(GL_BLEND);
 
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, oldDrawFramebufferBinding);
