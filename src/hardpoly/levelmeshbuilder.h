@@ -25,8 +25,12 @@
 #include "r_renderer.h"
 #include "hardpoly/gpu/gpu_context.h"
 #include <set>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 class HardpolyRenderer;
+struct LevelMeshThread;
 
 struct LevelMeshDrawRun
 {
@@ -35,36 +39,28 @@ struct LevelMeshDrawRun
 	int NumVertices = 0;
 };
 
-struct LevelMeshBatch
-{
-	GPUVertexArrayPtr VertexArray;
-	GPUIndexBufferPtr IndexBuffer;
-	std::vector<LevelMeshDrawRun> DrawRuns;
-	GPUVertexBufferPtr Vertices;
-};
-
 struct LevelMeshVertex
 {
 	Vec3f Position;
 	Vec4f TexCoord;
 };
 
-class LevelMeshBuilder
+struct LevelMeshBatch
 {
-public:
-	void Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::vector<sector_t *> &seenSectors);
+	GPUVertexArrayPtr VertexArray;
+	GPUIndexBufferPtr IndexBuffer;
+	std::vector<LevelMeshDrawRun> DrawRuns;
+	GPUVertexBufferPtr Vertices;
 
-private:
-	void Flush();
-	void ProcessPlanes(subsector_t *sub);
-	void ProcessLines(sector_t *sector);
-	void ProcessWall(float sectornum, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked);
-	static void ClampWallHeight(Vec3f &v1, Vec3f &v2, Vec4f &uv1, Vec4f &uv2);
+	std::vector<LevelMeshVertex> CpuVertices;
+	std::vector<int32_t> CpuIndexBuffer;
+	int WrittenVertexCount = 0;
+	int WrittenIndexCount = 0;
+	LevelMeshThread *Producer = nullptr;
+};
 
-	void GetVertices(int numVertices, int numIndices);
-
-	FTexture *GetWallTexture(line_t *line, side_t *side, side_t::ETexpart texpart);
-
+struct LevelMeshThread
+{
 	struct MaterialVertices
 	{
 		std::vector<int32_t> Indices;
@@ -74,20 +70,60 @@ private:
 
 	std::vector<Vec3f> ceilingVertices;
 	std::vector<Vec3f> floorVertices;
-
 	LevelMeshVertex *mVertices = nullptr;
 	int mNextVertex = 0;
 	int mNextElementIndex = 0;
-
 	LevelMeshBatch *mCurrentBatch;
+
+	std::thread mThread;
+	int mCore = 0;
+	int mNumCores = 1;
+};
+
+class LevelMeshBuilder
+{
+public:
+	LevelMeshBuilder();
+	~LevelMeshBuilder();
+
+	void Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::vector<sector_t *> &seenSectors);
+
+private:
+	void WorkerMain(LevelMeshThread *thread);
+	void RenderThread(LevelMeshThread *thread);
+	void Flush(LevelMeshThread *thread);
+	void ProcessPlanes(LevelMeshThread *thread, subsector_t *sub);
+	void ProcessLines(LevelMeshThread *thread, sector_t *sector);
+	void ProcessWall(LevelMeshThread *thread, float sectornum, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked);
+	static void ClampWallHeight(Vec3f &v1, Vec3f &v2, Vec4f &uv1, Vec4f &uv2);
+
+	void GetVertices(LevelMeshThread *thread, int numVertices, int numIndices);
+	void CreateGPUObjects(LevelMeshBatch *batch);
+
+	FTexture *GetWallTexture(line_t *line, side_t *side, side_t::ETexpart texpart);
+
+	LevelMeshThread mMainThread;
+	std::vector<LevelMeshThread> mWorkerThreads;
+	std::condition_variable mStartCondition;
+	std::condition_variable mEndCondition;
+	std::mutex mMutex;
+	bool mStopFlag = false;
+	size_t mStartThreadCount = 0;
+	size_t mEndThreadCount = 0;
+
 	std::vector<std::unique_ptr<LevelMeshBatch>> mCurrentFrameBatches;
 	std::vector<std::unique_ptr<LevelMeshBatch>> mLastFrameBatches;
 	size_t mNextBatch = 0;
+
+	const std::vector<subsector_t*> *subsectors;
+	const std::vector<sector_t *> *sectors;
 
 	enum { MaxVertices = 16*1024, MaxIndices = 3*16*1024 };
 
 	HardpolyRenderer *mRenderer;
 
+	LevelMeshBuilder(const LevelMeshBuilder &) = delete;
+	LevelMeshBuilder &operator=(const LevelMeshBuilder &) = delete;
 };
 
 class PlaneUVTransform
