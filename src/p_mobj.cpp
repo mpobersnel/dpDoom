@@ -282,6 +282,7 @@ DEFINE_FIELD(AActor, Floorclip)
 DEFINE_FIELD(AActor, DamageType)
 DEFINE_FIELD(AActor, DamageTypeReceived)
 DEFINE_FIELD(AActor, FloatBobPhase)
+DEFINE_FIELD(AActor, FloatBobStrength)
 DEFINE_FIELD(AActor, RipperLevel)
 DEFINE_FIELD(AActor, RipLevelMin)
 DEFINE_FIELD(AActor, RipLevelMax)
@@ -443,6 +444,7 @@ void AActor::Serialize(FSerializer &arc)
 		("inventory", Inventory)
 		A("inventoryid", InventoryID)
 		A("floatbobphase", FloatBobPhase)
+		A("floatbobstrength", FloatBobStrength)
 		A("translation", Translation)
 		A("bloodcolor", BloodColor)
 		A("bloodtranslation", BloodTranslation)
@@ -3875,7 +3877,7 @@ bool AActor::IsOkayToAttack (AActor *link)
 void AActor::SetShade (uint32_t rgb)
 {
 	PalEntry *entry = (PalEntry *)&rgb;
-	fillcolor = rgb | (ColorMatcher.Pick (entry->r, entry->g, entry->b) << 24);
+	fillcolor = (rgb & 0xffffff) | (ColorMatcher.Pick (entry->r, entry->g, entry->b) << 24);
 }
 
 void AActor::SetShade (int r, int g, int b)
@@ -6060,7 +6062,8 @@ AActor *P_SpawnMapThing (FMapThing *mthing, int position)
 	if (mthing->score)
 		mobj->Score = mthing->score;
 	if (mthing->fillcolor)
-		mobj->fillcolor = mthing->fillcolor;
+		mobj->fillcolor = (mthing->fillcolor & 0xffffff) | (ColorMatcher.Pick((mthing->fillcolor & 0xff0000) >> 16,
+			(mthing->fillcolor & 0xff00) >> 8, (mthing->fillcolor & 0xff)) << 24);
 
 	mobj->CallBeginPlay ();
 	if (!(mobj->ObjectFlags & OF_EuthanizeMe))
@@ -7991,7 +7994,7 @@ double AActor::GetBobOffset(double ticfrac) const
 	{
 		return 0;
 	}
-	return BobSin(FloatBobPhase + level.maptime + ticfrac);
+	return BobSin(FloatBobPhase + level.maptime + ticfrac) * FloatBobStrength;
 }
 
 DEFINE_ACTION_FUNCTION(AActor, GetBobOffset)

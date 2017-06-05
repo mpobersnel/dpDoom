@@ -60,7 +60,6 @@ if( WIN32 )
 		( MSVC15 AND NOT CMAKE_GENERATOR_TOOLSET STREQUAL "v141_xp" ) )		# For VS 2017.
 		# for modern Windows SDKs the DirectX headers should be available by default.
 		set( DX_dinput8_LIBRARY dinput8 )
-		set( DX_dxguid_LIBRARY dxguid )
 	else()
 		
 		find_path( D3D_INCLUDE_DIR d3d9.h
@@ -97,9 +96,6 @@ if( WIN32 )
 		find_library( DX_dinput8_LIBRARY dinput8
 			PATHS ENV DXSDK_DIR
 			PATH_SUFFIXES Lib Lib/${XBITS} )
-		find_library( DX_dxguid_LIBRARY dxguid
-			PATHS ENV DXSDK_DIR
-			PATH_SUFFIXES Lib Lib/${XBITS} )
 
 		# Modern versions of the Windows SDK include dinput8.lib. Unfortunately,
 		# CMake cannot find these libraries via find_library.
@@ -108,11 +104,6 @@ if( WIN32 )
 			set( DX_dinput8_LIBRARY dinput8 )
 		endif()
 
-		# Modern versions of the Windows SDK do NOT include dxguid.lib. Its contents
-		# were moved to dinput8.lib.
-		if( NOT DX_dxguid_LIBRARY )
-			message( STATUS "Could not find dxguid.lib. Build may fail on old Windows SDKs.")
-		endif()
 	endif()
 
 	set( ZDOOM_LIBS
@@ -133,9 +124,6 @@ if( WIN32 )
 		set( ZDOOM_LIBS ${ZDOOM_LIBS} DelayImp )
 	endif()
 
-	if( DX_dxguid_LIBRARY )
-		list( APPEND ZDOOM_LIBS "${DX_dxguid_LIBRARY}" )
-	endif()
 else()
 	if( APPLE )
 		set( NO_GTK ON )
@@ -471,6 +459,58 @@ if( NOT DYN_FLUIDSYNTH )
 		set( ZDOOM_LIBS ${ZDOOM_LIBS} "${FLUIDSYNTH_LIBRARIES}" )
 		include_directories( "${FLUIDSYNTH_INCLUDE_DIR}" )
 	endif()
+endif()
+
+if (GZDOOM_USE_OPENVR)
+	find_path(OPENVR_SDK_PATH
+		NAMES
+			headers/openvr.h
+		HINTS
+			ENV OPENVR_DIR ENV PROGRAMFILES ENV HOME ENV USERPROFILE
+		PATH_SUFFIXES
+			openvr git/openvr
+	)
+	find_path(OPENVR_INCLUDE_DIRECTORY
+		NAMES
+			openvr.h
+		HINTS
+			${OPENVR_SDK_PATH}/headers
+	)
+	include_directories("${OPENVR_INCLUDE_DIRECTORY}")
+	option( GZDOOM_OPENVR_STATIC "Statically link OpenVR API" ON )
+	if(GZDOOM_OPENVR_STATIC)
+		# Incorporate the whole openvr API into zdoom, using a few rules lifted from the OpenVR CMakeLists.txt files
+		# This branch avoids the need to ship openvr_api.dll
+		add_definitions( -DVR_API_PUBLIC )
+		include_directories(${OPENVR_SDK_PATH}/src ${OPENVR_SDK_PATH}/src/vrcommon)
+		file(GLOB OPENVR_SOURCES "${OPENVR_SDK_PATH}/src/*.cpp" "${OPENVR_SDK_PATH}/src/vrcommon/*.cpp")
+	else() # link to shared OpenVR library
+		# Link to correct library for this platform
+		if(WIN32)
+			set(OPENVR_PLAT "win")
+		elseif( APPLE )
+			set(OPENVR_PLAT "osx")
+		else()
+			set(OPENVR_PLAT "linux")
+		endif()
+		if(X64)
+			set(OPENVR_PLAT ${OPENVR_PLAT}64)
+		else()
+			set(OPENVR_PLAT ${OPENVR_PLAT}32)
+		endif()
+		find_library(OPENVR_LIBRARY
+			NAMES openvr_api
+			HINTS "${OPENVR_SDK_PATH}/lib/${OPENVR_PLAT}/"
+		)
+		list(APPEND ZDOOM_LIBS ${OPENVR_LIBRARY})
+		# Find shared library file needed for package distribution
+		find_program(OPENVR_SHARED_LIBRARY
+			NAMES libopenvr_api.so libopenvr_api.dylib openvr_api.dll
+			PATHS "${OPENVR_SDK_PATH}/bin/${OPENVR_PLAT}/"
+			NO_DEFAULT_PATH
+		)
+	endif()
+	add_definitions("-DUSE_OPENVR")
 endif()
 
 # Start defining source files for ZDoom
@@ -1024,6 +1064,7 @@ set (PCH_SOURCES
 	gl/stereo3d/gl_stereo_leftright.cpp
 	gl/stereo3d/scoped_view_shifter.cpp
 	gl/stereo3d/gl_anaglyph.cpp
+	gl/stereo3d/gl_openvr.cpp
 	gl/stereo3d/gl_quadstereo.cpp
 	gl/stereo3d/gl_sidebyside3d.cpp
 	gl/stereo3d/gl_interleaved3d.cpp
@@ -1101,6 +1142,7 @@ set (PCH_SOURCES
 	r_data/voxels.cpp
 	r_data/renderstyle.cpp
 	r_data/r_interpolate.cpp
+	r_data/r_vanillatrans.cpp
 	scripting/symbols.cpp
 	scripting/types.cpp
 	scripting/thingdef.cpp
@@ -1176,6 +1218,7 @@ add_executable( zdoom WIN32 MACOSX_BUNDLE
 	${X86_SOURCES}
 	${FASTMATH_SOURCES}
 	${PCH_SOURCES}
+	${OPENVR_SOURCES}
 	x86.cpp
 	strnatcmp.c
 	zstring.cpp
@@ -1313,6 +1356,11 @@ endif()
 install(TARGETS zdoom
 		DESTINATION ${INSTALL_PATH}
 		COMPONENT "Game executable")
+if(OPENVR_SHARED_LIBRARY)
+	install(PROGRAMS ${OPENVR_SHARED_LIBRARY} 
+		DESTINATION ${INSTALL_PATH}
+		COMPONENT "Shared libraries")
+endif()
 
 source_group("Audio Files" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/sound/.+")
 source_group("Audio Files\\OPL Synth" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/sound/oplsynth/.+")

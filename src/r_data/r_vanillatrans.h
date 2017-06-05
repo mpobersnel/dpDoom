@@ -1,7 +1,7 @@
 // 
 //---------------------------------------------------------------------------
 //
-// Copyright(C) 2015 Christopher Bruns
+// Copyright(C) 2017 Rachael Alexanderson
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -19,34 +19,8 @@
 //
 //--------------------------------------------------------------------------
 //
-/*
-** scoped_view_shifter.h
-** Stack-scoped class for temporarily changing camera viewpoint
-** Used for stereoscopic 3D.
-**
-*/
 
-#ifndef GL_STEREO3D_SCOPED_VIEW_SHIFTER_H_
-#define GL_STEREO3D_SCOPED_VIEW_SHIFTER_H_
 
-#include "basictypes.h"
-#include "vectors.h"
-
-namespace s3d {
-
-	/**
-	 * Temporarily shift 
-	 */
-	class ScopedViewShifter
-	{
-	public:
-		ScopedViewShifter(float dxyz[3]); // in doom units
-		~ScopedViewShifter();
-
-	private:
-		DVector3 cachedView;
-	};
-
-} /* namespace s3d */
-
-#endif // GL_STEREO3D_SCOPED_VIEW_SHIFTER_H_
+void UpdateVanillaTransparency();
+bool UseVanillaTransparency();
+extern bool r_UseVanillaTransparency;

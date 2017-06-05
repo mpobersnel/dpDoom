@@ -52,12 +52,12 @@ const char *GetVersionString();
 #endif
 
 // The version as seen in the Windows resource
-#define RC_FILEVERSION 1,3,9999,0
-#define RC_PRODUCTVERSION 1,3,9999,0
+#define RC_FILEVERSION 1,4,9999,0
+#define RC_PRODUCTVERSION 1,4,9999,0
 #define RC_PRODUCTVERSION2 VERSIONSTR
-// These are for content versioning. The current state is '2.4'.
-#define VER_MAJOR 2
-#define VER_MINOR 5
+// These are for content versioning. The current state is '3.2'.
+#define VER_MAJOR 3
+#define VER_MINOR 2
 #define VER_REVISION 0
 
 // Version identifier for network games.

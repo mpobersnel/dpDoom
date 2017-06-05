@@ -317,6 +317,7 @@ class SerpentFX : Actor
 		Damage 4;
 		Projectile;
 		-ACTIVATEIMPACT -ACTIVATEPCROSS
+		+ZDOOMTRANS
 		RenderStyle "Add";
 		DeathSound "SerpentFXHit";
 	}
