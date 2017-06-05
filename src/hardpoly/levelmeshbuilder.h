@@ -50,6 +50,7 @@ struct LevelMeshBatch
 	GPUVertexArrayPtr VertexArray;
 	GPUIndexBufferPtr IndexBuffer;
 	std::vector<LevelMeshDrawRun> DrawRuns;
+	std::vector<int32_t> SkyIndices;
 	GPUVertexBufferPtr Vertices;
 
 	std::vector<LevelMeshVertex> CpuVertices;
@@ -66,9 +67,8 @@ struct LevelMeshThread
 	};
 
 	std::map<FTexture*, MaterialVertices> mMaterials;
+	std::vector<int32_t> SkyIndices;
 
-	std::vector<Vec3f> ceilingVertices;
-	std::vector<Vec3f> floorVertices;
 	LevelMeshVertex *mVertices = nullptr;
 	int mNextVertex = 0;
 	int mNextElementIndex = 0;
@@ -89,13 +89,16 @@ public:
 	LevelMeshBuilder();
 	~LevelMeshBuilder();
 
-	void Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::vector<sector_t *> &seenSectors);
+	void Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &subsectors, const std::vector<sector_t *> &seenSectors, float skyZCeiling, float skyZFloor);
 
 private:
 	void WorkerMain(LevelMeshThread *thread);
 	void RenderThread(LevelMeshThread *thread);
 	void Flush(LevelMeshThread *thread);
 	void ProcessPlanes(LevelMeshThread *thread, subsector_t *sub);
+	void ProcessOpaquePlane(LevelMeshThread *thread, subsector_t *sub, bool ceiling, FTexture *texture);
+	void ProcessSkyPlane(LevelMeshThread *thread, subsector_t *sub, bool ceiling);
+	void ProcessSkyWalls(LevelMeshThread *thread, subsector_t *sub, bool ceiling);
 	void ProcessLines(LevelMeshThread *thread, sector_t *sector);
 	void ProcessWall(LevelMeshThread *thread, float sectornum, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked);
 	static void ClampWallHeight(Vec3f &v1, Vec3f &v2, Vec4f &uv1, Vec4f &uv2);
@@ -116,6 +119,7 @@ private:
 
 	const std::vector<subsector_t*> *subsectors;
 	const std::vector<sector_t *> *sectors;
+	float mSkyZCeiling = 0.0f, mSkyZFloor = 0.0f;
 
 	enum { MaxVertices = 16*1024, MaxIndices = 3*16*1024 };
 

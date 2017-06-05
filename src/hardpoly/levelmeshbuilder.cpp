@@ -48,9 +48,12 @@ CCMD(meshstats)
 
 LevelMeshBuilder::LevelMeshBuilder()
 {
+	int numCores = 1;
+	/*
 	int numCores = std::thread::hardware_concurrency();
 	if (numCores == 0)
 		numCores = 4;
+	*/
 
 	mWorkerThreads.resize(numCores - 1);
 	mMainThread.mNumCores = numCores;
@@ -80,7 +83,7 @@ LevelMeshBuilder::~LevelMeshBuilder()
 	mEndThreadCount = 0;
 }
 
-void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &seenSubsectors, const std::vector<sector_t *> &seenSectors)
+void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subsector_t*> &seenSubsectors, const std::vector<sector_t *> &seenSectors, float skyZCeiling, float skyZFloor)
 {
 	std::unique_lock<std::mutex> lock(mMutex);
 
@@ -89,6 +92,8 @@ void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subs
 	mRenderer = renderer;
 	subsectors = &seenSubsectors;
 	sectors = &seenSectors;
+	mSkyZCeiling = mSkyZCeiling;
+	mSkyZFloor = mSkyZFloor;
 
 	for (auto &thread : mWorkerThreads)
 	{
@@ -133,7 +138,7 @@ void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subs
 				*/
 
 				mTotalDrawRuns += (int)batch->DrawRuns.size();
-				mRenderer->RenderLevelMesh(batch->VertexArray, batch->IndexBuffer, batch->DrawRuns);
+				mRenderer->RenderLevelMesh(batch->VertexArray, batch->IndexBuffer, batch->DrawRuns, batch->SkyIndices);
 			}
 		}
 	}
@@ -281,6 +286,8 @@ void LevelMeshBuilder::Flush(LevelMeshThread *thread)
 			}
 		}
 
+		thread->mCurrentBatch->SkyIndices = thread->SkyIndices;
+
 		thread->mCurrentBatch->WrittenVertexCount = thread->mNextVertex;
 		thread->mCurrentBatch->WrittenIndexCount = indexStart;
 
@@ -288,7 +295,7 @@ void LevelMeshBuilder::Flush(LevelMeshThread *thread)
 		{
 			thread->mCurrentBatch->IndexBuffer->Unmap();
 			mTotalDrawRuns += (int)thread->mCurrentBatch->DrawRuns.size();
-			mRenderer->RenderLevelMesh(thread->mCurrentBatch->VertexArray, thread->mCurrentBatch->IndexBuffer, thread->mCurrentBatch->DrawRuns);
+			mRenderer->RenderLevelMesh(thread->mCurrentBatch->VertexArray, thread->mCurrentBatch->IndexBuffer, thread->mCurrentBatch->DrawRuns, thread->mCurrentBatch->SkyIndices);
 		}
 	}
 
@@ -297,6 +304,7 @@ void LevelMeshBuilder::Flush(LevelMeshThread *thread)
 	thread->mNextElementIndex = 0;
 	for (auto &it : thread->mMaterials)
 		it.second.Indices.clear();
+	thread->SkyIndices.clear();
 }
 
 void LevelMeshBuilder::ProcessLines(LevelMeshThread *thread, sector_t *frontsector)
@@ -387,73 +395,167 @@ void LevelMeshBuilder::ProcessLines(LevelMeshThread *thread, sector_t *frontsect
 void LevelMeshBuilder::ProcessPlanes(LevelMeshThread *thread, subsector_t *sub)
 {
 	sector_t *frontsector = sub->sector;
-	float sectornum = (float)frontsector->sectornum;
-	
-	if (thread->ceilingVertices.size() < (size_t)sub->numlines)
+
+	FTextureID ceilingPicnum = frontsector->GetTexture(sector_t::ceiling);
+	FTexture *ceilingTexture = TexMan(ceilingPicnum);
+	if (ceilingTexture && ceilingTexture->UseType == FTexture::TEX_Null) ceilingTexture = nullptr;
+	if (ceilingTexture)
 	{
-		thread->ceilingVertices.resize((size_t)sub->numlines);
-		thread->floorVertices.resize((size_t)sub->numlines);
+		bool isSky = ceilingPicnum == skyflatnum;
+		if (!isSky)
+			ProcessOpaquePlane(thread, sub, true, ceilingTexture);
+		else
+			ProcessSkyPlane(thread, sub, true);
 	}
 
+	FTextureID floorPicnum = frontsector->GetTexture(sector_t::floor);
+	FTexture *floorTexture = TexMan(floorPicnum);
+	if (floorTexture && floorTexture->UseType == FTexture::TEX_Null) floorTexture = nullptr;
+	if (floorTexture)
+	{
+		bool isSky = floorPicnum == skyflatnum;
+		if (!isSky)
+			ProcessOpaquePlane(thread, sub, false, floorTexture);
+		else
+			ProcessSkyPlane(thread, sub, false);
+	}
+}
+
+void LevelMeshBuilder::ProcessOpaquePlane(LevelMeshThread *thread, subsector_t *sub, bool ceiling, FTexture *texture)
+{
+	sector_t *frontsector = sub->sector;
+	float sectornum = (float)frontsector->sectornum;
+
+	PlaneUVTransform planeUV(frontsector->planes[ceiling ? sector_t::ceiling : sector_t::floor].xform, texture);
+
+	GetVertices(thread, sub->numlines, (sub->numlines - 2) * 3);
+
+	int vertexStart = thread->mNextVertex;
+	for (uint32_t i = 0; i < sub->numlines; i++)
+	{
+		seg_t *line = &sub->firstline[i];
+		double z = ceiling ? frontsector->ceilingplane.ZatPoint(line->v1) : frontsector->floorplane.ZatPoint(line->v1);
+		Vec3f position = { (float)line->v1->fX(), (float)line->v1->fY(), (float)z };
+
+		thread->mVertices[thread->mNextVertex].Position = position;
+		thread->mVertices[thread->mNextVertex].TexCoord = Vec4f(planeUV.GetUV(position), sectornum, 0.0f);
+		thread->mNextVertex++;
+	}
+
+	auto &run = thread->mMaterials[texture];
+	for (uint32_t i = 2; i < sub->numlines; i++)
+	{
+		run.Indices.push_back(vertexStart + i);
+		run.Indices.push_back(vertexStart + i - 1);
+		run.Indices.push_back(vertexStart);
+	}
+}
+
+void LevelMeshBuilder::ProcessSkyPlane(LevelMeshThread *thread, subsector_t *sub, bool ceiling)
+{
+	GetVertices(thread, sub->numlines, (sub->numlines - 2) * 3);
+
+	int vertexStart = thread->mNextVertex;
+	for (uint32_t i = 0; i < sub->numlines; i++)
+	{
+		seg_t *line = &sub->firstline[i];
+		Vec3f position = { (float)line->v1->fX(), (float)line->v1->fY(), ceiling ? mSkyZCeiling : mSkyZFloor };
+
+		thread->mVertices[thread->mNextVertex].Position = position;
+		thread->mNextVertex++;
+	}
+
+	for (uint32_t i = 2; i < sub->numlines; i++)
+	{
+		thread->SkyIndices.push_back(vertexStart + i);
+		thread->SkyIndices.push_back(vertexStart + i - 1);
+		thread->SkyIndices.push_back(vertexStart);
+	}
+
+	ProcessSkyWalls(thread, sub, ceiling);
+}
+
+void LevelMeshBuilder::ProcessSkyWalls(LevelMeshThread *thread, subsector_t *sub, bool ceiling)
+{
+	sector_t *frontsector = sub->sector;
+
+	GetVertices(thread, sub->numlines * 4, sub->numlines * 6);
 	for (uint32_t i = 0; i < sub->numlines; i++)
 	{
 		seg_t *line = &sub->firstline[i];
 
-		double frontceilz1 = frontsector->ceilingplane.ZatPoint(line->v1);
-		double frontfloorz1 = frontsector->floorplane.ZatPoint(line->v1);
+		float skyBottomz1 = (float)frontsector->ceilingplane.ZatPoint(line->v1);
+		float skyBottomz2 = (float)frontsector->ceilingplane.ZatPoint(line->v2);
+		if (line->backsector)
+		{
+			sector_t *backsector = (line->backsector != line->frontsector) ? line->backsector : line->frontsector;
 
-		thread->ceilingVertices[i] = { (float)line->v1->fX(), (float)line->v1->fY(), (float)frontceilz1 };
-		thread->floorVertices[i] = { (float)line->v1->fX(), (float)line->v1->fY(), (float)frontfloorz1 };
-	}
-	
-	FTexture *ceilingTexture = TexMan(frontsector->GetTexture(sector_t::ceiling));
-	if (ceilingTexture && ceilingTexture->UseType == FTexture::TEX_Null) ceilingTexture = nullptr;
-	if (ceilingTexture)
-	{
-		PlaneUVTransform planeUV(frontsector->planes[sector_t::ceiling].xform, ceilingTexture);
+			double frontceilz1 = frontsector->ceilingplane.ZatPoint(line->v1);
+			double frontfloorz1 = frontsector->floorplane.ZatPoint(line->v1);
+			double frontceilz2 = frontsector->ceilingplane.ZatPoint(line->v2);
+			double frontfloorz2 = frontsector->floorplane.ZatPoint(line->v2);
 
-		GetVertices(thread, sub->numlines, (sub->numlines - 2) * 3);
+			double backceilz1 = backsector->ceilingplane.ZatPoint(line->v1);
+			double backfloorz1 = backsector->floorplane.ZatPoint(line->v1);
+			double backceilz2 = backsector->ceilingplane.ZatPoint(line->v2);
+			double backfloorz2 = backsector->floorplane.ZatPoint(line->v2);
+
+			double topceilz1 = frontceilz1;
+			double topceilz2 = frontceilz2;
+			double topfloorz1 = MIN(backceilz1, frontceilz1);
+			double topfloorz2 = MIN(backceilz2, frontceilz2);
+			double bottomceilz1 = MAX(frontfloorz1, backfloorz1);
+			double bottomceilz2 = MAX(frontfloorz2, backfloorz2);
+			double middleceilz1 = topfloorz1;
+			double middleceilz2 = topfloorz2;
+			double middlefloorz1 = MIN(bottomceilz1, middleceilz1);
+			double middlefloorz2 = MIN(bottomceilz2, middleceilz2);
+
+			bool bothSkyCeiling = frontsector->GetTexture(sector_t::ceiling) == skyflatnum && backsector->GetTexture(sector_t::ceiling) == skyflatnum;
+
+			bool closedSector = backceilz1 == backfloorz1 && backceilz2 == backfloorz2;
+			if (ceiling && bothSkyCeiling && closedSector)
+			{
+				skyBottomz1 = (float)middlefloorz1;
+				skyBottomz2 = (float)middlefloorz2;
+			}
+			else if (bothSkyCeiling)
+			{
+				continue;
+			}
+		}
 
 		int vertexStart = thread->mNextVertex;
-		for (uint32_t i = 0; i < sub->numlines; i++)
+		auto wallvert = &thread->mVertices[vertexStart];
+		thread->mNextVertex += 4;
+
+		float v1X = (float)line->v1->fX();
+		float v1Y = (float)line->v1->fY();
+		float v2X = (float)line->v2->fX();
+		float v2Y = (float)line->v2->fY();
+
+		if (ceiling)
 		{
-			thread->mVertices[thread->mNextVertex].Position = thread->ceilingVertices[i];
-			thread->mVertices[thread->mNextVertex].TexCoord = Vec4f(planeUV.GetUV(thread->ceilingVertices[i]), sectornum, 0.0f);
-			thread->mNextVertex++;
+			wallvert[0].Position = Vec3f(v1X, v1Y, mSkyZCeiling);
+			wallvert[1].Position = Vec3f(v2X, v2Y, mSkyZCeiling);
+			wallvert[2].Position = Vec3f(v2X, v2Y, skyBottomz2);
+			wallvert[3].Position = Vec3f(v1X, v1Y, skyBottomz1);
+		}
+		else
+		{
+			wallvert[0].Position = Vec3f(v1X, v1Y, (float)frontsector->floorplane.ZatPoint(line->v1));
+			wallvert[1].Position = Vec3f(v2X, v2Y, (float)frontsector->floorplane.ZatPoint(line->v2));
+			wallvert[2].Position = Vec3f(v2X, v2Y, mSkyZFloor);
+			wallvert[3].Position = Vec3f(v1X, v1Y, mSkyZFloor);
 		}
 
-		auto &ceilingRun = thread->mMaterials[ceilingTexture];
-		for (uint32_t i = 2; i < sub->numlines; i++)
-		{
-			ceilingRun.Indices.push_back(vertexStart + i);
-			ceilingRun.Indices.push_back(vertexStart + i - 1);
-			ceilingRun.Indices.push_back(vertexStart);
-		}
-	}
-	
-	FTexture *floorTexture = TexMan(frontsector->GetTexture(sector_t::floor));
-	if (floorTexture && floorTexture->UseType == FTexture::TEX_Null) floorTexture = nullptr;
-	if (floorTexture)
-	{
-		PlaneUVTransform planeUV(frontsector->planes[sector_t::floor].xform, floorTexture);
+		thread->SkyIndices.push_back(vertexStart);
+		thread->SkyIndices.push_back(vertexStart + 1);
+		thread->SkyIndices.push_back(vertexStart + 2);
 
-		GetVertices(thread, sub->numlines, (sub->numlines - 2) * 3);
-
-		int vertexStart = thread->mNextVertex;
-		for (uint32_t i = 0; i < sub->numlines; i++)
-		{
-			thread->mVertices[thread->mNextVertex].Position = thread->floorVertices[i];
-			thread->mVertices[thread->mNextVertex].TexCoord = Vec4f(planeUV.GetUV(thread->floorVertices[i]), sectornum, 0.0f);
-			thread->mNextVertex++;
-		}
-
-		auto &floorRun = thread->mMaterials[floorTexture];
-		for (uint32_t i = 2; i < sub->numlines; i++)
-		{
-			floorRun.Indices.push_back(vertexStart);
-			floorRun.Indices.push_back(vertexStart + i - 1);
-			floorRun.Indices.push_back(vertexStart + i);
-		}
+		thread->SkyIndices.push_back(vertexStart + 3);
+		thread->SkyIndices.push_back(vertexStart + 2);
+		thread->SkyIndices.push_back(vertexStart + 1);
 	}
 }
 

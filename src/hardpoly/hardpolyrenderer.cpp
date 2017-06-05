@@ -113,19 +113,19 @@ void HardpolyRenderer::RenderBspMesh()
 
 	if (!mBspCull.PvsSectors.empty())
 	{
-		mBspMesh.Render(this, mBspCull.PvsSectors, SeenSectors);
+		mBspMesh.Render(this, mBspCull.PvsSectors, SeenSectors, mBspCull.MaxCeilingHeight, mBspCull.MinFloorHeight);
 	}
 }
 
-void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns)
+void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, const std::vector<int32_t> &skyIndices)
 {
 	mContext->SetVertexArray(vertexArray);
 	mContext->SetIndexBuffer(indexBuffer, GPUIndexFormat::Uint32);
-	mContext->SetProgram(mProgram);
+	mContext->SetProgram(mOpaqueProgram);
 	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
 
-	glUniform1i(glGetUniformLocation(mProgram->Handle(), "SectorTexture"), 0);
-	glUniform1i(glGetUniformLocation(mProgram->Handle(), "DiffuseTexture"), 1);
+	glUniform1i(glGetUniformLocation(mOpaqueProgram->Handle(), "SectorTexture"), 0);
+	glUniform1i(glGetUniformLocation(mOpaqueProgram->Handle(), "DiffuseTexture"), 1);
 
 	mContext->SetSampler(0, mSamplerNearest);
 	mContext->SetTexture(0, mSectorTexture[mCurrentSectorTexture]);
@@ -446,11 +446,11 @@ void HardpolyRenderer::SetupPerspectiveMatrix()
 
 void HardpolyRenderer::CompileShaders()
 {
-	if (!mProgram)
+	if (!mOpaqueProgram)
 	{
-		mProgram = std::make_shared<GPUProgram>();
+		mOpaqueProgram = std::make_shared<GPUProgram>();
 
-		mProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
+		mOpaqueProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
 				layout(std140) uniform FrameUniforms
 				{
 					mat4 WorldToView;
@@ -477,7 +477,7 @@ void HardpolyRenderer::CompileShaders()
 					AlphaTest = Texcoord.w;
 				}
 			)");
-		mProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+		mOpaqueProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
 				in vec2 UV;
 				in float LightLevel;
 				in vec3 PositionInView;
@@ -503,11 +503,11 @@ void HardpolyRenderer::CompileShaders()
 				}
 			)");
 
-		mProgram->SetAttribLocation("Position", 0);
-		mProgram->SetAttribLocation("UV", 1);
-		mProgram->SetFragOutput("FragAlbedo", 0);
-		mProgram->SetFragOutput("FragNormal", 1);
-		mProgram->Link("program");
+		mOpaqueProgram->SetAttribLocation("Position", 0);
+		mOpaqueProgram->SetAttribLocation("UV", 1);
+		mOpaqueProgram->SetFragOutput("FragAlbedo", 0);
+		mOpaqueProgram->SetFragOutput("FragNormal", 1);
+		mOpaqueProgram->Link("program");
 	}
 
 	if (!mTranslucentProgram)
