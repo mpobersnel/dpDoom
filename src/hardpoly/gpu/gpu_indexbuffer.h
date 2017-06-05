@@ -32,6 +32,8 @@ public:
 
 	int Handle() const { return mHandle; }
 
+	void Upload(const void *data, int size);
+
 	void *MapWriteOnly();
 	void Unmap();
 

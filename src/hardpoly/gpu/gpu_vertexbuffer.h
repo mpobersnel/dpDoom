@@ -30,6 +30,8 @@ public:
 	GPUVertexBuffer(const void *data, int size);
 	~GPUVertexBuffer();
 
+	void Upload(const void *data, int size);
+
 	void *MapWriteOnly();
 	void Unmap();
 

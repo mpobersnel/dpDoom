@@ -32,7 +32,8 @@ GPUVertexBuffer::GPUVertexBuffer(const void *data, int size)
 	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldHandle);
 
 	glBindBuffer(GL_ARRAY_BUFFER, mHandle);
-	glBufferData(GL_ARRAY_BUFFER, size, data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, size, data, GL_STREAM_DRAW);
+	//glBufferStorage(GL_ARRAY_BUFFER, size, data, GL_MAP_WRITE_BIT | GL_DYNAMIC_STORAGE_BIT /*| GL_CLIENT_STORAGE_BIT*/);
 
 	glBindBuffer(GL_ARRAY_BUFFER, oldHandle);
 }
@@ -40,6 +41,17 @@ GPUVertexBuffer::GPUVertexBuffer(const void *data, int size)
 GPUVertexBuffer::~GPUVertexBuffer()
 {
 	glDeleteBuffers(1, (GLuint*)&mHandle);
+}
+
+void GPUVertexBuffer::Upload(const void *data, int size)
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldHandle);
+	glBindBuffer(GL_ARRAY_BUFFER, mHandle);
+
+	glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
+
+	glBindBuffer(GL_ARRAY_BUFFER, oldHandle);
 }
 
 void *GPUVertexBuffer::MapWriteOnly()

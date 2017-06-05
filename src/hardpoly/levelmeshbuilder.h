@@ -56,7 +56,6 @@ struct LevelMeshBatch
 	std::vector<int32_t> CpuIndexBuffer;
 	int WrittenVertexCount = 0;
 	int WrittenIndexCount = 0;
-	LevelMeshThread *Producer = nullptr;
 };
 
 struct LevelMeshThread
@@ -73,11 +72,15 @@ struct LevelMeshThread
 	LevelMeshVertex *mVertices = nullptr;
 	int mNextVertex = 0;
 	int mNextElementIndex = 0;
-	LevelMeshBatch *mCurrentBatch;
+	LevelMeshBatch *mCurrentBatch = nullptr;
 
 	std::thread mThread;
 	int mCore = 0;
 	int mNumCores = 1;
+
+	std::vector<std::unique_ptr<LevelMeshBatch>> mCurrentFrameBatches;
+	std::vector<std::unique_ptr<LevelMeshBatch>> mLastFrameBatches;
+	size_t mNextBatch = 0;
 };
 
 class LevelMeshBuilder
@@ -111,16 +114,14 @@ private:
 	size_t mStartThreadCount = 0;
 	size_t mEndThreadCount = 0;
 
-	std::vector<std::unique_ptr<LevelMeshBatch>> mCurrentFrameBatches;
-	std::vector<std::unique_ptr<LevelMeshBatch>> mLastFrameBatches;
-	size_t mNextBatch = 0;
-
 	const std::vector<subsector_t*> *subsectors;
 	const std::vector<sector_t *> *sectors;
 
 	enum { MaxVertices = 16*1024, MaxIndices = 3*16*1024 };
 
 	HardpolyRenderer *mRenderer;
+
+	int mTotalDrawRuns = 0;
 
 	LevelMeshBuilder(const LevelMeshBuilder &) = delete;
 	LevelMeshBuilder &operator=(const LevelMeshBuilder &) = delete;

@@ -32,7 +32,8 @@ GPUIndexBuffer::GPUIndexBuffer(const void *data, int size)
 	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &oldHandle);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mHandle);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, GL_STREAM_DRAW);
+	//glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, size, data, GL_MAP_WRITE_BIT | GL_DYNAMIC_STORAGE_BIT /*| GL_CLIENT_STORAGE_BIT*/);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, oldHandle);
 }
@@ -40,6 +41,17 @@ GPUIndexBuffer::GPUIndexBuffer(const void *data, int size)
 GPUIndexBuffer::~GPUIndexBuffer()
 {
 	glDeleteBuffers(1, (GLuint*)&mHandle);
+}
+
+void GPUIndexBuffer::Upload(const void *data, int size)
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &oldHandle);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mHandle);
+
+	glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, size, data);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, oldHandle);
 }
 
 void *GPUIndexBuffer::MapWriteOnly()
