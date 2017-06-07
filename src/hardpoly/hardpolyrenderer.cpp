@@ -84,6 +84,7 @@ void HardpolyRenderer::RenderView(player_t *player)
 	CreateSamplers();
 	UploadSectorTexture();
 	SetupPerspectiveMatrix();
+	mSkyDome.Render(this);
 	RenderBspMesh();
 	UpdateAutoMap();
 	RenderTranslucent();
@@ -442,6 +443,15 @@ void HardpolyRenderer::SetupPerspectiveMatrix()
 	frameUniforms.ViewToProjection = viewToClip;
 
 	mFrameUniforms[mCurrentFrameUniforms]->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
+
+	if (!mSkyFrameUniforms[mCurrentFrameUniforms])
+		mSkyFrameUniforms[mCurrentFrameUniforms] = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(FrameUniforms));
+
+	FrameUniforms skyFrameUniforms;
+	skyFrameUniforms.WorldToView = worldToView * Mat4f::Translate((float)r_viewpoint.Pos.X, (float)r_viewpoint.Pos.Y, (float)r_viewpoint.Pos.Z);
+	skyFrameUniforms.ViewToProjection = viewToClip;
+
+	mSkyFrameUniforms[mCurrentFrameUniforms]->Upload(&skyFrameUniforms, (int)sizeof(FrameUniforms));
 }
 
 void HardpolyRenderer::CompileShaders()
@@ -565,6 +575,53 @@ void HardpolyRenderer::CompileShaders()
 		mTranslucentProgram->SetFragOutput("FragAlbedo", 0);
 		mTranslucentProgram->SetFragOutput("FragNormal", 1);
 		mTranslucentProgram->Link("program");
+	}
+
+	if (!mSkyProgram)
+	{
+		mSkyProgram = std::make_shared<GPUProgram>();
+
+		mSkyProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
+				layout(std140) uniform FrameUniforms
+				{
+					mat4 WorldToView;
+					mat4 ViewToProjection;
+				};
+
+				in vec4 Position;
+				in vec4 Texcoord;
+				out vec2 UV;
+				out vec3 PositionInView;
+
+				void main()
+				{
+					vec4 posInView = WorldToView * Position;
+					PositionInView = posInView.xyz;
+					gl_Position = ViewToProjection * posInView;
+					UV = Texcoord.xy;
+				}
+			)");
+		mSkyProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+				in vec2 UV;
+				in vec3 PositionInView;
+				out vec4 FragAlbedo;
+				uniform sampler2D FrontTexture;
+				uniform vec4 CapColor;
+				uniform vec4 OffsetScale;
+				
+				void main()
+				{
+					vec2 finalUV = OffsetScale.xy + OffsetScale.zw * UV;
+					float skyfade = min(clamp(finalUV.y * 4.0, 0.0, 1.0), clamp((2.0 - finalUV.y) * 4.0, 0.0, 1.0));
+					FragAlbedo = mix(CapColor, texture(FrontTexture, finalUV), skyfade);
+				}
+			)");
+
+		mSkyProgram->SetAttribLocation("Position", 0);
+		mSkyProgram->SetAttribLocation("UV", 1);
+		mSkyProgram->SetFragOutput("FragAlbedo", 0);
+		mSkyProgram->SetFragOutput("FragNormal", 1);
+		mSkyProgram->Link("program");
 	}
 }
 

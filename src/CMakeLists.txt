@@ -819,6 +819,7 @@ set( FASTMATH_SOURCES
 	hardpoly/playersprite.cpp
 	hardpoly/bspcull.cpp
 	hardpoly/hardpolysprite.cpp
+	hardpoly/hardpolysky.cpp
 	hardpoly/gpu/gpu_context.cpp
 	hardpoly/gpu/gpu_framebuffer.cpp
 	hardpoly/gpu/gpu_indexbuffer.cpp

@@ -27,6 +27,7 @@
 #include "hardpoly/playersprite.h"
 #include "hardpoly/bspcull.h"
 #include "hardpoly/levelmeshbuilder.h"
+#include "hardpoly/hardpolysky.h"
 #include "swrenderer/r_memory.h"
 #include <set>
 #include <unordered_map>
@@ -132,6 +133,7 @@ private:
 	GPUTexture2DPtr mNormalBuffer;
 	GPUFrameBufferPtr mSceneFB;
 	GPUUniformBufferPtr mFrameUniforms[3];
+	GPUUniformBufferPtr mSkyFrameUniforms[3];
 	int mCurrentFrameUniforms = 0;
 	int mMeshLevel = 0;
 	GPUVertexArrayPtr mVertexArray;
@@ -141,9 +143,11 @@ private:
 	int mCurrentSectorTexture = 0;
 	GPUProgramPtr mOpaqueProgram;
 	GPUProgramPtr mTranslucentProgram;
+	GPUProgramPtr mSkyProgram;
 	GPUSamplerPtr mSamplerLinear;
 	GPUSamplerPtr mSamplerNearest;
 
+	HardpolySkyDome mSkyDome;
 	HardpolyRenderPlayerSprites mPlayerSprites;
 	HardpolyBSPCull mBspCull;
 	LevelMeshBuilder mBspMesh;
@@ -155,4 +159,6 @@ private:
 	std::vector<HardpolyTranslucentObject *> TranslucentObjects;
 
 	uint32_t NextAutomapUpdate = 0;
+
+	friend class HardpolySkyDome;
 };
