@@ -117,7 +117,6 @@ private:
 	void SetupPerspectiveMatrix();
 	void CompileShaders();
 	void CreateSamplers();
-	void UploadSectorTexture();
 	void RenderBspMesh();
 	void UpdateAutoMap();
 	void FindSeenSectors();
@@ -139,8 +138,6 @@ private:
 	GPUVertexArrayPtr mVertexArray;
 	std::map<FTexture*, GPUTexture2DPtr> mTextures;
 	std::vector<Vec4f> cpuSectors;
-	GPUTexture2DPtr mSectorTexture[3];
-	int mCurrentSectorTexture = 0;
 	GPUProgramPtr mOpaqueProgram;
 	GPUProgramPtr mTranslucentProgram;
 	GPUProgramPtr mSkyProgram;

@@ -313,8 +313,6 @@ void LevelMeshBuilder::Flush(LevelMeshThread *thread)
 
 void LevelMeshBuilder::ProcessLines(LevelMeshThread *thread, sector_t *frontsector)
 {
-	float sectornum = (float)frontsector->sectornum;
-
 	uint32_t numlines = frontsector->Lines.Size();
 	for (uint32_t i = 0; i < numlines; i++)
 	{
@@ -342,7 +340,7 @@ void LevelMeshBuilder::ProcessLines(LevelMeshThread *thread, sector_t *frontsect
 				FTexture *texture = GetWallTexture(linedef, sidedef, side_t::mid);
 				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 				if (texture)
-					ProcessWall(thread, sectornum, texture, linedef, sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, topTexZ, bottomTexZ, false);
+					ProcessWall(thread, frontsector, texture, linedef, sidedef, side_t::mid, frontceilz1, frontfloorz1, frontceilz2, frontfloorz2, frontceilz1, frontceilz2, topTexZ, bottomTexZ, false);
 			}
 		}
 		else
@@ -356,10 +354,10 @@ void LevelMeshBuilder::ProcessLines(LevelMeshThread *thread, sector_t *frontsect
 
 			double topceilz1 = frontceilz1;
 			double topceilz2 = frontceilz2;
-			double topfloorz1 = MIN(backceilz1, frontceilz1);
-			double topfloorz2 = MIN(backceilz2, frontceilz2);
-			double bottomceilz1 = MAX(frontfloorz1, backfloorz1);
-			double bottomceilz2 = MAX(frontfloorz2, backfloorz2);
+			double topfloorz1 = MAX(MIN(backceilz1, frontceilz1), frontfloorz1);
+			double topfloorz2 = MAX(MIN(backceilz2, frontceilz2), frontfloorz2);
+			double bottomceilz1 = MIN(MAX(frontfloorz1, backfloorz1), frontceilz1);
+			double bottomceilz2 = MIN(MAX(frontfloorz2, backfloorz2), frontceilz2);
 			double bottomfloorz1 = frontfloorz1;
 			double bottomfloorz2 = frontfloorz2;
 			double middleceilz1 = topfloorz1;
@@ -374,7 +372,7 @@ void LevelMeshBuilder::ProcessLines(LevelMeshThread *thread, sector_t *frontsect
 				FTexture *texture = GetWallTexture(linedef, sidedef, side_t::top);
 				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 				if (texture)
-					ProcessWall(thread, sectornum, texture, linedef, sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, topTexZ, MIN(topfloorz1, topfloorz2), false);
+					ProcessWall(thread, frontsector, texture, linedef, sidedef, side_t::top, topceilz1, topfloorz1, topceilz2, topfloorz2, frontceilz1, frontceilz2, topTexZ, MIN(MIN(backceilz1, frontceilz1), MIN(backceilz2, frontceilz2)), false);
 			}
 
 			if ((bottomfloorz1 < bottomceilz1 || bottomfloorz2 < bottomceilz2) && sidedef)
@@ -382,7 +380,7 @@ void LevelMeshBuilder::ProcessLines(LevelMeshThread *thread, sector_t *frontsect
 				FTexture *texture = GetWallTexture(linedef, sidedef, side_t::bottom);
 				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 				if (texture)
-					ProcessWall(thread, sectornum, texture, linedef, sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, MAX(bottomceilz1, bottomceilz2), bottomTexZ, false);
+					ProcessWall(thread, frontsector, texture, linedef, sidedef, side_t::bottom, bottomceilz1, bottomfloorz1, bottomceilz2, bottomfloorz2, frontceilz1, frontceilz2, MAX(MAX(frontfloorz1, backfloorz1), MAX(frontfloorz2, backfloorz2)), bottomTexZ, false);
 			}
 
 			if (sidedef)
@@ -390,7 +388,7 @@ void LevelMeshBuilder::ProcessLines(LevelMeshThread *thread, sector_t *frontsect
 				FTexture *texture = TexMan(sidedef->GetTexture(side_t::mid), true);
 				if (texture && texture->UseType == FTexture::TEX_Null) texture = nullptr;
 				if (texture)
-					ProcessWall(thread, sectornum, texture, linedef, sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, MAX(middleceilz1, middleceilz2), MIN(middlefloorz1, middlefloorz2), true);
+					ProcessWall(thread, frontsector, texture, linedef, sidedef, side_t::mid, middleceilz1, middlefloorz1, middleceilz2, middlefloorz2, frontceilz1, frontceilz2, MAX(middleceilz1, middleceilz2), MIN(middlefloorz1, middlefloorz2), true);
 			}
 		}
 	}
@@ -428,7 +426,7 @@ void LevelMeshBuilder::ProcessPlanes(LevelMeshThread *thread, subsector_t *sub)
 void LevelMeshBuilder::ProcessOpaquePlane(LevelMeshThread *thread, subsector_t *sub, bool ceiling, FTexture *texture)
 {
 	sector_t *frontsector = sub->sector;
-	float sectornum = (float)frontsector->sectornum;
+	float lightlevel = (float)frontsector->lightlevel;
 
 	PlaneUVTransform planeUV(frontsector->planes[ceiling ? sector_t::ceiling : sector_t::floor].xform, texture);
 
@@ -442,7 +440,7 @@ void LevelMeshBuilder::ProcessOpaquePlane(LevelMeshThread *thread, subsector_t *
 		Vec3f position = { (float)line->v1->fX(), (float)line->v1->fY(), (float)z };
 
 		thread->mVertices[thread->mNextVertex].Position = position;
-		thread->mVertices[thread->mNextVertex].TexCoord = Vec4f(planeUV.GetUV(position), sectornum, 0.0f);
+		thread->mVertices[thread->mNextVertex].TexCoord = Vec4f(planeUV.GetUV(position), lightlevel, 0.0f);
 		thread->mNextVertex++;
 	}
 
@@ -563,7 +561,7 @@ void LevelMeshBuilder::ProcessSkyWalls(LevelMeshThread *thread, subsector_t *sub
 	}
 }
 
-void LevelMeshBuilder::ProcessWall(LevelMeshThread *thread, float sectornum, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked)
+void LevelMeshBuilder::ProcessWall(LevelMeshThread *thread, sector_t *frontsector, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked)
 {
 	DVector2 v1 = line->v1->fPos();
 	DVector2 v2 = line->v2->fPos();
@@ -571,6 +569,8 @@ void LevelMeshBuilder::ProcessWall(LevelMeshThread *thread, float sectornum, FTe
 	WallTextureCoordsU texcoordsU(texture, line, side, texpart);
 	WallTextureCoordsV texcoordsVLeft(texture, line, side, texpart, ceilz1, floorz1, unpeggedceil1, topTexZ, bottomTexZ);
 	WallTextureCoordsV texcoordsVRght(texture, line, side, texpart, ceilz2, floorz2, unpeggedceil2, topTexZ, bottomTexZ);
+
+	float lightlevel = (float)frontsector->lightlevel;
 
 	GetVertices(thread, 4, 6);
 
@@ -588,10 +588,10 @@ void LevelMeshBuilder::ProcessWall(LevelMeshThread *thread, float sectornum, FTe
 		};
 		Vec4f texcoords[4] =
 		{
-			{ (float)texcoordsU.u1, (float)texcoordsVLeft.v1, sectornum, 0.0f },
-			{ (float)texcoordsU.u2, (float)texcoordsVRght.v1, sectornum, 0.0f },
-			{ (float)texcoordsU.u1, (float)texcoordsVLeft.v2, sectornum, 0.0f },
-			{ (float)texcoordsU.u2, (float)texcoordsVRght.v2, sectornum, 0.0f }
+			{ (float)texcoordsU.u1, (float)texcoordsVLeft.v1, lightlevel, 0.0f },
+			{ (float)texcoordsU.u2, (float)texcoordsVRght.v1, lightlevel, 0.0f },
+			{ (float)texcoordsU.u1, (float)texcoordsVLeft.v2, lightlevel, 0.0f },
+			{ (float)texcoordsU.u2, (float)texcoordsVRght.v2, lightlevel, 0.0f }
 		};
 
 		ClampWallHeight(positions[0], positions[3], texcoords[0], texcoords[3]);
@@ -606,16 +606,16 @@ void LevelMeshBuilder::ProcessWall(LevelMeshThread *thread, float sectornum, FTe
 	else
 	{
 		thread->mVertices[vertexStart + 0].Position = { (float)v1.X, (float)v1.Y, (float)ceilz1 };
-		thread->mVertices[vertexStart + 0].TexCoord = { (float)texcoordsU.u1, (float)texcoordsVLeft.v1, sectornum, 0.0f };
+		thread->mVertices[vertexStart + 0].TexCoord = { (float)texcoordsU.u1, (float)texcoordsVLeft.v1, lightlevel, 0.0f };
 
 		thread->mVertices[vertexStart + 1].Position = { (float)v2.X, (float)v2.Y, (float)ceilz2 };
-		thread->mVertices[vertexStart + 1].TexCoord = { (float)texcoordsU.u2, (float)texcoordsVRght.v1, sectornum, 0.0f };
+		thread->mVertices[vertexStart + 1].TexCoord = { (float)texcoordsU.u2, (float)texcoordsVRght.v1, lightlevel, 0.0f };
 
 		thread->mVertices[vertexStart + 2].Position = { (float)v1.X, (float)v1.Y, (float)floorz1 };
-		thread->mVertices[vertexStart + 2].TexCoord = { (float)texcoordsU.u1, (float)texcoordsVLeft.v2, sectornum, 0.0f };
+		thread->mVertices[vertexStart + 2].TexCoord = { (float)texcoordsU.u1, (float)texcoordsVLeft.v2, lightlevel, 0.0f };
 
 		thread->mVertices[vertexStart + 3].Position = { (float)v2.X, (float)v2.Y, (float)floorz2 };
-		thread->mVertices[vertexStart + 3].TexCoord = { (float)texcoordsU.u2, (float)texcoordsVRght.v2, sectornum, 0.0f };
+		thread->mVertices[vertexStart + 3].TexCoord = { (float)texcoordsU.u2, (float)texcoordsVRght.v2, lightlevel, 0.0f };
 	}
 
 	thread->mNextVertex += 4;

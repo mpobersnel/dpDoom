@@ -101,7 +101,7 @@ private:
 	void ProcessSkyPlane(LevelMeshThread *thread, subsector_t *sub, bool ceiling);
 	void ProcessSkyWalls(LevelMeshThread *thread, subsector_t *sub, bool ceiling);
 	void ProcessLines(LevelMeshThread *thread, sector_t *sector);
-	void ProcessWall(LevelMeshThread *thread, float sectornum, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked);
+	void ProcessWall(LevelMeshThread *thread, sector_t *frontsector, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked);
 	static void ClampWallHeight(Vec3f &v1, Vec3f &v2, Vec4f &uv1, Vec4f &uv2);
 
 	void GetVertices(LevelMeshThread *thread, int numVertices, int numIndices);

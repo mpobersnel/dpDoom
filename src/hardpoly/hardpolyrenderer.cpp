@@ -82,7 +82,6 @@ void HardpolyRenderer::RenderView(player_t *player)
 	SetupFramebuffer();
 	CompileShaders();
 	CreateSamplers();
-	UploadSectorTexture();
 	SetupPerspectiveMatrix();
 	RenderBspMesh();
 	mSkyDome.Render(this);
@@ -125,25 +124,20 @@ void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, con
 	mContext->SetProgram(mOpaqueProgram);
 	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
 
-	glUniform1i(glGetUniformLocation(mOpaqueProgram->Handle(), "SectorTexture"), 0);
-	glUniform1i(glGetUniformLocation(mOpaqueProgram->Handle(), "DiffuseTexture"), 1);
+	glUniform1i(glGetUniformLocation(mOpaqueProgram->Handle(), "DiffuseTexture"), 0);
 
 	glEnable(GL_STENCIL_TEST);
 	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 	glStencilFunc(GL_ALWAYS, 1, 0xffffffff);
 
-	mContext->SetSampler(0, mSamplerNearest);
-	mContext->SetTexture(0, mSectorTexture[mCurrentSectorTexture]);
-	mContext->SetSampler(1, mSamplerLinear);
+	mContext->SetSampler(0, mSamplerLinear);
 	for (const auto &run : drawRuns)
 	{
-		mContext->SetTexture(1, GetTexture(run.Texture));
+		mContext->SetTexture(0, GetTexture(run.Texture));
 		mContext->DrawIndexed(GPUDrawMode::Triangles, run.Start, run.NumVertices);
 	}
 	mContext->SetTexture(0, nullptr);
-	mContext->SetTexture(1, nullptr);
 	mContext->SetSampler(0, nullptr);
-	mContext->SetSampler(1, nullptr);
 
 	if (numSkyIndices > 0)
 	{
@@ -328,21 +322,6 @@ void HardpolyRenderer::RenderSprite(AActor *thing, double sortDistance, DVector2
 		TranslucentObjects.push_back(FrameMemory.NewObject<HardpolyRenderSprite>(thing, sub, SubsectorDepths[subsectorindex] & 0x00ffffff, sortDistance, (float)t1, (float)t2));
 }
 
-void HardpolyRenderer::UploadSectorTexture()
-{
-	mCurrentSectorTexture = (mCurrentSectorTexture + 1) % 3;
-	if (!mSectorTexture[mCurrentSectorTexture])
-		mSectorTexture[mCurrentSectorTexture] = std::make_shared<GPUTexture2D>(256, 16, false, 0, GPUPixelFormat::RGBA32f);
-
-	cpuSectors.resize((level.sectors.Size() / 256 + 1) * 256);
-	for (unsigned int i = 0; i < level.sectors.Size(); i++)
-	{
-		sector_t *sector = &level.sectors[i];
-		cpuSectors[i] = Vec4f(sector->lightlevel, 0.0f, 0.0f, 0.0f);
-	}
-	mSectorTexture[mCurrentSectorTexture]->Upload(0, 0, 256, MAX(((int)level.sectors.Size() + 255) / 256, 1), 0, cpuSectors.data());
-}
-
 void HardpolyRenderer::SetupFramebuffer()
 {
 	int width = screen->GetWidth();
@@ -492,7 +471,6 @@ void HardpolyRenderer::CompileShaders()
 				out float LightLevel;
 				out vec3 PositionInView;
 				out float AlphaTest;
-				uniform sampler2D SectorTexture;
 
 				void main()
 				{
@@ -500,9 +478,7 @@ void HardpolyRenderer::CompileShaders()
 					PositionInView = posInView.xyz;
 					gl_Position = ViewToProjection * posInView;
 					UV = Texcoord.xy;
-					int sector = int(Texcoord.z);
-					vec4 sectorData = texelFetch(SectorTexture, ivec2(sector % 256, sector / 256), 0);
-					LightLevel = sectorData.x;
+					LightLevel = Texcoord.z;
 					AlphaTest = Texcoord.w;
 				}
 			)");
