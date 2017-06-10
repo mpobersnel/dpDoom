@@ -92,8 +92,8 @@ void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subs
 	mRenderer = renderer;
 	subsectors = &seenSubsectors;
 	sectors = &seenSectors;
-	mSkyZCeiling = mSkyZCeiling;
-	mSkyZFloor = mSkyZFloor;
+	mSkyZCeiling = skyZCeiling;
+	mSkyZFloor = skyZFloor;
 
 	for (auto &thread : mWorkerThreads)
 	{
@@ -138,7 +138,7 @@ void LevelMeshBuilder::Render(HardpolyRenderer *renderer, const std::vector<subs
 				*/
 
 				mTotalDrawRuns += (int)batch->DrawRuns.size();
-				mRenderer->RenderLevelMesh(batch->VertexArray, batch->IndexBuffer, batch->DrawRuns, batch->SkyIndices);
+				mRenderer->RenderLevelMesh(batch->VertexArray, batch->IndexBuffer, batch->DrawRuns, batch->StartSkyIndex, batch->NumSkyIndices);
 			}
 		}
 	}
@@ -286,7 +286,11 @@ void LevelMeshBuilder::Flush(LevelMeshThread *thread)
 			}
 		}
 
-		thread->mCurrentBatch->SkyIndices = thread->SkyIndices;
+		thread->mCurrentBatch->StartSkyIndex = indexStart;
+		thread->mCurrentBatch->NumSkyIndices = (int)thread->SkyIndices.size();
+
+		memcpy(cpuIndices + indexStart, thread->SkyIndices.data(), thread->SkyIndices.size() * sizeof(int32_t));
+		indexStart += (int)thread->SkyIndices.size();
 
 		thread->mCurrentBatch->WrittenVertexCount = thread->mNextVertex;
 		thread->mCurrentBatch->WrittenIndexCount = indexStart;
@@ -295,7 +299,7 @@ void LevelMeshBuilder::Flush(LevelMeshThread *thread)
 		{
 			thread->mCurrentBatch->IndexBuffer->Unmap();
 			mTotalDrawRuns += (int)thread->mCurrentBatch->DrawRuns.size();
-			mRenderer->RenderLevelMesh(thread->mCurrentBatch->VertexArray, thread->mCurrentBatch->IndexBuffer, thread->mCurrentBatch->DrawRuns, thread->mCurrentBatch->SkyIndices);
+			mRenderer->RenderLevelMesh(thread->mCurrentBatch->VertexArray, thread->mCurrentBatch->IndexBuffer, thread->mCurrentBatch->DrawRuns, thread->mCurrentBatch->StartSkyIndex, thread->mCurrentBatch->NumSkyIndices);
 		}
 	}
 
@@ -538,15 +542,15 @@ void LevelMeshBuilder::ProcessSkyWalls(LevelMeshThread *thread, subsector_t *sub
 		{
 			wallvert[0].Position = Vec3f(v1X, v1Y, mSkyZCeiling);
 			wallvert[1].Position = Vec3f(v2X, v2Y, mSkyZCeiling);
-			wallvert[2].Position = Vec3f(v2X, v2Y, skyBottomz2);
-			wallvert[3].Position = Vec3f(v1X, v1Y, skyBottomz1);
+			wallvert[2].Position = Vec3f(v1X, v1Y, skyBottomz1);
+			wallvert[3].Position = Vec3f(v2X, v2Y, skyBottomz2);
 		}
 		else
 		{
 			wallvert[0].Position = Vec3f(v1X, v1Y, (float)frontsector->floorplane.ZatPoint(line->v1));
 			wallvert[1].Position = Vec3f(v2X, v2Y, (float)frontsector->floorplane.ZatPoint(line->v2));
-			wallvert[2].Position = Vec3f(v2X, v2Y, mSkyZFloor);
-			wallvert[3].Position = Vec3f(v1X, v1Y, mSkyZFloor);
+			wallvert[2].Position = Vec3f(v1X, v1Y, mSkyZFloor);
+			wallvert[3].Position = Vec3f(v2X, v2Y, mSkyZFloor);
 		}
 
 		thread->SkyIndices.push_back(vertexStart);

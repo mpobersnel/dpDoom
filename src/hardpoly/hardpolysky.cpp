@@ -84,6 +84,12 @@ void HardpolySkyDome::Render(HardpolyRenderer *renderer)
 
 	int rc = mRows + 1;
 
+	glEnable(GL_STENCIL_TEST);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+	glStencilFunc(GL_EQUAL, 255, 0xffffffff);
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
 	//args.SetSubsectorDepth(RenderHardpolyScene::SkySubsectorDepth);
 	//args.SetStencilTestValue(255);
 	//args.SetWriteStencil(true, 1);
@@ -112,6 +118,10 @@ void HardpolySkyDome::Render(HardpolyRenderer *renderer)
 		int row = rc + i;
 		renderer->mContext->Draw(GPUDrawMode::TriangleStrip, mPrimStart[row], mPrimStart[row + 1] - mPrimStart[row]);
 	}
+
+	glDisable(GL_STENCIL_TEST);
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
 
 	renderer->mContext->SetTexture(0, nullptr);
 	renderer->mContext->SetSampler(0, nullptr);

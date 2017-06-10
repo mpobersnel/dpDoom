@@ -84,8 +84,8 @@ void HardpolyRenderer::RenderView(player_t *player)
 	CreateSamplers();
 	UploadSectorTexture();
 	SetupPerspectiveMatrix();
-	mSkyDome.Render(this);
 	RenderBspMesh();
+	mSkyDome.Render(this);
 	UpdateAutoMap();
 	RenderTranslucent();
 
@@ -118,7 +118,7 @@ void HardpolyRenderer::RenderBspMesh()
 	}
 }
 
-void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, const std::vector<int32_t> &skyIndices)
+void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, int skyIndexStart, int numSkyIndices)
 {
 	mContext->SetVertexArray(vertexArray);
 	mContext->SetIndexBuffer(indexBuffer, GPUIndexFormat::Uint32);
@@ -127,6 +127,10 @@ void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, con
 
 	glUniform1i(glGetUniformLocation(mOpaqueProgram->Handle(), "SectorTexture"), 0);
 	glUniform1i(glGetUniformLocation(mOpaqueProgram->Handle(), "DiffuseTexture"), 1);
+
+	glEnable(GL_STENCIL_TEST);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+	glStencilFunc(GL_ALWAYS, 1, 0xffffffff);
 
 	mContext->SetSampler(0, mSamplerNearest);
 	mContext->SetTexture(0, mSectorTexture[mCurrentSectorTexture]);
@@ -140,6 +144,19 @@ void HardpolyRenderer::RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, con
 	mContext->SetTexture(1, nullptr);
 	mContext->SetSampler(0, nullptr);
 	mContext->SetSampler(1, nullptr);
+
+	if (numSkyIndices > 0)
+	{
+		glStencilFunc(GL_ALWAYS, 255, 0xffffffff);
+		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		mContext->SetProgram(mStencilProgram);
+		mContext->DrawIndexed(GPUDrawMode::Triangles, skyIndexStart, numSkyIndices);
+
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	}
+
+	glDisable(GL_STENCIL_TEST);
 
 	mContext->SetUniforms(0, nullptr);
 	mContext->SetIndexBuffer(nullptr);
@@ -242,6 +259,7 @@ void HardpolyRenderer::RenderTranslucent()
 	glUniform1i(glGetUniformLocation(mTranslucentProgram->Handle(), "DiffuseTexture"), 0);
 	mContext->SetSampler(0, mSamplerLinear);
 
+	glDepthMask(GL_FALSE);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
 
@@ -251,6 +269,7 @@ void HardpolyRenderer::RenderTranslucent()
 	}
 
 	glDisable(GL_BLEND);
+	glDepthMask(GL_TRUE);
 
 	mContext->SetTexture(0, nullptr);
 	mContext->SetSampler(0, nullptr);
@@ -622,6 +641,39 @@ void HardpolyRenderer::CompileShaders()
 		mSkyProgram->SetFragOutput("FragAlbedo", 0);
 		mSkyProgram->SetFragOutput("FragNormal", 1);
 		mSkyProgram->Link("program");
+	}
+
+	if (!mStencilProgram)
+	{
+		mStencilProgram = std::make_shared<GPUProgram>();
+
+		mStencilProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
+				layout(std140) uniform FrameUniforms
+				{
+					mat4 WorldToView;
+					mat4 ViewToProjection;
+				};
+
+				in vec4 Position;
+
+				void main()
+				{
+					vec4 posInView = WorldToView * Position;
+					gl_Position = ViewToProjection * posInView;
+				}
+			)");
+		mStencilProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+				out vec4 FragAlbedo;
+				void main()
+				{
+					FragAlbedo = vec4(1.0);
+				}
+			)");
+
+		mStencilProgram->SetAttribLocation("Position", 0);
+		mStencilProgram->SetFragOutput("FragAlbedo", 0);
+		mStencilProgram->SetFragOutput("FragNormal", 1);
+		mStencilProgram->Link("program");
 	}
 }
 

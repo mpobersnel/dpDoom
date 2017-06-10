@@ -99,7 +99,7 @@ public:
 	void CleanLevelData() override;
 	void SetClearColor(int color) override;
 
-	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, const std::vector<int32_t> &skyIndices);
+	void RenderLevelMesh(const GPUVertexArrayPtr &vertexArray, const GPUIndexBufferPtr &indexBuffer, const std::vector<LevelMeshDrawRun> &drawRuns, int skyIndexStart, int numSkyIndices);
 
 	GPUTexture2DPtr GetTexture(FTexture *texture);
 
@@ -144,6 +144,7 @@ private:
 	GPUProgramPtr mOpaqueProgram;
 	GPUProgramPtr mTranslucentProgram;
 	GPUProgramPtr mSkyProgram;
+	GPUProgramPtr mStencilProgram;
 	GPUSamplerPtr mSamplerLinear;
 	GPUSamplerPtr mSamplerNearest;
 

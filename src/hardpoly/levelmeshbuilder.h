@@ -50,7 +50,8 @@ struct LevelMeshBatch
 	GPUVertexArrayPtr VertexArray;
 	GPUIndexBufferPtr IndexBuffer;
 	std::vector<LevelMeshDrawRun> DrawRuns;
-	std::vector<int32_t> SkyIndices;
+	int StartSkyIndex = 0;
+	int NumSkyIndices = 0;
 	GPUVertexBufferPtr Vertices;
 
 	std::vector<LevelMeshVertex> CpuVertices;
