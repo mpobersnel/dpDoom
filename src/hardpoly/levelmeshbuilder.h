@@ -41,7 +41,7 @@ struct LevelMeshDrawRun
 
 struct LevelMeshVertex
 {
-	Vec3f Position;
+	Vec4f Position;
 	Vec4f TexCoord;
 };
 
@@ -102,7 +102,7 @@ private:
 	void ProcessSkyWalls(LevelMeshThread *thread, subsector_t *sub, bool ceiling);
 	void ProcessLines(LevelMeshThread *thread, sector_t *sector);
 	void ProcessWall(LevelMeshThread *thread, sector_t *frontsector, FTexture *texture, const line_t *line, const side_t *side, side_t::ETexpart texpart, double ceilz1, double floorz1, double ceilz2, double floorz2, double unpeggedceil1, double unpeggedceil2, double topTexZ, double bottomTexZ, bool masked);
-	static void ClampWallHeight(Vec3f &v1, Vec3f &v2, Vec4f &uv1, Vec4f &uv2);
+	static void ClampWallHeight(Vec4f &v1, Vec4f &v2, Vec4f &uv1, Vec4f &uv2);
 
 	void GetVertices(LevelMeshThread *thread, int numVertices, int numIndices);
 	void CreateGPUObjects(LevelMeshBatch *batch);
@@ -137,7 +137,7 @@ class PlaneUVTransform
 public:
 	PlaneUVTransform(const FTransform &transform, FTexture *tex);
 
-	Vec2f GetUV(const Vec3f &pos) const;
+	Vec2f GetUV(const Vec4f &pos) const;
 
 	float GetU(float x, float y) const;
 	float GetV(float x, float y) const;

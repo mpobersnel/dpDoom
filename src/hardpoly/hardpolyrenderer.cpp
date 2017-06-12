@@ -470,22 +470,43 @@ void HardpolyRenderer::CompileShaders()
 				out vec2 UV;
 				out float LightLevel;
 				out vec3 PositionInView;
+				out vec4 DepthPlaneInView;
 				out float AlphaTest;
 
 				void main()
 				{
-					vec4 posInView = WorldToView * Position;
+					vec4 posInView = WorldToView * vec4(Position.xyz, 1.0);
 					PositionInView = posInView.xyz;
 					gl_Position = ViewToProjection * posInView;
+
+					if (Position.w != 0.0)
+					{
+						vec3 p = (WorldToView * vec4(Position.xyz + vec3(0.0, 0.0, Position.w), 1.0)).xyz;
+						vec3 n = p - PositionInView;
+						n = normalize(n);
+						DepthPlaneInView = vec4(n, -dot(n, p)); 
+					}
+					else
+					{
+						DepthPlaneInView = vec4(0.0);
+					}
+
 					UV = Texcoord.xy;
 					LightLevel = Texcoord.z;
 					AlphaTest = Texcoord.w;
 				}
 			)");
 		mOpaqueProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+				layout(std140) uniform FrameUniforms
+				{
+					mat4 WorldToView;
+					mat4 ViewToProjection;
+				};
+
 				in vec2 UV;
 				in float LightLevel;
 				in vec3 PositionInView;
+				in vec4 DepthPlaneInView;
 				in float AlphaTest;
 				out vec4 FragAlbedo;
 				uniform sampler2D DiffuseTexture;
@@ -505,6 +526,21 @@ void HardpolyRenderer::CompileShaders()
 					FragAlbedo = texture(DiffuseTexture, UV);
 					if (FragAlbedo.a < AlphaTest) discard;
 					FragAlbedo.rgb *= SoftwareLight();
+
+					if (DepthPlaneInView != vec4(0.0))
+					{
+						float top = dot(DepthPlaneInView.xyz * DepthPlaneInView.w, DepthPlaneInView.xyz);
+						float bottom = dot(PositionInView, DepthPlaneInView.xyz);
+						float t = -(top / bottom);
+						vec3 depthPosInView = PositionInView * t;
+
+						vec4 depthProj = ViewToProjection * vec4(depthPosInView, 1.0);
+						gl_FragDepth = (depthProj.z / depthProj.w + 1.0) * 0.5;
+					}
+					else
+					{
+						gl_FragDepth = gl_FragCoord.z;
+					}
 				}
 			)");
 

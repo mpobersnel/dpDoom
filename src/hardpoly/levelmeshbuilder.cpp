@@ -201,7 +201,7 @@ void LevelMeshBuilder::CreateGPUObjects(LevelMeshBatch *batch)
 
 	std::vector<GPUVertexAttributeDesc> attributes =
 	{
-		{ 0, 3, GPUVertexAttributeType::Float, false, sizeof(LevelMeshVertex), offsetof(LevelMeshVertex, Position), batch->Vertices },
+		{ 0, 4, GPUVertexAttributeType::Float, false, sizeof(LevelMeshVertex), offsetof(LevelMeshVertex, Position), batch->Vertices },
 		{ 1, 4, GPUVertexAttributeType::Float, false, sizeof(LevelMeshVertex), offsetof(LevelMeshVertex, TexCoord), batch->Vertices }
 	};
 
@@ -432,12 +432,14 @@ void LevelMeshBuilder::ProcessOpaquePlane(LevelMeshThread *thread, subsector_t *
 
 	GetVertices(thread, sub->numlines, (sub->numlines - 2) * 3);
 
+	float zdepthoffset = ceiling ? 10.0f : -10.0f;
+
 	int vertexStart = thread->mNextVertex;
 	for (uint32_t i = 0; i < sub->numlines; i++)
 	{
 		seg_t *line = &sub->firstline[i];
 		double z = ceiling ? frontsector->ceilingplane.ZatPoint(line->v1) : frontsector->floorplane.ZatPoint(line->v1);
-		Vec3f position = { (float)line->v1->fX(), (float)line->v1->fY(), (float)z };
+		Vec4f position = { (float)line->v1->fX(), (float)line->v1->fY(), (float)z, zdepthoffset };
 
 		thread->mVertices[thread->mNextVertex].Position = position;
 		thread->mVertices[thread->mNextVertex].TexCoord = Vec4f(planeUV.GetUV(position), lightlevel, 0.0f);
@@ -445,11 +447,23 @@ void LevelMeshBuilder::ProcessOpaquePlane(LevelMeshThread *thread, subsector_t *
 	}
 
 	auto &run = thread->mMaterials[texture];
-	for (uint32_t i = 2; i < sub->numlines; i++)
+	if (ceiling)
 	{
-		run.Indices.push_back(vertexStart + i);
-		run.Indices.push_back(vertexStart + i - 1);
-		run.Indices.push_back(vertexStart);
+		for (uint32_t i = 2; i < sub->numlines; i++)
+		{
+			run.Indices.push_back(vertexStart + i);
+			run.Indices.push_back(vertexStart + i - 1);
+			run.Indices.push_back(vertexStart);
+		}
+	}
+	else
+	{
+		for (uint32_t i = 2; i < sub->numlines; i++)
+		{
+			run.Indices.push_back(vertexStart);
+			run.Indices.push_back(vertexStart + i - 1);
+			run.Indices.push_back(vertexStart + i);
+		}
 	}
 }
 
@@ -461,17 +475,29 @@ void LevelMeshBuilder::ProcessSkyPlane(LevelMeshThread *thread, subsector_t *sub
 	for (uint32_t i = 0; i < sub->numlines; i++)
 	{
 		seg_t *line = &sub->firstline[i];
-		Vec3f position = { (float)line->v1->fX(), (float)line->v1->fY(), ceiling ? mSkyZCeiling : mSkyZFloor };
+		Vec4f position = { (float)line->v1->fX(), (float)line->v1->fY(), ceiling ? mSkyZCeiling : mSkyZFloor, 1.0f };
 
 		thread->mVertices[thread->mNextVertex].Position = position;
 		thread->mNextVertex++;
 	}
 
-	for (uint32_t i = 2; i < sub->numlines; i++)
+	if (ceiling)
 	{
-		thread->SkyIndices.push_back(vertexStart + i);
-		thread->SkyIndices.push_back(vertexStart + i - 1);
-		thread->SkyIndices.push_back(vertexStart);
+		for (uint32_t i = 2; i < sub->numlines; i++)
+		{
+			thread->SkyIndices.push_back(vertexStart + i);
+			thread->SkyIndices.push_back(vertexStart + i - 1);
+			thread->SkyIndices.push_back(vertexStart);
+		}
+	}
+	else
+	{
+		for (uint32_t i = 2; i < sub->numlines; i++)
+		{
+			thread->SkyIndices.push_back(vertexStart);
+			thread->SkyIndices.push_back(vertexStart + i - 1);
+			thread->SkyIndices.push_back(vertexStart + i);
+		}
 	}
 
 	ProcessSkyWalls(thread, sub, ceiling);
@@ -538,17 +564,17 @@ void LevelMeshBuilder::ProcessSkyWalls(LevelMeshThread *thread, subsector_t *sub
 
 		if (ceiling)
 		{
-			wallvert[0].Position = Vec3f(v1X, v1Y, mSkyZCeiling);
-			wallvert[1].Position = Vec3f(v2X, v2Y, mSkyZCeiling);
-			wallvert[2].Position = Vec3f(v1X, v1Y, skyBottomz1);
-			wallvert[3].Position = Vec3f(v2X, v2Y, skyBottomz2);
+			wallvert[0].Position = Vec4f(v1X, v1Y, mSkyZCeiling);
+			wallvert[1].Position = Vec4f(v2X, v2Y, mSkyZCeiling);
+			wallvert[2].Position = Vec4f(v1X, v1Y, skyBottomz1);
+			wallvert[3].Position = Vec4f(v2X, v2Y, skyBottomz2);
 		}
 		else
 		{
-			wallvert[0].Position = Vec3f(v1X, v1Y, (float)frontsector->floorplane.ZatPoint(line->v1));
-			wallvert[1].Position = Vec3f(v2X, v2Y, (float)frontsector->floorplane.ZatPoint(line->v2));
-			wallvert[2].Position = Vec3f(v1X, v1Y, mSkyZFloor);
-			wallvert[3].Position = Vec3f(v2X, v2Y, mSkyZFloor);
+			wallvert[0].Position = Vec4f(v1X, v1Y, (float)frontsector->floorplane.ZatPoint(line->v1));
+			wallvert[1].Position = Vec4f(v2X, v2Y, (float)frontsector->floorplane.ZatPoint(line->v2));
+			wallvert[2].Position = Vec4f(v1X, v1Y, mSkyZFloor);
+			wallvert[3].Position = Vec4f(v2X, v2Y, mSkyZFloor);
 		}
 
 		thread->SkyIndices.push_back(vertexStart);
@@ -579,12 +605,12 @@ void LevelMeshBuilder::ProcessWall(LevelMeshThread *thread, sector_t *frontsecto
 	// Masked walls clamp to the 0-1 range (no texture repeat)
 	if (masked)
 	{
-		Vec3f positions[4] =
+		Vec4f positions[4] =
 		{
-			{ (float)v1.X, (float)v1.Y, (float)ceilz1 },
-			{ (float)v2.X, (float)v2.Y, (float)ceilz2 },
-			{ (float)v1.X, (float)v1.Y, (float)floorz1 },
-			{ (float)v2.X, (float)v2.Y, (float)floorz2 }
+			{ (float)v1.X, (float)v1.Y, (float)ceilz1, 0.0f },
+			{ (float)v2.X, (float)v2.Y, (float)ceilz2, 0.0f },
+			{ (float)v1.X, (float)v1.Y, (float)floorz1, 0.0f },
+			{ (float)v2.X, (float)v2.Y, (float)floorz2, 0.0f }
 		};
 		Vec4f texcoords[4] =
 		{
@@ -605,16 +631,16 @@ void LevelMeshBuilder::ProcessWall(LevelMeshThread *thread, sector_t *frontsecto
 	}
 	else
 	{
-		thread->mVertices[vertexStart + 0].Position = { (float)v1.X, (float)v1.Y, (float)ceilz1 };
+		thread->mVertices[vertexStart + 0].Position = { (float)v1.X, (float)v1.Y, (float)ceilz1, 0.0f };
 		thread->mVertices[vertexStart + 0].TexCoord = { (float)texcoordsU.u1, (float)texcoordsVLeft.v1, lightlevel, 0.0f };
 
-		thread->mVertices[vertexStart + 1].Position = { (float)v2.X, (float)v2.Y, (float)ceilz2 };
+		thread->mVertices[vertexStart + 1].Position = { (float)v2.X, (float)v2.Y, (float)ceilz2, 0.0f };
 		thread->mVertices[vertexStart + 1].TexCoord = { (float)texcoordsU.u2, (float)texcoordsVRght.v1, lightlevel, 0.0f };
 
-		thread->mVertices[vertexStart + 2].Position = { (float)v1.X, (float)v1.Y, (float)floorz1 };
+		thread->mVertices[vertexStart + 2].Position = { (float)v1.X, (float)v1.Y, (float)floorz1, 0.0f };
 		thread->mVertices[vertexStart + 2].TexCoord = { (float)texcoordsU.u1, (float)texcoordsVLeft.v2, lightlevel, 0.0f };
 
-		thread->mVertices[vertexStart + 3].Position = { (float)v2.X, (float)v2.Y, (float)floorz2 };
+		thread->mVertices[vertexStart + 3].Position = { (float)v2.X, (float)v2.Y, (float)floorz2, 0.0f };
 		thread->mVertices[vertexStart + 3].TexCoord = { (float)texcoordsU.u2, (float)texcoordsVRght.v2, lightlevel, 0.0f };
 	}
 
@@ -631,7 +657,7 @@ void LevelMeshBuilder::ProcessWall(LevelMeshThread *thread, sector_t *frontsecto
 	run.Indices.push_back(vertexStart + 1);
 }
 
-void LevelMeshBuilder::ClampWallHeight(Vec3f &v1, Vec3f &v2, Vec4f &uv1, Vec4f &uv2)
+void LevelMeshBuilder::ClampWallHeight(Vec4f &v1, Vec4f &v2, Vec4f &uv1, Vec4f &uv2)
 {
 	float top = v1.Z;
 	float bottom = v2.Z;
@@ -711,7 +737,7 @@ PlaneUVTransform::PlaneUVTransform(const FTransform &transform, FTexture *tex)
 	}
 }
 
-Vec2f PlaneUVTransform::GetUV(const Vec3f &pos) const
+Vec2f PlaneUVTransform::GetUV(const Vec4f &pos) const
 {
 	return { GetU(pos.X, pos.Y), GetV(pos.X, pos.Y) };
 }
