@@ -31,7 +31,8 @@ enum class GPUPixelFormat
 	RGBA16,
 	RGBA16f,
 	RGBA32f,
-	Depth24_Stencil8
+	Depth24_Stencil8,
+	R32f,
 };
 
 class GPUTexture

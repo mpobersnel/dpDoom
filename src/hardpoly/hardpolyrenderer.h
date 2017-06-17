@@ -130,7 +130,9 @@ private:
 	GPUTexture2DPtr mAlbedoBuffer;
 	GPUTexture2DPtr mDepthStencilBuffer;
 	GPUTexture2DPtr mNormalBuffer;
+	GPUTexture2DPtr mSpriteDepthBuffer;
 	GPUFrameBufferPtr mSceneFB;
+	GPUFrameBufferPtr mTranslucentFB;
 	GPUUniformBufferPtr mFrameUniforms[3];
 	GPUUniformBufferPtr mSkyFrameUniforms[3];
 	int mCurrentFrameUniforms = 0;

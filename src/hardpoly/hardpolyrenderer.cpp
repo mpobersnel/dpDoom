@@ -247,12 +247,21 @@ void HardpolyRenderer::RenderTranslucent()
 
 	auto vertexArray = std::make_shared<GPUVertexArray>(attributes);
 
+	mContext->SetFrameBuffer(mTranslucentFB);
+	GLenum drawbuffers[2] = { GL_COLOR_ATTACHMENT0 + 0, GL_COLOR_ATTACHMENT0 + 1 };
+	glDrawBuffers(2, drawbuffers);
+
 	mContext->SetVertexArray(vertexArray);
 	mContext->SetProgram(mTranslucentProgram);
 	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
 	glUniform1i(glGetUniformLocation(mTranslucentProgram->Handle(), "DiffuseTexture"), 0);
+	glUniform1i(glGetUniformLocation(mTranslucentProgram->Handle(), "SpriteDepthTexture"), 1);
 	mContext->SetSampler(0, mSamplerLinear);
 
+	mContext->SetTexture(1, mSpriteDepthBuffer);
+	mContext->SetSampler(1, mSamplerNearest);
+
+	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
@@ -264,6 +273,7 @@ void HardpolyRenderer::RenderTranslucent()
 
 	glDisable(GL_BLEND);
 	glDepthMask(GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
 
 	mContext->SetTexture(0, nullptr);
 	mContext->SetSampler(0, nullptr);
@@ -332,20 +342,29 @@ void HardpolyRenderer::SetupFramebuffer()
 		mAlbedoBuffer.reset();
 		mDepthStencilBuffer.reset();
 		mNormalBuffer.reset();
+		mSpriteDepthBuffer.reset();
 
 		mAlbedoBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
 		mNormalBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
 		mDepthStencilBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
+		mSpriteDepthBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::R32f);
 
-		std::vector<GPUTexture2DPtr> colorbuffers = { mAlbedoBuffer, mNormalBuffer };
+		std::vector<GPUTexture2DPtr> colorbuffers = { mAlbedoBuffer, mNormalBuffer, mSpriteDepthBuffer };
 		mSceneFB = std::make_shared<GPUFrameBuffer>(colorbuffers, mDepthStencilBuffer);
+
+		std::vector<GPUTexture2DPtr> translucentcolorbuffers = { mAlbedoBuffer, mNormalBuffer };
+		mTranslucentFB = std::make_shared<GPUFrameBuffer>(translucentcolorbuffers, mDepthStencilBuffer);
 	}
 
 	mContext->SetFrameBuffer(mSceneFB);
 	mContext->SetViewport(0, 0, width, height);
 
+	GLenum drawbuffers[3] = { GL_COLOR_ATTACHMENT0 + 0, GL_COLOR_ATTACHMENT0 + 1, GL_COLOR_ATTACHMENT0 + 2};
+	glDrawBuffers(3, drawbuffers);
+
 	mContext->ClearColorBuffer(0, 0.5f, 0.5f, 0.2f, 1.0f);
 	mContext->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
+	mContext->ClearColorBuffer(2, 1.0f, 0.0f, 0.0f, 0.0f);
 	mContext->ClearDepthStencilBuffer(1.0f, 0);
 }
 
@@ -509,6 +528,7 @@ void HardpolyRenderer::CompileShaders()
 				in vec4 DepthPlaneInView;
 				in float AlphaTest;
 				out vec4 FragAlbedo;
+				out float FragSpriteDepth;
 				uniform sampler2D DiffuseTexture;
 				
 				float SoftwareLight()
@@ -535,11 +555,11 @@ void HardpolyRenderer::CompileShaders()
 						vec3 depthPosInView = PositionInView * t;
 
 						vec4 depthProj = ViewToProjection * vec4(depthPosInView, 1.0);
-						gl_FragDepth = (depthProj.z / depthProj.w + 1.0) * 0.5;
+						FragSpriteDepth = (depthProj.z / depthProj.w + 1.0) * 0.5;
 					}
 					else
 					{
-						gl_FragDepth = gl_FragCoord.z;
+						FragSpriteDepth = gl_FragCoord.z;
 					}
 				}
 			)");
@@ -548,6 +568,7 @@ void HardpolyRenderer::CompileShaders()
 		mOpaqueProgram->SetAttribLocation("UV", 1);
 		mOpaqueProgram->SetFragOutput("FragAlbedo", 0);
 		mOpaqueProgram->SetFragOutput("FragNormal", 1);
+		mOpaqueProgram->SetFragOutput("FragSpriteDepth", 2);
 		mOpaqueProgram->Link("program");
 	}
 
@@ -583,6 +604,7 @@ void HardpolyRenderer::CompileShaders()
 				in vec3 PositionInView;
 				out vec4 FragAlbedo;
 				uniform sampler2D DiffuseTexture;
+				uniform sampler2D SpriteDepthTexture;
 				
 				float SoftwareLight()
 				{
@@ -596,6 +618,9 @@ void HardpolyRenderer::CompileShaders()
 				
 				void main()
 				{
+					float spriteDepth = texelFetch(SpriteDepthTexture, ivec2(gl_FragCoord.xy), 0).x;
+					if (spriteDepth < gl_FragCoord.z) discard;
+
 					FragAlbedo = texture(DiffuseTexture, UV);
 					FragAlbedo.rgb *= SoftwareLight();
 				}

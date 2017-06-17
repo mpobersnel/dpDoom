@@ -118,6 +118,7 @@ int GPUTexture2D::ToInternalFormat(GPUPixelFormat format)
 	case GPUPixelFormat::RGBA16f: return GL_RGBA16F;
 	case GPUPixelFormat::RGBA32f: return GL_RGBA32F;
 	case GPUPixelFormat::Depth24_Stencil8: return GL_DEPTH24_STENCIL8;
+	case GPUPixelFormat::R32f: return GL_R32F;
 	}
 }
 
@@ -132,6 +133,7 @@ int GPUTexture2D::ToUploadFormat(GPUPixelFormat format)
 	case GPUPixelFormat::RGBA16f: return GL_RGBA;
 	case GPUPixelFormat::RGBA32f: return GL_RGBA;
 	case GPUPixelFormat::Depth24_Stencil8: return GL_DEPTH_STENCIL;
+	case GPUPixelFormat::R32f: return GL_RED;
 	}
 }
 
@@ -146,5 +148,6 @@ int GPUTexture2D::ToUploadType(GPUPixelFormat format)
 	case GPUPixelFormat::RGBA16f: return GL_HALF_FLOAT;
 	case GPUPixelFormat::RGBA32f: return GL_FLOAT;
 	case GPUPixelFormat::Depth24_Stencil8: return GL_UNSIGNED_INT_24_8;
+	case GPUPixelFormat::R32f: return GL_FLOAT;
 	}
 }
