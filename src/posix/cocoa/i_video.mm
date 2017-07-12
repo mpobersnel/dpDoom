@@ -534,7 +534,7 @@ NSOpenGLPixelFormat* CreatePixelFormat(const OpenGLProfile profile)
 		if (nullptr != glversion)
 		{
 			const double version = strtod(glversion, nullptr) + 0.01;
-			if (version < 3.2)
+			if (version < 3.0)
 			{
 				profile = NSOpenGLProfileVersionLegacy;
 			}

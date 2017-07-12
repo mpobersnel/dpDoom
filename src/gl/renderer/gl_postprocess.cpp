@@ -62,6 +62,7 @@
 #include "gl/shaders/gl_lensshader.h"
 #include "gl/shaders/gl_fxaashader.h"
 #include "gl/shaders/gl_presentshader.h"
+#include "gl/shaders/gl_postprocessshader.h"
 #include "gl/renderer/gl_2ddrawer.h"
 #include "gl/stereo3d/gl_stereo3d.h"
 
@@ -149,7 +150,8 @@ CVAR(Float, gl_menu_blur, -1.0f, CVAR_ARCHIVE)
 
 EXTERN_CVAR(Float, vid_brightness)
 EXTERN_CVAR(Float, vid_contrast)
-
+EXTERN_CVAR(Float, vid_saturation)
+EXTERN_CVAR(Int, gl_satformula)
 
 void FGLRenderer::RenderScreenQuad()
 {
@@ -162,11 +164,13 @@ void FGLRenderer::PostProcessScene(int fixedcm)
 {
 	mBuffers->BlitSceneToTexture();
 	UpdateCameraExposure();
+	mCustomPostProcessShaders->Run("beforebloom");
 	BloomScene(fixedcm);
 	TonemapScene();
 	ColormapScene(fixedcm);
 	LensDistortScene();
 	ApplyFXAA();
+	mCustomPostProcessShaders->Run("scene");
 }
 
 //-----------------------------------------------------------------------------
@@ -612,9 +616,9 @@ void FGLRenderer::CreateTonemapPalette()
 				{
 					PalEntry color = GPalette.BaseColors[(uint8_t)PTM_BestColor((uint32_t *)GPalette.BaseColors, (r << 2) | (r >> 4), (g << 2) | (g >> 4), (b << 2) | (b >> 4), 0, 256)];
 					int index = ((r * 64 + g) * 64 + b) * 4;
-					lut[index] = color.r;
+					lut[index] = color.b;
 					lut[index + 1] = color.g;
-					lut[index + 2] = color.b;
+					lut[index + 2] = color.r;
 					lut[index + 3] = 255;
 				}
 			}
@@ -815,6 +819,8 @@ void FGLRenderer::CopyToBackbuffer(const GL_IRECT *bounds, bool applyGamma)
 	m2DDrawer->Draw();	// draw all pending 2D stuff before copying the buffer
 	m2DDrawer->Clear();
 
+	mCustomPostProcessShaders->Run("screen");
+
 	FGLDebug::PushGroup("CopyToBackbuffer");
 	if (FGLRenderBuffers::IsEnabled())
 	{
@@ -858,12 +864,15 @@ void FGLRenderer::DrawPresentTexture(const GL_IRECT &box, bool applyGamma)
 		mPresentShader->InvGamma.Set(1.0f);
 		mPresentShader->Contrast.Set(1.0f);
 		mPresentShader->Brightness.Set(0.0f);
+		mPresentShader->Saturation.Set(1.0f);
 	}
 	else
 	{
 		mPresentShader->InvGamma.Set(1.0f / clamp<float>(Gamma, 0.1f, 4.f));
 		mPresentShader->Contrast.Set(clamp<float>(vid_contrast, 0.1f, 3.f));
 		mPresentShader->Brightness.Set(clamp<float>(vid_brightness, -0.8f, 0.8f));
+		mPresentShader->Saturation.Set(clamp<float>(vid_saturation, -15.0f, 15.f));
+		mPresentShader->GrayFormula.Set(static_cast<int>(gl_satformula));
 	}
 	mPresentShader->Scale.Set(mScreenViewport.width / (float)mBuffers->GetWidth(), mScreenViewport.height / (float)mBuffers->GetHeight());
 	RenderScreenQuad();

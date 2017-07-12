@@ -42,6 +42,7 @@ class FPresent3DRowShader;
 class F2DDrawer;
 class FHardwareTexture;
 class FShadowMapShader;
+class FCustomPostProcessShaders;
 
 inline float DEG2RAD(float deg)
 {
@@ -126,6 +127,7 @@ public:
 	FPresent3DColumnShader *mPresent3dColumnShader;
 	FPresent3DRowShader *mPresent3dRowShader;
 	FShadowMapShader *mShadowMapShader;
+	FCustomPostProcessShaders *mCustomPostProcessShaders;
 
 	FShadowMap mShadowMap;
 
@@ -150,6 +152,8 @@ public:
 	bool mDrawingScene2D = false;
 
 	float mSceneClearColor[3];
+
+	float mGlobVis = 0.0f;
 
 	FGLRenderer(OpenGLFrameBuffer *fb);
 	~FGLRenderer() ;
