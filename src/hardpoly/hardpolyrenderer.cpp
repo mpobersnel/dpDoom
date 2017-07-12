@@ -712,6 +712,68 @@ void HardpolyRenderer::CompileShaders()
 		mStencilProgram->SetFragOutput("FragNormal", 1);
 		mStencilProgram->Link("program");
 	}
+
+	if (!mLinearDepthProgram)
+	{
+		mLinearDepthProgram = std::make_shared<GPUProgram>();
+
+		mLinearDepthProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
+				in vec4 Position;
+				out vec2 TexCoord;
+
+				void main()
+				{
+					TexCoord = (Position.xy + 1.0) * 0.5;
+					gl_Position = Position;
+				}
+			)");
+		mLinearDepthProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
+				layout(std140) uniform LinearDepthUniforms
+				{
+					float LinearizeDepthA;
+					float LinearizeDepthB;
+					float InverseDepthRangeA;
+					float InverseDepthRangeB;
+					vec2 Scale;
+					vec2 Offset;
+				};
+
+				in vec2 TexCoord;
+				out vec4 FragColor;
+
+				#if defined(MULTISAMPLE)
+				uniform sampler2DMS DepthTexture;
+				#else
+				uniform sampler2D DepthTexture;
+				#endif
+
+				float normalizeDepth(float depth)
+				{
+					float normalizedDepth = clamp(InverseDepthRangeA * depth + InverseDepthRangeB, 0.0, 1.0);
+					return 1.0 / (normalizedDepth * LinearizeDepthA + LinearizeDepthB);
+				}
+
+				void main()
+				{
+					vec2 uv = Offset + TexCoord * Scale;
+
+				#if defined(MULTISAMPLE)
+					ivec2 texSize = textureSize(DepthTexture);
+				#else
+					ivec2 texSize = textureSize(DepthTexture, 0);
+				#endif
+
+					ivec2 ipos = ivec2(max(uv * vec2(texSize), vec2(0.0)));
+					float depth = normalizeDepth(texelFetch(DepthTexture, ipos, 0).x);
+
+					FragColor = vec4(depth, 0.0, 0.0, 1.0);
+				}
+			)");
+
+		mLinearDepthProgram->SetAttribLocation("Position", 0);
+		mLinearDepthProgram->SetFragOutput("FragColor", 0);
+		mLinearDepthProgram->Link("program");
+	}
 }
 
 void HardpolyRenderer::RemapVoxels()

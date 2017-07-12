@@ -144,6 +144,7 @@ private:
 	GPUProgramPtr mTranslucentProgram;
 	GPUProgramPtr mSkyProgram;
 	GPUProgramPtr mStencilProgram;
+	GPUProgramPtr mLinearDepthProgram;
 	GPUSamplerPtr mSamplerLinear;
 	GPUSamplerPtr mSamplerNearest;
 
