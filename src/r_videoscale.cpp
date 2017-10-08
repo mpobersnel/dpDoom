@@ -24,6 +24,7 @@
 #include <math.h>
 #include "c_dispatch.h"
 #include "c_cvars.h"
+#include "v_video.h"
 
 #define NUMSCALEMODES 5
 
@@ -46,6 +47,10 @@ namespace
 		{ true,			false,		[](uint32_t Width)->uint32_t { return 640; },			[](uint32_t Height)->uint32_t { return 400; },				true	},	// 3  - 640x400
 		{ true,			true,		[](uint32_t Width)->uint32_t { return 1280; },			[](uint32_t Height)->uint32_t { return 800; },				true	},	// 4  - 1280x800		
 	};
+	bool isOutOfBounds(int x)
+	{
+		return (x < 0 || x >= NUMSCALEMODES || vScaleTable[x].isValid == false);
+	}
 }
 
 CUSTOM_CVAR(Float, vid_scalefactor, 1.0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
@@ -56,31 +61,41 @@ CUSTOM_CVAR(Float, vid_scalefactor, 1.0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 
 CUSTOM_CVAR(Int, vid_scalemode, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 {
-	if (self < 0 || self >= NUMSCALEMODES || vScaleTable[self].isValid == false)
-	{
+	if (isOutOfBounds(self))
 		self = 0;
-	}
 }
+
+CVAR(Bool, vid_cropaspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 
 bool ViewportLinearScale()
 {
+	if (isOutOfBounds(vid_scalemode))
+		vid_scalemode = 0;
 	// vid_scalefactor > 1 == forced linear scale
 	return (vid_scalefactor > 1.0) ? true : vScaleTable[vid_scalemode].isLinear;
 }
 
-int ViewportScaledWidth(int width)
+int ViewportScaledWidth(int width, int height)
 {
+	if (isOutOfBounds(vid_scalemode))
+		vid_scalemode = 0;
+	if (vid_cropaspect && height > 0)
+		width = (width/height > ActiveRatio(width, height)) ? height * ActiveRatio(width, height) : width;
 	return vScaleTable[vid_scalemode].GetScaledWidth((int)((float)width * vid_scalefactor));
 }
 
-int ViewportScaledHeight(int height)
+int ViewportScaledHeight(int width, int height)
 {
+	if (isOutOfBounds(vid_scalemode))
+		vid_scalemode = 0;
+	if (vid_cropaspect && height > 0)
+		height = (width/height < ActiveRatio(width, height)) ? width / ActiveRatio(width, height) : height;
 	return vScaleTable[vid_scalemode].GetScaledHeight((int)((float)height * vid_scalefactor));
 }
 
 bool ViewportIsScaled43()
 {
+	if (isOutOfBounds(vid_scalemode))
+		vid_scalemode = 0;
 	return vScaleTable[vid_scalemode].isScaled43;
 }
-
-
