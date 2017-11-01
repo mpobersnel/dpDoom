@@ -76,6 +76,25 @@ struct DrawRun
 	bool WriteDepth = true;
 };
 
+struct DrawRunKey
+{
+	DrawRunKey() { }
+	DrawRunKey(const DrawRun &run) : Texture(run.Texture), Pixels(run.Pixels), BaseColormap(run.BaseColormap), Translation(run.Translation), BlendMode(run.BlendMode), SrcAlpha(run.SrcAlpha), DestAlpha(run.DestAlpha) { }
+
+	FTexture *Texture = nullptr;
+	const uint8_t *Pixels = nullptr;
+	const uint8_t *BaseColormap = nullptr;
+	const uint8_t *Translation = nullptr;
+	TriBlendMode BlendMode = TriBlendMode::TextureOpaque;
+	uint32_t SrcAlpha = 0xffffffff;
+	uint32_t DestAlpha = 0xffffffff;
+
+	bool operator<(const DrawRunKey &other) const { return memcmp(this, &other, sizeof(DrawRunKey)) < 0; }
+	bool operator>(const DrawRunKey &other) const { return memcmp(this, &other, sizeof(DrawRunKey)) > 0; }
+	bool operator==(const DrawRunKey &other) const { return memcmp(this, &other, sizeof(DrawRunKey)) == 0; }
+	bool operator!=(const DrawRunKey &other) const { return memcmp(this, &other, sizeof(DrawRunKey)) != 0; }
+};
+
 struct DrawBatch
 {
 	std::shared_ptr<GPUVertexArray> VertexArray;
@@ -83,6 +102,9 @@ struct DrawBatch
 	std::shared_ptr<GPUUniformBuffer> FaceUniforms;
 	std::shared_ptr<GPUIndexBuffer> IndexBuffer;
 	std::vector<DrawRun> DrawRuns;
+	std::map<DrawRunKey, std::vector<DrawRun>> SortedDrawRuns;
+	DrawRunKey LastRunKey;
+	bool HasSortedDrawRuns;
 
 	std::vector<TriVertex> CpuVertices;
 	std::vector<::FaceUniforms> CpuFaceUniforms;

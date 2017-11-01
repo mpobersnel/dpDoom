@@ -190,9 +190,34 @@ void HardpolyRenderer::DrawArray(PolyRenderThread *thread, const PolyDrawArgs &d
 		break;
 	}
 
+	DrawRunKey key(run);
+
+	auto &drawRuns = thread->DrawBatcher.mCurrentBatch->SortedDrawRuns[key];
+	drawRuns.push_back(run);
+	thread->DrawBatcher.mCurrentBatch->HasSortedDrawRuns = true;
+/*
+	if (!thread->DrawBatcher.mCurrentBatch->DrawRuns.empty())
+	{
+		auto &prevRun = thread->DrawBatcher.mCurrentBatch->DrawRuns.back();
+		if (prevRun.Start + prevRun.NumVertices == run.Start && key == thread->DrawBatcher.mCurrentBatch->LastRunKey)
+		{
+			prevRun.NumVertices += run.NumVertices;
+		}
+		else
+		{
+			thread->DrawBatcher.mCurrentBatch->DrawRuns.push_back(run);
+			thread->DrawBatcher.mCurrentBatch->LastRunKey = key;
+		}
+	}
+	else
+	{
+		thread->DrawBatcher.mCurrentBatch->DrawRuns.push_back(run);
+		thread->DrawBatcher.mCurrentBatch->LastRunKey = key;
+	}
+*/
+
 	thread->DrawBatcher.mNextVertex += vcount;
 	thread->DrawBatcher.mCurrentBatch->CpuFaceUniforms.push_back(uniforms);
-	thread->DrawBatcher.mCurrentBatch->DrawRuns.push_back(run);
 }
 
 void HardpolyRenderer::UpdateFrameUniforms()
@@ -320,27 +345,38 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 	mContext->SetSampler(0, mSamplerNearest);
 	mContext->SetSampler(1, mSamplerNearest);
 	mContext->SetSampler(2, mSamplerNearest);
+
+	DrawRunKey last;
+
 	for (const auto &run : batch->DrawRuns)
 	{
 		//glDepthFunc(run.DepthTest ? GL_LESS : GL_ALWAYS);
 		//glDepthMask(run.WriteDepth ? GL_TRUE : GL_FALSE);
 
-		BlendSetterFunc blendSetter = GetBlendSetter(run.BlendMode);
-		(*this.*blendSetter)(run.SrcAlpha, run.DestAlpha);
+		DrawRunKey current(run);
+		if (current != last)
+		{
+			if (current.BlendMode != last.BlendMode || (current.BlendMode == last.BlendMode && (current.SrcAlpha != last.SrcAlpha || current.DestAlpha != last.DestAlpha)))
+			{
+				BlendSetterFunc blendSetter = GetBlendSetter(run.BlendMode);
+				(*this.*blendSetter)(run.SrcAlpha, run.DestAlpha);
+			}
 
-		if (run.Texture)
-			mContext->SetTexture(0, GetTexturePal(run.Texture));
-		else if (run.Pixels)
-			mContext->SetTexture(0, GetEngineTexturePal(run.Pixels, run.PixelsWidth, run.PixelsHeight));
+			if (run.Texture && last.Texture != current.Texture)
+				mContext->SetTexture(0, GetTexturePal(run.Texture));
+			else if (run.Pixels && last.Pixels != current.Pixels)
+				mContext->SetTexture(0, GetEngineTexturePal(run.Pixels, run.PixelsWidth, run.PixelsHeight));
 
-		mContext->SetTexture(1, GetColormapTexture(run.BaseColormap));
+			if (last.BaseColormap != current.BaseColormap)
+				mContext->SetTexture(1, GetColormapTexture(run.BaseColormap));
 
-		if (run.Translation)
-			mContext->SetTexture(2, GetTranslationTexture(run.Translation));
+			if (run.Translation && last.Translation != current.Translation)
+				mContext->SetTexture(2, GetTranslationTexture(run.Translation));
+
+			last = current;
+		}
 
 		mContext->DrawIndexed(GPUDrawMode::Triangles, run.Start, run.NumVertices);
-		//mContext->DrawIndexed(GPUDrawMode::Triangles, 0, batch->DrawRuns.back().Start + batch->DrawRuns.back().NumVertices);
-		//break;
 	}
 	mContext->SetTexture(0, nullptr);
 	mContext->SetTexture(1, nullptr);
@@ -1002,7 +1038,7 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 	for (size_t i = mDrawStart; i < mNextBatch; i++)
 	{
 		DrawBatch *current = mCurrentFrameBatches[i].get();
-		if (current->DrawRuns.empty())
+		if (current->DrawRuns.empty() && !current->HasSortedDrawRuns)
 			continue;
 
 		if (!current->Vertices)
@@ -1025,7 +1061,28 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 		current->Vertices->Unmap();
 
 		uint16_t *gpuIndices = (uint16_t*)current->IndexBuffer->MapWriteOnly();
-		memcpy(gpuIndices, current->CpuIndexBuffer.data(), sizeof(uint16_t) * current->CpuIndexBuffer.size());
+
+		uint16_t *cpuIndices = current->CpuIndexBuffer.data();
+		uint16_t currentPos = 0;
+		for (const auto &sortIt : current->SortedDrawRuns)
+		{
+			const auto &runs = sortIt.second;
+			if (runs.empty())
+				continue;
+
+			DrawRun gpuRun = runs.front();
+			gpuRun.Start = currentPos;
+
+			for (const auto &run : runs)
+			{
+				memcpy(gpuIndices + currentPos, cpuIndices + run.Start, sizeof(uint16_t) * run.NumVertices);
+				currentPos += run.NumVertices;
+			}
+
+			gpuRun.NumVertices = currentPos - gpuRun.Start;
+			current->DrawRuns.push_back(gpuRun);
+		}
+
 		current->IndexBuffer->Unmap();
 
 		FaceUniforms *gpuUniforms = (FaceUniforms*)current->FaceUniforms->MapWriteOnly();
@@ -1035,6 +1092,7 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 		hardpoly->RenderBatch(current);
 		PolyTotalBatches++;
 		PolyTotalTriangles += (current->DrawRuns.back().Start + current->DrawRuns.back().NumVertices) / 3;
+		PolyTotalDrawCalls += (int)current->DrawRuns.size();
 	}
 
 	mDrawStart = mNextBatch;
@@ -1059,6 +1117,8 @@ void DrawBatcher::GetVertices(int numVertices)
 
 		mCurrentBatch = mCurrentFrameBatches[mNextBatch++].get();
 		mCurrentBatch->DrawRuns.clear();
+		for (auto &run : mCurrentBatch->SortedDrawRuns) run.second.clear();
+		mCurrentBatch->HasSortedDrawRuns = false;
 		mCurrentBatch->CpuVertices.resize(MaxVertices);
 		mCurrentBatch->CpuFaceUniforms.clear();// resize(MaxFaceUniforms);
 		mCurrentBatch->CpuIndexBuffer.clear();

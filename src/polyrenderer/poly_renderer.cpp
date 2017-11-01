@@ -142,6 +142,7 @@ void PolyRenderer::RenderActorView(AActor *actor, bool dontmaplines)
 {
 	PolyTotalBatches = 0;
 	PolyTotalTriangles = 0;
+	PolyTotalDrawCalls = 0;
 	PolyCullCycles.Reset();
 	PolyOpaqueCycles.Reset();
 	PolyMaskedCycles.Reset();
@@ -264,13 +265,13 @@ void PolyRenderer::SetupPerspectiveMatrix()
 }
 
 cycle_t PolyCullCycles, PolyOpaqueCycles, PolyMaskedCycles, PolyDrawerWaitCycles;
-int PolyTotalBatches, PolyTotalTriangles;
+int PolyTotalBatches, PolyTotalTriangles, PolyTotalDrawCalls;
 
 ADD_STAT(polyfps)
 {
 	FString out;
 	out.Format("frame=%04.1f ms  cull=%04.1f ms  opaque=%04.1f ms  masked=%04.1f ms  drawers=%04.1f ms",
 		FrameCycles.TimeMS(), PolyCullCycles.TimeMS(), PolyOpaqueCycles.TimeMS(), PolyMaskedCycles.TimeMS(), PolyDrawerWaitCycles.TimeMS());
-	out.AppendFormat("\ntotal batches drawn: %d  total triangles drawn: %d", PolyTotalBatches, PolyTotalTriangles);
+	out.AppendFormat("\nbatches drawn: %d  triangles drawn: %d  drawcalls: %d", PolyTotalBatches, PolyTotalTriangles, PolyTotalDrawCalls);
 	return out;
 }

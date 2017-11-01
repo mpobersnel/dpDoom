@@ -43,7 +43,7 @@ typedef std::shared_ptr<DrawerCommandQueue> DrawerCommandQueuePtr;
 class HardpolyRenderer;
 
 extern cycle_t PolyCullCycles, PolyOpaqueCycles, PolyMaskedCycles, PolyDrawerWaitCycles;
-extern int PolyTotalBatches, PolyTotalTriangles;
+extern int PolyTotalBatches, PolyTotalTriangles, PolyTotalDrawCalls;
 
 class PolyRenderer
 {
