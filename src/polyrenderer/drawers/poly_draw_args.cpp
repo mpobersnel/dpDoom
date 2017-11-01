@@ -36,10 +36,12 @@
 #include "swrenderer/r_swcolormaps.h"
 #include "poly_draw_args.h"
 #include "swrenderer/viewport/r_viewport.h"
+#include "polyrenderer/hardpoly/hardpolyrenderer.h"
 #include "polyrenderer/poly_renderthread.h"
 
 void PolyDrawArgs::SetTexture(const uint8_t *texels, int width, int height)
 {
+	mTexture = nullptr;
 	mTexturePixels = texels;
 	mTextureWidth = width;
 	mTextureHeight = height;
@@ -48,6 +50,7 @@ void PolyDrawArgs::SetTexture(const uint8_t *texels, int width, int height)
 
 void PolyDrawArgs::SetTexture(FTexture *texture)
 {
+	mTexture = texture;
 	mTextureWidth = texture->GetWidth();
 	mTextureHeight = texture->GetHeight();
 	if (PolyRenderer::Instance()->RenderTarget->IsBgra())
@@ -69,6 +72,7 @@ void PolyDrawArgs::SetTexture(FTexture *texture, uint32_t translationID, bool fo
 			else
 				mTranslation = table->Remap;
 
+			mTexture = texture;
 			mTextureWidth = texture->GetWidth();
 			mTextureHeight = texture->GetHeight();
 			mTexturePixels = texture->GetPixels();
@@ -78,6 +82,7 @@ void PolyDrawArgs::SetTexture(FTexture *texture, uint32_t translationID, bool fo
 	
 	if (forcePal)
 	{
+		mTexture = texture;
 		mTextureWidth = texture->GetWidth();
 		mTextureHeight = texture->GetHeight();
 		mTexturePixels = texture->GetPixels();
@@ -131,7 +136,10 @@ void PolyDrawArgs::DrawArray(PolyRenderThread *thread, const TriVertex *vertices
 	mVertices = vertices;
 	mVertexCount = vcount;
 	mDrawMode = mode;
-	thread->DrawQueue->Push<DrawPolyTrianglesCommand>(*this, PolyTriangleDrawer::is_mirror());
+	if (PolyRenderer::Instance()->RedirectToHardpoly)
+		PolyRenderer::Instance()->Hardpoly->DrawArray(thread, *this);
+	else
+		thread->DrawQueue->Push<DrawPolyTrianglesCommand>(*this, PolyTriangleDrawer::is_mirror());
 }
 
 void PolyDrawArgs::SetStyle(const FRenderStyle &renderstyle, double alpha, uint32_t fillcolor, uint32_t translationID, FTexture *tex, bool fullbright)
@@ -196,16 +204,9 @@ void PolyDrawArgs::SetStyle(const FRenderStyle &renderstyle, double alpha, uint3
 
 /////////////////////////////////////////////////////////////////////////////
 
-void RectDrawArgs::SetTexture(const uint8_t *texels, int width, int height)
-{
-	mTexturePixels = texels;
-	mTextureWidth = width;
-	mTextureHeight = height;
-	mTranslation = nullptr;
-}
-
 void RectDrawArgs::SetTexture(FTexture *texture)
 {
+	mTexture = texture;
 	mTextureWidth = texture->GetWidth();
 	mTextureHeight = texture->GetHeight();
 	if (PolyRenderer::Instance()->RenderTarget->IsBgra())
@@ -227,6 +228,7 @@ void RectDrawArgs::SetTexture(FTexture *texture, uint32_t translationID, bool fo
 			else
 				mTranslation = table->Remap;
 
+			mTexture = texture;
 			mTextureWidth = texture->GetWidth();
 			mTextureHeight = texture->GetHeight();
 			mTexturePixels = texture->GetPixels();
@@ -236,6 +238,7 @@ void RectDrawArgs::SetTexture(FTexture *texture, uint32_t translationID, bool fo
 
 	if (forcePal)
 	{
+		mTexture = texture;
 		mTextureWidth = texture->GetWidth();
 		mTextureHeight = texture->GetHeight();
 		mTexturePixels = texture->GetPixels();
@@ -284,7 +287,11 @@ void RectDrawArgs::Draw(PolyRenderThread *thread, double x0, double x1, double y
 	mU1 = (float)u1;
 	mV0 = (float)v0;
 	mV1 = (float)v1;
-	thread->DrawQueue->Push<DrawRectCommand>(*this);
+
+	if (PolyRenderer::Instance()->RedirectToHardpoly)
+		PolyRenderer::Instance()->Hardpoly->DrawRect(*this);
+	else
+		thread->DrawQueue->Push<DrawRectCommand>(*this);
 }
 
 void RectDrawArgs::SetStyle(const FRenderStyle &renderstyle, double alpha, uint32_t fillcolor, uint32_t translationID, FTexture *tex, bool fullbright)

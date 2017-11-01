@@ -94,6 +94,7 @@ public:
 	bool FaceCullCCW() const { return mFaceCullCCW; }
 	bool WriteColor() const { return mWriteColor; }
 
+	FTexture *Texture() const { return mTexture; }
 	const uint8_t *TexturePixels() const { return mTexturePixels; }
 	int TextureWidth() const { return mTextureWidth; }
 	int TextureHeight() const { return mTextureHeight; }
@@ -145,6 +146,7 @@ private:
 	bool mWriteStencil = true;
 	bool mWriteColor = true;
 	bool mWriteDepth = true;
+	FTexture *mTexture = nullptr;
 	const uint8_t *mTexturePixels = nullptr;
 	int mTextureWidth = 0;
 	int mTextureHeight = 0;
@@ -180,7 +182,6 @@ private:
 class RectDrawArgs
 {
 public:
-	void SetTexture(const uint8_t *texels, int width, int height);
 	void SetTexture(FTexture *texture);
 	void SetTexture(FTexture *texture, uint32_t translationID, bool forcePal = false);
 	void SetLight(FSWColormap *basecolormap, uint32_t lightlevel);
@@ -189,6 +190,7 @@ public:
 	void SetColor(uint32_t bgra, uint8_t palindex);
 	void Draw(PolyRenderThread *thread, double x0, double x1, double y0, double y1, double u0, double u1, double v0, double v1);
 
+	FTexture *Texture() const { return mTexture; }
 	const uint8_t *TexturePixels() const { return mTexturePixels; }
 	int TextureWidth() const { return mTextureWidth; }
 	int TextureHeight() const { return mTextureHeight; }
@@ -222,6 +224,7 @@ public:
 	float V1() const { return mV1; }
 
 private:
+	FTexture *mTexture = nullptr;
 	const uint8_t *mTexturePixels = nullptr;
 	int mTextureWidth = 0;
 	int mTextureHeight = 0;
