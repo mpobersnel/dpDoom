@@ -43,8 +43,8 @@ struct FaceUniforms
 {
 	float Light;
 	float AlphaTest;
-	int Mode;
-	int Padding3;
+	float Mode;
+	float Padding3;
 	Vec4f FillColor;
 	Vec4f ClipPlane0;
 	Vec4f ClipPlane1;
@@ -99,7 +99,8 @@ struct DrawBatch
 {
 	std::shared_ptr<GPUVertexArray> VertexArray;
 	std::shared_ptr<GPUVertexBuffer> Vertices;
-	std::shared_ptr<GPUUniformBuffer> FaceUniforms;
+	//std::shared_ptr<GPUUniformBuffer> FaceUniforms;
+	std::shared_ptr<GPUTexture2D> FaceUniformsTexture;
 	std::shared_ptr<GPUIndexBuffer> IndexBuffer;
 	std::vector<DrawRun> DrawRuns;
 	std::map<DrawRunKey, std::vector<DrawRun>> SortedDrawRuns;
@@ -124,7 +125,7 @@ public:
 	int mNextVertex = 0;
 	DrawBatch *mCurrentBatch = nullptr;
 
-	enum { MaxFaceUniforms = 800 };
+	enum { MaxFaceUniforms = 51 * 128 /*800*/ };
 	enum { MaxVertices = MaxFaceUniforms * 4 };
 	enum { MaxIndices = MaxVertices * 3 };
 

@@ -320,19 +320,23 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 	mContext->SetIndexBuffer(batch->IndexBuffer);
 	mContext->SetProgram(mOpaqueProgram);
 	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
-	mContext->SetUniforms(1, batch->FaceUniforms);
+	//mContext->SetUniforms(1, batch->FaceUniforms);
 
-	int loc = glGetUniformLocation(mOpaqueProgram->Handle(), "DiffuseTexture");
+	int loc = glGetUniformLocation(mOpaqueProgram->Handle(), "FaceUniformsTexture");
 	if (loc != -1)
 		glUniform1i(loc, 0);
 
-	loc = glGetUniformLocation(mOpaqueProgram->Handle(), "BasecolormapTexture");
+	loc = glGetUniformLocation(mOpaqueProgram->Handle(), "DiffuseTexture");
 	if (loc != -1)
 		glUniform1i(loc, 1);
 
-	loc = glGetUniformLocation(mOpaqueProgram->Handle(), "TranslationTexture");
+	loc = glGetUniformLocation(mOpaqueProgram->Handle(), "BasecolormapTexture");
 	if (loc != -1)
 		glUniform1i(loc, 2);
+
+	loc = glGetUniformLocation(mOpaqueProgram->Handle(), "TranslationTexture");
+	if (loc != -1)
+		glUniform1i(loc, 3);
 
 	//glEnable(GL_STENCIL_TEST);
 	//glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
@@ -345,6 +349,9 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 	mContext->SetSampler(0, mSamplerNearest);
 	mContext->SetSampler(1, mSamplerNearest);
 	mContext->SetSampler(2, mSamplerNearest);
+	mContext->SetSampler(3, mSamplerNearest);
+
+	mContext->SetTexture(0, batch->FaceUniformsTexture);
 
 	DrawRunKey last;
 
@@ -363,27 +370,32 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 			}
 
 			if (run.Texture && last.Texture != current.Texture)
-				mContext->SetTexture(0, GetTexturePal(run.Texture));
+				mContext->SetTexture(1, GetTexturePal(run.Texture));
 			else if (run.Pixels && last.Pixels != current.Pixels)
-				mContext->SetTexture(0, GetEngineTexturePal(run.Pixels, run.PixelsWidth, run.PixelsHeight));
+				mContext->SetTexture(1, GetEngineTexturePal(run.Pixels, run.PixelsWidth, run.PixelsHeight));
 
 			if (last.BaseColormap != current.BaseColormap)
-				mContext->SetTexture(1, GetColormapTexture(run.BaseColormap));
+				mContext->SetTexture(2, GetColormapTexture(run.BaseColormap));
 
 			if (run.Translation && last.Translation != current.Translation)
-				mContext->SetTexture(2, GetTranslationTexture(run.Translation));
+				mContext->SetTexture(3, GetTranslationTexture(run.Translation));
 
 			last = current;
 		}
 
 		mContext->DrawIndexed(GPUDrawMode::Triangles, run.Start, run.NumVertices);
+
+		PolyTotalTriangles += run.NumVertices / 3;
+		PolyTotalDrawCalls++;
 	}
 	mContext->SetTexture(0, nullptr);
 	mContext->SetTexture(1, nullptr);
 	mContext->SetTexture(2, nullptr);
+	mContext->SetTexture(3, nullptr);
 	mContext->SetSampler(0, nullptr);
 	mContext->SetSampler(1, nullptr);
 	mContext->SetSampler(2, nullptr);
+	mContext->SetSampler(3, nullptr);
 
 	glDisable(GL_CLIP_DISTANCE0);
 	glDisable(GL_CLIP_DISTANCE1);
@@ -392,7 +404,7 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 	//glDisable(GL_STENCIL_TEST);
 
 	mContext->SetUniforms(0, nullptr);
-	mContext->SetUniforms(1, nullptr);
+	//mContext->SetUniforms(1, nullptr);
 	mContext->SetIndexBuffer(nullptr);
 	mContext->SetVertexArray(nullptr);
 	mContext->SetProgram(nullptr);
@@ -589,38 +601,41 @@ void HardpolyRenderer::CompileShaders()
 					float GlobVis;
 				};
 
-				struct FaceData
-				{
-					float Light;
-					float AlphaTest;
-					int Mode;
-					int Padding;
-					vec4 FillColor;
-					vec4 ClipPlane0;
-					vec4 ClipPlane1;
-					vec4 ClipPlane2;
-				};
+				uniform sampler2D FaceUniformsTexture;
 
-				layout(std140) uniform FaceUniforms
+				vec4 GetFaceUniform(int faceIndex, int offset)
 				{
-					FaceData Faces[200];
-				};
+					int pos = faceIndex * 5 + offset;
+					return texelFetch(FaceUniformsTexture, ivec2(pos % 255, pos / 255), 0);
+				}
 
 				in vec4 Position;
 				in vec4 Texcoord;
 				out vec2 UV;
 				out vec3 PositionInView;
-				flat out int FaceIndex;
+				flat out float Light;
+				flat out float AlphaTest;
+				flat out int Mode;
+				flat out vec4 FillColor;
 
 				void main()
 				{
-					FaceIndex = int(Position.w);
+					int faceIndex = int(Position.w);
+					vec4 data = GetFaceUniform(faceIndex, 0);
+					FillColor = GetFaceUniform(faceIndex, 1);
+					vec4 clipPlane0 = GetFaceUniform(faceIndex, 2);
+					vec4 clipPlane1 = GetFaceUniform(faceIndex, 3);
+					vec4 clipPlane2 = GetFaceUniform(faceIndex, 4);
+					Light = data.x;
+					AlphaTest = data.y;
+					Mode = int(data.z);
+
 					vec4 posInView = WorldToView * vec4(Position.xyz, 1.0);
 					PositionInView = posInView.xyz;
 					gl_Position = ViewToProjection * posInView;
-					gl_ClipDistance[0] = dot(Faces[FaceIndex].ClipPlane0, vec4(Position.xyz, 1.0));
-					gl_ClipDistance[1] = dot(Faces[FaceIndex].ClipPlane1, vec4(Position.xyz, 1.0));
-					gl_ClipDistance[2] = dot(Faces[FaceIndex].ClipPlane2, vec4(Position.xyz, 1.0));
+					gl_ClipDistance[0] = dot(clipPlane0, vec4(Position.xyz, 1.0));
+					gl_ClipDistance[1] = dot(clipPlane1, vec4(Position.xyz, 1.0));
+					gl_ClipDistance[2] = dot(clipPlane2, vec4(Position.xyz, 1.0));
 
 					UV = Texcoord.xy;
 				}
@@ -633,26 +648,12 @@ void HardpolyRenderer::CompileShaders()
 					float GlobVis;
 				};
 
-				struct FaceData
-				{
-					float Light;
-					float AlphaTest;
-					int Mode;
-					int Padding;
-					vec4 FillColor;
-					vec4 ClipPlane0;
-					vec4 ClipPlane1;
-					vec4 ClipPlane2;
-				};
-
-				layout(std140) uniform FaceUniforms
-				{
-					FaceData Faces[200];
-				};
-
 				in vec2 UV;
 				in vec3 PositionInView;
-				flat in int FaceIndex;
+				flat in float Light;
+				flat in float AlphaTest;
+				flat in int Mode;
+				flat in vec4 FillColor;
 				out vec4 FragColor;
 				uniform sampler2D DiffuseTexture;
 				uniform sampler2D BasecolormapTexture;
@@ -662,19 +663,19 @@ void HardpolyRenderer::CompileShaders()
 				{
 					float z = -PositionInView.z;
 					float vis = GlobVis / z;
-					float shade = 64.0 - (Faces[FaceIndex].Light + 12.0) * 32.0/128.0;
+					float shade = 64.0 - (Light + 12.0) * 32.0/128.0;
 					float lightscale = clamp((shade - min(24.0, vis)) / 32.0, 0.0, 31.0/32.0);
 					return 1.0 - lightscale;
 				}
 
 				float SoftwareLightPal()
 				{
-					if (Faces[FaceIndex].Light < 0)
-						return 31 - int((-1.0 - Faces[FaceIndex].Light) * 31.0 / 255.0 + 0.5);
+					if (Light < 0)
+						return 31 - int((-1.0 - Light) * 31.0 / 255.0 + 0.5);
 
 					float z = -PositionInView.z;
 					float vis = GlobVis / z;
-					float shade = 64.0 - (Faces[FaceIndex].Light + 12.0) * 32.0/128.0;
+					float shade = 64.0 - (Light + 12.0) * 32.0/128.0;
 					float lightscale = clamp((shade - min(24.0, vis)), 0.0, 31.0);
 					return lightscale;
 				}
@@ -706,7 +707,7 @@ void HardpolyRenderer::CompileShaders()
 
 				int FillColorPal()
 				{
-					return int(Faces[FaceIndex].FillColor.a);
+					return int(FillColor.a);
 				}
 
 				void TextureSampler()
@@ -770,7 +771,7 @@ void HardpolyRenderer::CompileShaders()
 				
 				void main()
 				{
-					switch (Faces[FaceIndex].Mode)
+					switch (Mode)
 					{
 					case 0: TextureSampler(); break;
 					case 1: TranslatedSampler(); break;
@@ -789,7 +790,7 @@ void HardpolyRenderer::CompileShaders()
 		mOpaqueProgram->SetFragOutput("FragColor", 0);
 		mOpaqueProgram->Link("program");
 		mOpaqueProgram->SetUniformBlock("FrameUniforms", 0);
-		mOpaqueProgram->SetUniformBlock("FaceUniforms", 1);
+		//mOpaqueProgram->SetUniformBlock("FaceUniforms", 1);
 	}
 
 	if (!mRectProgram)
@@ -1053,7 +1054,8 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 
 			current->VertexArray = std::make_shared<GPUVertexArray>(attributes);
 			current->IndexBuffer = std::make_shared<GPUIndexBuffer>(nullptr, (int)(MaxIndices * sizeof(int32_t)));
-			current->FaceUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)(DrawBatcher::MaxFaceUniforms * sizeof(FaceUniforms)));
+			//current->FaceUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)(DrawBatcher::MaxFaceUniforms * sizeof(FaceUniforms)));
+			current->FaceUniformsTexture = std::make_shared<GPUTexture2D>(256, 128, false, 0, GPUPixelFormat::RGBA32f);
 		}
 
 		TriVertex *gpuVertices = (TriVertex*)current->Vertices->MapWriteOnly();
@@ -1085,14 +1087,15 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 
 		current->IndexBuffer->Unmap();
 
-		FaceUniforms *gpuUniforms = (FaceUniforms*)current->FaceUniforms->MapWriteOnly();
-		memcpy(gpuUniforms, current->CpuFaceUniforms.data(), sizeof(FaceUniforms) * current->CpuFaceUniforms.size());
-		current->FaceUniforms->Unmap();
+		//FaceUniforms *gpuUniforms = (FaceUniforms*)current->FaceUniforms->MapWriteOnly();
+		//memcpy(gpuUniforms, current->CpuFaceUniforms.data(), sizeof(FaceUniforms) * current->CpuFaceUniforms.size());
+		//current->FaceUniforms->Unmap();
+		int uploadHeight = (int)((current->CpuFaceUniforms.size() + 50) / 51);
+		current->CpuFaceUniforms.resize(uploadHeight * 51);
+		current->FaceUniformsTexture->Upload(0, 0, 255, uploadHeight, 0, current->CpuFaceUniforms.data());
 
 		hardpoly->RenderBatch(current);
 		PolyTotalBatches++;
-		PolyTotalTriangles += (current->DrawRuns.back().Start + current->DrawRuns.back().NumVertices) / 3;
-		PolyTotalDrawCalls += (int)current->DrawRuns.size();
 	}
 
 	mDrawStart = mNextBatch;
