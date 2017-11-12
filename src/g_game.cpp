@@ -2889,7 +2889,7 @@ bool G_CheckDemoStatus (void)
 		int endtime = 0;
 
 		if (timingdemo)
-			endtime = I_GetTime () - starttime;
+			endtime = PresentTime.Tic - starttime;
 
 		C_RestoreCVars ();		// [RH] Restore cvars demo might have changed
 		M_Free (demobuffer);

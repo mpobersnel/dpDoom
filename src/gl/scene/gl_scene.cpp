@@ -889,8 +889,15 @@ void FGLRenderer::RenderView (player_t* player, unsigned int nowtime)
 	ResetProfilingData();
 
 	// Get this before everything else
-	if (cl_capfps || r_NoInterpolate) r_viewpoint.TicFrac = 1.;
-	else r_viewpoint.TicFrac = I_GetTimeFrac (&r_viewpoint.FrameTime);
+	if (cl_capfps || r_NoInterpolate)
+	{
+		r_viewpoint.TicFrac = 1.;
+	}
+	else
+	{
+		r_viewpoint.FrameTime = PresentTime.Tic;
+		r_viewpoint.TicFrac = PresentTime.TicFrac;
+	}
 	gl_frameMS = nowtime;
 
 	P_FindParticleSubsectors ();

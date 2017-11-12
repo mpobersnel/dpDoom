@@ -532,7 +532,7 @@ void HSendPacket (int node, int len)
 	{
 		PacketStore store;
 		store.message = doomcom;
-		store.timer = I_GetTime() + ((net_fakelatency / 2) / (1000 / TICRATE));
+		store.timer = PresentTime.Tic + ((net_fakelatency / 2) / (1000 / TICRATE));
 		OutBuffer.Push(store);
 	}
 	else
@@ -540,7 +540,7 @@ void HSendPacket (int node, int len)
 
 	for (unsigned int i = 0; i < OutBuffer.Size(); i++)
 	{
-		if (OutBuffer[i].timer <= I_GetTime())
+		if (OutBuffer[i].timer <= PresentTime.Tic)
 		{
 			doomcom = OutBuffer[i].message;
 			I_NetCmd();
@@ -581,7 +581,7 @@ bool HGetPacket (void)
 	{
 		PacketStore store;
 		store.message = doomcom;
-		store.timer = I_GetTime() + ((net_fakelatency / 2) / (1000 / TICRATE));
+		store.timer = PresentTime.Tic + ((net_fakelatency / 2) / (1000 / TICRATE));
 		InBuffer.Push(store);
 		doomcom.remotenode = -1;
 	}
@@ -591,7 +591,7 @@ bool HGetPacket (void)
 		bool gotmessage = false;
 		for (unsigned int i = 0; i < InBuffer.Size(); i++)
 		{
-			if (InBuffer[i].timer <= I_GetTime())
+			if (InBuffer[i].timer <= PresentTime.Tic)
 			{
 				doomcom = InBuffer[i].message;
 				InBuffer.Delete(i);
@@ -783,7 +783,7 @@ void GetPackets (void)
 		// [RH] Get "ping" times - totally useless, since it's bound to the frequency
 		// packets go out at.
 		lastrecvtime[netconsole] = currrecvtime[netconsole];
-		currrecvtime[netconsole] = I_MSTime ();
+		currrecvtime[netconsole] = I_ClockTimeMS();
 
 		// check for exiting the game
 		if (netbuffer[0] & NCMD_EXIT)
@@ -957,7 +957,7 @@ void NetUpdate (void)
 	}
 
 	// check time
-	nowtime = I_GetTime ();
+	nowtime = PresentTime.Tic;
 	newtics = nowtime - gametime;
 	gametime = nowtime;
 
@@ -1827,12 +1827,10 @@ void TryRunTics (void)
 	// get real tics
 	if (doWait)
 	{
-		entertic = I_WaitForTic (oldentertics);
+		I_WaitForTic(oldentertics);
 	}
-	else
-	{
-		entertic = I_GetTime ();
-	}
+
+	entertic = PresentTime.Tic;
 	realtics = entertic - oldentertics;
 	oldentertics = entertic;
 
@@ -1914,7 +1912,8 @@ void TryRunTics (void)
 		Net_CheckLastReceived (counts);
 
 		// don't stay in here forever -- give the menu a chance to work
-		if (I_GetTime () - entertic >= 1)
+		I_SetupFramePresentTime();
+		if (PresentTime.Tic - entertic >= 1)
 		{
 			C_Ticker ();
 			M_Ticker ();
@@ -1929,7 +1928,7 @@ void TryRunTics (void)
 	hadlate = false;
 	for (i = 0; i < MAXPLAYERS; i++)
 		players[i].waiting = false;
-	lastglobalrecvtime = I_GetTime (); //Update the last time the game tic'd over
+	lastglobalrecvtime = PresentTime.Tic; //Update the last time the game tic'd over
 
 	// run the count tics
 	if (counts > 0)
@@ -1962,9 +1961,9 @@ void Net_CheckLastReceived (int counts)
 {
 	// [Ed850] Check to see the last time a packet was received.
 	// If it's longer then 3 seconds, a node has likely stalled.
-	if (I_GetTime() - lastglobalrecvtime >= TICRATE * 3)
+	if (PresentTime.Tic - lastglobalrecvtime >= TICRATE * 3)
 	{
-		lastglobalrecvtime = I_GetTime(); //Bump the count
+		lastglobalrecvtime = PresentTime.Tic; //Bump the count
 
 		if (NetMode == NET_PeerToPeer || consoleplayer == Net_Arbitrator)
 		{

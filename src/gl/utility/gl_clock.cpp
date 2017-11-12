@@ -188,7 +188,7 @@ ADD_STAT(rendertimes)
 {
 	static FString buff;
 	static int lasttime=0;
-	int t=I_FPSTime();
+	int t= I_ClockTimeMS();
 	if (t-lasttime>1000) 
 	{
 		buff.Truncate(0);
@@ -226,7 +226,7 @@ void CheckBench()
 	{
 		// if we started the FPS counter ourselves or ran from the console 
 		// we need to wait for it to stabilize before using it.
-		if (waitstart > 0 && I_MSTime() < waitstart + 5000) return;
+		if (waitstart > 0 && I_ClockTimeMS() < waitstart + 5000) return;
 
 		FString compose;
 
@@ -257,12 +257,12 @@ CCMD(bench)
 	if (vid_fps == 0) 
 	{
 		vid_fps = 1;
-		waitstart = I_MSTime();
+		waitstart = I_ClockTimeMS();
 		switchfps = true;
 	}
 	else
 	{
-		if (ConsoleState == c_up) waitstart = I_MSTime();
+		if (ConsoleState == c_up) waitstart = I_ClockTimeMS();
 		switchfps = false;
 	}
 	C_HideConsole ();

@@ -2,27 +2,28 @@
 
 #include <stdint.h>
 
-// Called by D_DoomLoop, sets the time for the current frame
-void I_SetFrameTime();
+struct FramePresentTime
+{
+	uint64_t Nanoseconds;
+	uint32_t Milliseconds;
+	double TicFrac;
+	int Tic;
+};
 
-// Called by D_DoomLoop, returns current time in tics.
-int I_GetTime();
+// Time point the frame is expected to be displayed on the monitor
+extern FramePresentTime PresentTime;
 
-double I_GetTimeFrac(uint32_t *ms);
+void I_SetupFramePresentTime();
 
-// like I_GetTime, except it waits for a new tic before returning
-int I_WaitForTic(int);
-
-// Freezes tic counting temporarily. While frozen, calls to I_GetTime()
-// will always return the same value. This does not affect I_MSTime().
-// You must also not call I_WaitForTic() while freezing time, since the
-// tic will never arrive (unless it's the current one).
+// Freezes tic counting temporarily. While frozen the present time stays the same.
+// You not call I_WaitForTic() while freezing time, since the tic will never arrive (unless it's the current one).
 void I_FreezeTime(bool frozen);
 
-// [RH] Returns millisecond-accurate time
-unsigned int I_MSTime();
-unsigned int I_FPSTime();
+// Wait until the specified tic has been presented. Time must not be frozen.
+void I_WaitForTic(int tic);
 
-// Nanosecond-accurate time
-uint64_t I_NSTime();
-uint64_t I_FPSTimeNS();
+// Returns the hardware clock time, in milliseconds
+uint32_t I_ClockTimeMS();
+
+// Returns the hardware clock time, in nanoseconds
+uint64_t I_ClockTimeNS();

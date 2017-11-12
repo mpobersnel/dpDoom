@@ -529,7 +529,7 @@ static void maybedrawnow (bool tick, bool force)
 		|| gamestate == GS_STARTUP))
 	{
 		static size_t lastprinttime = 0;
-		size_t nowtime = I_GetTime();
+		size_t nowtime = PresentTime.Milliseconds;
 
 		if (nowtime - lastprinttime > 1 || force)
 		{
