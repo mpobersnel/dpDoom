@@ -4,7 +4,7 @@
 
 struct FramePresentTime
 {
-	uint64_t Nanoseconds;
+	uint64_t Microseconds;
 	uint32_t Milliseconds;
 	double TicFrac;
 	int Tic;
@@ -25,5 +25,5 @@ void I_WaitForTic(int tic);
 // Returns the hardware clock time, in milliseconds
 uint32_t I_ClockTimeMS();
 
-// Returns the hardware clock time, in nanoseconds
-uint64_t I_ClockTimeNS();
+// Returns the hardware clock time, in microseconds
+uint64_t I_ClockTimeMiS();

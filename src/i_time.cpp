@@ -45,24 +45,24 @@
 //
 //==========================================================================
 
-static uint64_t MSToNS(unsigned int ms)
+static uint64_t MSToMiS(unsigned int ms)
 {
-	return static_cast<uint64_t>(ms) * 1'000'000;
+	return static_cast<uint64_t>(ms) * 1'000;
 }
 
-static uint32_t NSToMS(uint64_t ns)
+static uint32_t MiSToMS(uint64_t ns)
 {
-	return static_cast<uint32_t>(ns / 1'000'000);
+	return static_cast<uint32_t>(ns / 1'000);
 }
 
-static int NSToTic(uint64_t ns)
+static int MiSToTic(uint64_t ns)
 {
-	return static_cast<int>(ns * TICRATE / 1'000'000'000);
+	return static_cast<int>(ns * TICRATE / 1'000'000);
 }
 
-static uint64_t TicToNS(int tic)
+static uint64_t TicToMiS(int tic)
 {
-	return static_cast<uint64_t>(tic) * 1'000'000'000 / TICRATE;
+	return static_cast<uint64_t>(tic) * 1'000'000 / TICRATE;
 }
 
 static uint64_t FirstFrameStartTime;
@@ -73,7 +73,7 @@ FramePresentTime PresentTime;
 
 void I_SetupFramePresentTime()
 {
-	uint64_t now = I_ClockTimeNS();
+	uint64_t now = I_ClockTimeMiS();
 
 	if (FirstFrameStartTime == 0)
 	{
@@ -81,15 +81,15 @@ void I_SetupFramePresentTime()
 		FirstTicTime = now;
 	}
 
-	PresentTime.Nanoseconds = now - FirstFrameStartTime;
-	PresentTime.Milliseconds = NSToMS(PresentTime.Nanoseconds);
+	PresentTime.Microseconds = now - FirstFrameStartTime;
+	PresentTime.Milliseconds = MiSToMS(PresentTime.Microseconds);
 
 	if (FreezeTime != 0)
 		now = FreezeTime;
 	
-	int currentTic = NSToTic(now - FirstTicTime);
-	uint64_t ticStartTime = FirstTicTime + TicToNS(currentTic);
-	uint64_t ticNextTime = FirstTicTime + TicToNS(currentTic + 1);
+	int currentTic = MiSToTic(now - FirstTicTime);
+	uint64_t ticStartTime = FirstTicTime + TicToMiS(currentTic);
+	uint64_t ticNextTime = FirstTicTime + TicToMiS(currentTic + 1);
 
 	PresentTime.Tic = currentTic + 1;
 	PresentTime.TicFrac = (now - ticStartTime) / (double)(ticNextTime - ticStartTime);
@@ -99,11 +99,11 @@ void I_FreezeTime(bool frozen)
 {
 	if (frozen && FreezeTime == 0)
 	{
-		FreezeTime = I_ClockTimeNS();
+		FreezeTime = I_ClockTimeMiS();
 	}
 	else if (!frozen && FreezeTime != 0)
 	{
-		FirstTicTime += I_ClockTimeNS() - FreezeTime;
+		FirstTicTime += I_ClockTimeMiS() - FreezeTime;
 		FreezeTime = 0;
 		I_SetupFramePresentTime();
 	}
@@ -130,11 +130,11 @@ void I_WaitVBL(int count)
 
 uint32_t I_ClockTimeMS()
 {
-	return NSToMS(I_ClockTimeNS());
+	return MiSToMS(I_ClockTimeMiS());
 }
 
-uint64_t I_ClockTimeNS()
+uint64_t I_ClockTimeMiS()
 {
 	using namespace std::chrono;
-	return (uint64_t)duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count();
+	return (uint64_t)duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
 }
