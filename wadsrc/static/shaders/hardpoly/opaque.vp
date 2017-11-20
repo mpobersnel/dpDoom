@@ -1,0 +1,46 @@
+
+layout(std140) uniform FrameUniforms
+{
+	mat4 WorldToView;
+	mat4 ViewToProjection;
+	float GlobVis;
+};
+
+uniform sampler2D FaceUniformsTexture;
+
+in vec4 Position;
+in vec4 Texcoord;
+out vec2 UV;
+out vec3 PositionInView;
+flat out float Light;
+flat out float AlphaTest;
+flat out int Mode;
+flat out vec4 FillColor;
+
+vec4 GetFaceUniform(int faceIndex, int offset)
+{
+	int pos = faceIndex * 5 + offset;
+	return texelFetch(FaceUniformsTexture, ivec2(pos % 255, pos / 255), 0);
+}
+
+void main()
+{
+	int faceIndex = int(Position.w);
+	vec4 data = GetFaceUniform(faceIndex, 0);
+	FillColor = GetFaceUniform(faceIndex, 1);
+	vec4 clipPlane0 = GetFaceUniform(faceIndex, 2);
+	vec4 clipPlane1 = GetFaceUniform(faceIndex, 3);
+	vec4 clipPlane2 = GetFaceUniform(faceIndex, 4);
+	Light = data.x;
+	AlphaTest = data.y;
+	Mode = int(data.z);
+
+	vec4 posInView = WorldToView * vec4(Position.xyz, 1.0);
+	PositionInView = posInView.xyz;
+	gl_Position = ViewToProjection * posInView;
+	gl_ClipDistance[0] = dot(clipPlane0, vec4(Position.xyz, 1.0));
+	gl_ClipDistance[1] = dot(clipPlane1, vec4(Position.xyz, 1.0));
+	gl_ClipDistance[2] = dot(clipPlane2, vec4(Position.xyz, 1.0));
+
+	UV = Texcoord.xy;
+}

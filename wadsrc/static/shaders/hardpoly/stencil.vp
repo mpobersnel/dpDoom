@@ -1,0 +1,15 @@
+
+layout(std140) uniform FrameUniforms
+{
+	mat4 WorldToView;
+	mat4 ViewToProjection;
+	float GlobVis;
+};
+
+in vec4 Position;
+
+void main()
+{
+	vec4 posInView = WorldToView * Position;
+	gl_Position = ViewToProjection * posInView;
+}

@@ -1,0 +1,20 @@
+
+layout(std140) uniform RectUniforms
+{
+	float X0, Y0, U0, V0;
+	float X1, Y1, U1, V1;
+	float Light;
+};
+
+in vec4 Position;
+out vec2 UV;
+
+void main()
+{
+	gl_Position.x = mix(X0, X1, Position.x);
+	gl_Position.y = mix(Y0, Y1, Position.y);
+	gl_Position.z = -1.0;
+	gl_Position.w = 1.0;
+	UV.x = mix(U0, U1, Position.x);
+	UV.y = mix(V0, V1, Position.y);
+}

@@ -592,254 +592,20 @@ void HardpolyRenderer::CompileShaders()
 	if (!mOpaqueProgram)
 	{
 		mOpaqueProgram = std::make_shared<GPUProgram>();
-
-		mOpaqueProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
-				layout(std140) uniform FrameUniforms
-				{
-					mat4 WorldToView;
-					mat4 ViewToProjection;
-					float GlobVis;
-				};
-
-				uniform sampler2D FaceUniformsTexture;
-
-				vec4 GetFaceUniform(int faceIndex, int offset)
-				{
-					int pos = faceIndex * 5 + offset;
-					return texelFetch(FaceUniformsTexture, ivec2(pos % 255, pos / 255), 0);
-				}
-
-				in vec4 Position;
-				in vec4 Texcoord;
-				out vec2 UV;
-				out vec3 PositionInView;
-				flat out float Light;
-				flat out float AlphaTest;
-				flat out int Mode;
-				flat out vec4 FillColor;
-
-				void main()
-				{
-					int faceIndex = int(Position.w);
-					vec4 data = GetFaceUniform(faceIndex, 0);
-					FillColor = GetFaceUniform(faceIndex, 1);
-					vec4 clipPlane0 = GetFaceUniform(faceIndex, 2);
-					vec4 clipPlane1 = GetFaceUniform(faceIndex, 3);
-					vec4 clipPlane2 = GetFaceUniform(faceIndex, 4);
-					Light = data.x;
-					AlphaTest = data.y;
-					Mode = int(data.z);
-
-					vec4 posInView = WorldToView * vec4(Position.xyz, 1.0);
-					PositionInView = posInView.xyz;
-					gl_Position = ViewToProjection * posInView;
-					gl_ClipDistance[0] = dot(clipPlane0, vec4(Position.xyz, 1.0));
-					gl_ClipDistance[1] = dot(clipPlane1, vec4(Position.xyz, 1.0));
-					gl_ClipDistance[2] = dot(clipPlane2, vec4(Position.xyz, 1.0));
-
-					UV = Texcoord.xy;
-				}
-			)");
-		mOpaqueProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
-				layout(std140) uniform FrameUniforms
-				{
-					mat4 WorldToView;
-					mat4 ViewToProjection;
-					float GlobVis;
-				};
-
-				in vec2 UV;
-				in vec3 PositionInView;
-				flat in float Light;
-				flat in float AlphaTest;
-				flat in int Mode;
-				flat in vec4 FillColor;
-				out vec4 FragColor;
-				uniform sampler2D DiffuseTexture;
-				uniform sampler2D BasecolormapTexture;
-				uniform sampler2D TranslationTexture;
-				
-				float SoftwareLight()
-				{
-					float z = -PositionInView.z;
-					float vis = GlobVis / z;
-					float shade = 64.0 - (Light + 12.0) * 32.0/128.0;
-					float lightscale = clamp((shade - min(24.0, vis)) / 32.0, 0.0, 31.0/32.0);
-					return 1.0 - lightscale;
-				}
-
-				float SoftwareLightPal()
-				{
-					if (Light < 0)
-						return 31 - int((-1.0 - Light) * 31.0 / 255.0 + 0.5);
-
-					float z = -PositionInView.z;
-					float vis = GlobVis / z;
-					float shade = 64.0 - (Light + 12.0) * 32.0/128.0;
-					float lightscale = clamp((shade - min(24.0, vis)), 0.0, 31.0);
-					return lightscale;
-				}
-
-				int SampleFg()
-				{
-					return int(texture(DiffuseTexture, UV).r * 255.0 + 0.5);
-				}
-
-				vec4 LightShadePal(int fg)
-				{
-					float light = max(SoftwareLightPal() - 0.5, 0.0);
-					float t = fract(light);
-					int index0 = int(light);
-					int index1 = min(index0 + 1, 31);
-					vec4 color0 = texelFetch(BasecolormapTexture, ivec2(fg, index0), 0);
-					vec4 color1 = texelFetch(BasecolormapTexture, ivec2(fg, index1), 0);
-					color0.rgb = pow(color0.rgb, vec3(2.2));
-					color1.rgb = pow(color1.rgb, vec3(2.2));
-					vec4 mixcolor = mix(color0, color1, t);
-					mixcolor.rgb = pow(mixcolor.rgb, vec3(1.0/2.2));
-					return mixcolor;
-				}
-
-				int Translate(int fg)
-				{
-					return int(texelFetch(TranslationTexture, ivec2(fg, 0), 0).r * 255.0 + 0.5);
-				}
-
-				int FillColorPal()
-				{
-					return int(FillColor.a);
-				}
-
-				void TextureSampler()
-				{
-					int fg = SampleFg();
-					if (fg == 0) discard;
-					FragColor = LightShadePal(fg);
-					FragColor.rgb *= FragColor.a;
-				}
-
-				void TranslatedSampler()
-				{
-					int fg = SampleFg();
-					if (fg == 0) discard;
-
-					FragColor = LightShadePal(Translate(fg));
-					FragColor.rgb *= FragColor.a;
-				}
-
-				void ShadedSampler()
-				{
-					FragColor = LightShadePal(FillColorPal()) * texture(DiffuseTexture, UV).r;
-				}
-
-				void StencilSampler()
-				{
-					float alpha = (SampleFg() != 0) ? 1.0 : 0.0;
-					FragColor = LightShadePal(FillColorPal()) * alpha;
-				}
-
-				void FillSampler()
-				{
-					FragColor = LightShadePal(FillColorPal());
-				}
-
-				void SkycapSampler()
-				{
-					vec4 capcolor = LightShadePal(FillColorPal());
-
-					int fg = SampleFg();
-					vec4 skycolor = LightShadePal(fg);
-
-					float startFade = 4.0; // How fast it should fade out
-					float alphaTop = clamp(UV.y * startFade, 0.0, 1.0);
-					float alphaBottom = clamp((2.0 - UV.y) * startFade, 0.0, 1.0);
-					float alpha = min(alphaTop, alphaBottom);
-
-					FragColor = mix(capcolor, skycolor, alpha);
-				}
-
-				void FuzzSampler()
-				{
-					float alpha = (SampleFg() != 0) ? 1.0 : 0.0;
-					FragColor = LightShadePal(FillColorPal()) * alpha;
-				}
-
-				void FogBoundarySampler()
-				{
-					FragColor = LightShadePal(FillColorPal());
-				}
-				
-				void main()
-				{
-					switch (Mode)
-					{
-					case 0: TextureSampler(); break;
-					case 1: TranslatedSampler(); break;
-					case 2: ShadedSampler(); break;
-					case 3: StencilSampler(); break;
-					case 4: FillSampler(); break;
-					case 5: SkycapSampler(); break;
-					case 6: FuzzSampler(); break;
-					case 7: FogBoundarySampler(); break;
-					}
-				}
-			)");
-
+		mOpaqueProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/opaque.vp");
+		mOpaqueProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/opaque.fp");
 		mOpaqueProgram->SetAttribLocation("Position", 0);
 		mOpaqueProgram->SetAttribLocation("UV", 1);
 		mOpaqueProgram->SetFragOutput("FragColor", 0);
 		mOpaqueProgram->Link("program");
 		mOpaqueProgram->SetUniformBlock("FrameUniforms", 0);
-		//mOpaqueProgram->SetUniformBlock("FaceUniforms", 1);
 	}
 
 	if (!mRectProgram)
 	{
 		mRectProgram = std::make_shared<GPUProgram>();
-
-		mRectProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
-				layout(std140) uniform RectUniforms
-				{
-					float X0, Y0, U0, V0;
-					float X1, Y1, U1, V1;
-					float Light;
-				};
-
-				in vec4 Position;
-				out vec2 UV;
-
-				void main()
-				{
-					gl_Position.x = mix(X0, X1, Position.x);
-					gl_Position.y = mix(Y0, Y1, Position.y);
-					gl_Position.z = -1.0;
-					gl_Position.w = 1.0;
-					UV.x = mix(U0, U1, Position.x);
-					UV.y = mix(V0, V1, Position.y);
-				}
-			)");
-		mRectProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
-				layout(std140) uniform RectUniforms
-				{
-					float X0, Y0, U0, V0;
-					float X1, Y1, U1, V1;
-					float Light;
-				};
-
-				in vec2 UV;
-				out vec4 FragColor;
-				uniform sampler2D DiffuseTexture;
-				uniform sampler2D BasecolormapTexture;
-				
-				void main()
-				{
-					int shade = 31 - int(Light * 31.0 / 255.0 + 0.5);
-					int fg = int(texture(DiffuseTexture, UV).r * 255.0 + 0.5);
-					if (fg == 0) discard;
-					FragColor = texelFetch(BasecolormapTexture, ivec2(fg, shade), 0);
-				}
-			)");
-
+		mRectProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/rect.vp");
+		mRectProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/rect.fp");
 		mRectProgram->SetAttribLocation("Position", 0);
 		mRectProgram->SetAttribLocation("UV", 1);
 		mRectProgram->SetFragOutput("FragColor", 0);
@@ -851,31 +617,8 @@ void HardpolyRenderer::CompileShaders()
 	if (!mStencilProgram)
 	{
 		mStencilProgram = std::make_shared<GPUProgram>();
-
-		mStencilProgram->Compile(GPUShaderType::Vertex, "vertex", R"(
-				layout(std140) uniform FrameUniforms
-				{
-					mat4 WorldToView;
-					mat4 ViewToProjection;
-					float GlobVis;
-				};
-
-				in vec4 Position;
-
-				void main()
-				{
-					vec4 posInView = WorldToView * Position;
-					gl_Position = ViewToProjection * posInView;
-				}
-			)");
-		mStencilProgram->Compile(GPUShaderType::Fragment, "fragment", R"(
-				out vec4 FragColor;
-				void main()
-				{
-					FragColor = vec4(1.0);
-				}
-			)");
-
+		mStencilProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/stencil.vp");
+		mStencilProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/stencil.fp");
 		mStencilProgram->SetAttribLocation("Position", 0);
 		mStencilProgram->SetFragOutput("FragColor", 0);
 		mStencilProgram->SetFragOutput("FragNormal", 1);
