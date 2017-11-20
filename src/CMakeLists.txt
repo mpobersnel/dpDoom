@@ -962,7 +962,6 @@ set (PCH_SOURCES
 	stats.cpp
 	stringtable.cpp
 	teaminfo.cpp
-	tempfiles.cpp
 	v_blend.cpp
 	v_collection.cpp
 	v_draw.cpp
@@ -1183,6 +1182,7 @@ add_executable( zdoom WIN32 MACOSX_BUNDLE
 	${PCH_SOURCES}
 	x86.cpp
 	strnatcmp.c
+	tmpfileplus.c
 	zstring.cpp
 	math/asin.c
 	math/atan.c
