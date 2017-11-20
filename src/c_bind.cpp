@@ -47,6 +47,7 @@
 #include "templates.h"
 #include "dobject.h"
 #include "vm.h"
+#include "i_time.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -743,7 +744,7 @@ bool C_DoKey (event_t *ev, FKeyBindings *binds, FKeyBindings *doublebinds)
 	dclick = false;
 
 	// This used level.time which didn't work outside a level.
-	nowtime = I_MSTime();
+	nowtime = PresentTime.Milliseconds;
 	if (doublebinds != NULL && DClickTime[ev->data1] > nowtime && ev->type == EV_KeyDown)
 	{
 		// Key pressed for a double click

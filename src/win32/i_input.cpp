@@ -791,7 +791,7 @@ void I_GetEvent ()
 
 	// Briefly enter an alertable state so that if a secondary thread
 	// crashed, we will execute the APC it sent now.
-	SleepEx (0, TRUE);
+	//SleepEx (0, TRUE);
 
 	while (PeekMessage (&mess, NULL, 0, 0, PM_REMOVE))
 	{

@@ -51,6 +51,7 @@
 #include "vm.h"
 #include "g_levellocals.h"
 #include "types.h"
+#include "i_time.h"
 
 //==========================================================================
 //
@@ -614,7 +615,8 @@ void DObject::CheckIfSerialized () const
 
 DEFINE_ACTION_FUNCTION(DObject, MSTime)
 {
-	ACTION_RETURN_INT(I_MSTime());
+	//ACTION_RETURN_INT(PresentTime.Milliseconds);
+	ACTION_RETURN_INT(I_ClockTimeMS());
 }
 
 void *DObject::ScriptVar(FName field, PType *type)

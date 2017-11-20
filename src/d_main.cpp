@@ -51,6 +51,7 @@
 
 #include "doomerrors.h"
 
+#include "i_time.h"
 #include "d_gui.h"
 #include "m_random.h"
 #include "doomdef.h"
@@ -280,7 +281,7 @@ void D_ProcessEvents (void)
 		{
 			M_SetDefaultMode ();
 		}
-		else if (testingmode <= I_GetTime(false))
+		else if (testingmode <= PresentTime.Tic)
 		{
 			M_RestoreMode ();
 		}
@@ -778,7 +779,7 @@ void D_Display ()
 
 
 	{
-		unsigned int nowtime = I_FPSTime();
+		unsigned int nowtime = PresentTime.Milliseconds;
 		TexMan.UpdateAnimations(nowtime);
 		R_UpdateSky(nowtime);
 		switch (gamestate)
@@ -807,7 +808,7 @@ void D_Display ()
 			// [ZZ] execute event hook that we just started the frame
 			//E_RenderFrame();
 			//
-			Renderer->RenderView(&players[consoleplayer]);
+			Renderer->RenderView(&players[consoleplayer], nowtime);
 
 			if ((hw2d = screen->Begin2D(viewactive)))
 			{
@@ -944,7 +945,7 @@ void D_Display ()
 		I_FreezeTime(true);
 		screen->WipeEndScreen ();
 
-		wipestart = I_MSTime();
+		wipestart = PresentTime.Milliseconds;
 		NetUpdate();		// send out any new accumulation
 
 		do
@@ -952,7 +953,7 @@ void D_Display ()
 			do
 			{
 				I_WaitVBL(2);
-				nowtime = I_MSTime();
+				nowtime = PresentTime.Milliseconds;
 				diff = (nowtime - wipestart) * 40 / 1000;	// Using 35 here feels too slow.
 			} while (diff < 1);
 			wipestart = nowtime;
@@ -1030,7 +1031,7 @@ void D_DoomLoop ()
 				lasttic = gametic;
 				I_StartFrame ();
 			}
-			I_SetFrameTime();
+			I_SetupFramePresentTime();
 
 			// process one or more tics
 			if (singletics)
@@ -1052,10 +1053,10 @@ void D_DoomLoop ()
 			}
 			else
 			{
+				I_StartTic();
 				TryRunTics (); // will run at least one tic
 			}
 			// Update display, next frame, with current state.
-			I_StartTic ();
 			D_Display ();
 			if (wantToRestart)
 			{
