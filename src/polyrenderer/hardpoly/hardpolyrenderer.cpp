@@ -643,7 +643,7 @@ void HardpolyRenderer::CompileShaders()
 	if (!mRectProgram)
 	{
 		mRectProgram = std::make_shared<GPUProgram>();
-		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mOpaqueProgram->SetDefine("TRUECOLOR");
+		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mRectProgram->SetDefine("TRUECOLOR");
 		mRectProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/rect.vp");
 		mRectProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/rect.fp");
 		mRectProgram->SetAttribLocation("Position", 0);
@@ -657,7 +657,7 @@ void HardpolyRenderer::CompileShaders()
 	if (!mStencilProgram)
 	{
 		mStencilProgram = std::make_shared<GPUProgram>();
-		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mOpaqueProgram->SetDefine("TRUECOLOR");
+		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mStencilProgram->SetDefine("TRUECOLOR");
 		mStencilProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/stencil.vp");
 		mStencilProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/stencil.fp");
 		mStencilProgram->SetAttribLocation("Position", 0);

@@ -69,7 +69,7 @@ struct DrawRun
 	const uint8_t *Translation = nullptr;
 	int Start = 0;
 	int NumVertices = 0;
-	TriBlendMode BlendMode;
+	TriBlendMode BlendMode = TriBlendMode::TextureOpaque;
 	uint32_t SrcAlpha = 0;
 	uint32_t DestAlpha = 0;
 	bool DepthTest = true;

@@ -14,8 +14,14 @@ uniform sampler2D BasecolormapTexture;
 				
 void main()
 {
+#if defined(TRUECOLOR)
+	FragColor = texture(DiffuseTexture, UV) * (Light / 255.0);
+	FragColor.rgb *= FragColor.a;
+	if (FragColor.a < 0.5) discard;
+#else
 	int shade = 31 - int(Light * 31.0 / 255.0 + 0.5);
 	int fg = int(texture(DiffuseTexture, UV).r * 255.0 + 0.5);
 	if (fg == 0) discard;
 	FragColor = texelFetch(BasecolormapTexture, ivec2(fg, shade), 0);
+#endif
 }
