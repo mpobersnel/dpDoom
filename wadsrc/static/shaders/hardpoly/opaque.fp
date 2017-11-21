@@ -21,6 +21,9 @@ uniform sampler2D TranslationTexture;
 				
 float SoftwareLight()
 {
+	if (Light < 0)
+		return -Light / 255.0;
+
 	float z = -PositionInView.z;
 	float vis = GlobVis / z;
 	float shade = 64.0 - (Light + 12.0) * 32.0/128.0;
@@ -45,6 +48,11 @@ int SampleFg()
 	return int(texture(DiffuseTexture, UV).r * 255.0 + 0.5);
 }
 
+vec4 LightShade(vec4 fg)
+{
+	return vec4((fg * SoftwareLight()).rgb, fg.a);
+}
+
 vec4 LightShadePal(int fg)
 {
 	float light = max(SoftwareLightPal() - 0.5, 0.0);
@@ -60,7 +68,12 @@ vec4 LightShadePal(int fg)
 	return mixcolor;
 }
 
-int Translate(int fg)
+vec4 Translate(int fg)
+{
+	return texelFetch(TranslationTexture, ivec2(fg, 0), 0);
+}
+
+int TranslatePal(int fg)
 {
 	return int(texelFetch(TranslationTexture, ivec2(fg, 0), 0).r * 255.0 + 0.5);
 }
@@ -69,6 +82,72 @@ int FillColorPal()
 {
 	return int(FillColor.a);
 }
+
+#if defined(TRUECOLOR)
+
+void TextureSampler()
+{
+	vec4 fg = texture(DiffuseTexture, UV);
+	if (fg.a < 0.5) discard;
+	FragColor = LightShade(fg);
+	FragColor.a = 1.0;
+}
+
+void TranslatedSampler()
+{
+	int fg = SampleFg();
+	if (fg == 0) discard;
+
+	FragColor = LightShade(Translate(fg));
+	FragColor.rgb *= FragColor.a;
+}
+
+void ShadedSampler()
+{
+	float alpha = texture(DiffuseTexture, UV).r;
+	if (alpha < 0.5) discard;
+	FragColor = LightShade(vec4(FillColor.rgb, 1.0)) * alpha;
+}
+
+void StencilSampler()
+{
+	float alpha = step(0.5, texture(DiffuseTexture, UV).a);
+	if (FragColor.a < 0.5) discard;
+	FragColor = LightShade(vec4(FillColor.rgb, 1.0)) * alpha;
+}
+
+void FillSampler()
+{
+	FragColor = LightShade(vec4(FillColor.rgb, 1.0));
+}
+
+void SkycapSampler()
+{
+	vec4 capcolor = LightShade(vec4(FillColor.rgb, 1.0));
+
+	vec4 fg = texture(DiffuseTexture, UV);
+	vec4 skycolor = LightShade(fg);
+
+	float startFade = 4.0; // How fast it should fade out
+	float alphaTop = clamp(UV.y * startFade, 0.0, 1.0);
+	float alphaBottom = clamp((2.0 - UV.y) * startFade, 0.0, 1.0);
+	float alpha = min(alphaTop, alphaBottom);
+
+	FragColor = mix(capcolor, skycolor, alpha);
+}
+
+void FuzzSampler()
+{
+	float alpha = (SampleFg() != 0) ? 1.0 : 0.0;
+	FragColor = LightShade(vec4(FillColor.rgb, 1.0)) * alpha;
+}
+
+void FogBoundarySampler()
+{
+	FragColor = LightShade(FillColor);
+}
+
+#else
 
 void TextureSampler()
 {
@@ -83,7 +162,7 @@ void TranslatedSampler()
 	int fg = SampleFg();
 	if (fg == 0) discard;
 
-	FragColor = LightShadePal(Translate(fg));
+	FragColor = LightShadePal(TranslatePal(fg));
 	FragColor.rgb *= FragColor.a;
 }
 
@@ -128,7 +207,9 @@ void FogBoundarySampler()
 {
 	FragColor = LightShadePal(FillColorPal());
 }
-				
+
+#endif
+
 void main()
 {
 	switch (Mode)

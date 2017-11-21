@@ -160,10 +160,13 @@ private:
 	void CreateSamplers();
 	void UpdateFrameUniforms();
 
+	std::shared_ptr<GPUTexture2D> GetTexture(FTexture *texture, bool translated);
 	std::shared_ptr<GPUTexture2D> GetTexturePal(FTexture *texture);
 	std::shared_ptr<GPUTexture2D> GetTextureBgra(FTexture *texture);
-	std::shared_ptr<GPUTexture2D> GetColormapTexture(const uint8_t *basecolormap);
+	std::shared_ptr<GPUTexture2D> GetColormapTexturePal(const uint8_t *basecolormap);
 	std::shared_ptr<GPUTexture2D> GetTranslationTexture(const uint8_t *translation);
+	std::shared_ptr<GPUTexture2D> GetTranslationTexturePal(const uint8_t *translation);
+	std::shared_ptr<GPUTexture2D> GetTranslationTextureBgra(const uint8_t *translation);
 	std::shared_ptr<GPUTexture2D> GetEngineTexturePal(const uint8_t *pixels, int width, int height);
 
 	std::shared_ptr<GPUContext> mContext;
@@ -183,10 +186,10 @@ private:
 	std::shared_ptr<GPUUniformBuffer> mRectUniforms;
 
 	std::shared_ptr<GPUVertexArray> mVertexArray;
-	std::map<FTexture*, std::shared_ptr<GPUTexture2D>> mTextures;
-	std::map<const uint8_t *, std::shared_ptr<GPUTexture2D>> mColormaps;
-	std::map<const uint8_t *, std::shared_ptr<GPUTexture2D>> mTranslationTextures;
-	std::map<const uint8_t *, std::shared_ptr<GPUTexture2D>> mEngineTextures;
+	std::map<FTexture*, std::shared_ptr<GPUTexture2D>> mTexturesPal, mTexturesBgra;
+	std::map<const uint8_t *, std::shared_ptr<GPUTexture2D>> mColormapsPal;
+	std::map<const uint8_t *, std::shared_ptr<GPUTexture2D>> mTranslationTexturesPal, mTranslationTexturesBgra;
+	std::map<const uint8_t *, std::shared_ptr<GPUTexture2D>> mEngineTexturesPal;
 
 	std::shared_ptr<GPUVertexArray> mScreenQuad;
 	std::shared_ptr<GPUVertexBuffer> mScreenQuadVertexBuffer;

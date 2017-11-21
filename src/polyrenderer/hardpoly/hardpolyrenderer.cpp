@@ -297,8 +297,8 @@ void HardpolyRenderer::DrawRect(const RectDrawArgs &args)
 	mContext->SetUniforms(1, mRectUniforms);
 	mContext->SetSampler(0, mSamplerNearest);
 	mContext->SetSampler(1, mSamplerNearest);
-	mContext->SetTexture(0, GetTexturePal(args.Texture()));
-	mContext->SetTexture(1, GetColormapTexture(args.BaseColormap()));
+	mContext->SetTexture(0, GetTexture(args.Texture(), args.Translation() != nullptr));
+	mContext->SetTexture(1, GetColormapTexturePal(args.BaseColormap()));
 
 	mContext->Draw(GPUDrawMode::TriangleStrip, 0, 4);
 
@@ -370,12 +370,12 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 			}
 
 			if (run.Texture && last.Texture != current.Texture)
-				mContext->SetTexture(1, GetTexturePal(run.Texture));
+				mContext->SetTexture(1, GetTexture(run.Texture, run.Translation != nullptr));
 			else if (run.Pixels && last.Pixels != current.Pixels)
 				mContext->SetTexture(1, GetEngineTexturePal(run.Pixels, run.PixelsWidth, run.PixelsHeight));
 
 			if (last.BaseColormap != current.BaseColormap)
-				mContext->SetTexture(2, GetColormapTexture(run.BaseColormap));
+				mContext->SetTexture(2, GetColormapTexturePal(run.BaseColormap));
 
 			if (run.Translation && last.Translation != current.Translation)
 				mContext->SetTexture(3, GetTranslationTexture(run.Translation));
@@ -451,7 +451,37 @@ void HardpolyRenderer::CreateSamplers()
 
 std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTranslationTexture(const uint8_t *translation)
 {
-	auto &texture = mTranslationTextures[translation];
+	if (PolyRenderer::Instance()->RenderTarget->IsBgra())
+		return GetTranslationTextureBgra(translation);
+	else
+		return GetTranslationTexturePal(translation);
+}
+
+std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTranslationTextureBgra(const uint8_t *translation)
+{
+	auto &texture = mTranslationTexturesBgra[translation];
+	if (!texture)
+	{
+		uint32_t *src = (uint32_t*)translation;
+		uint32_t dest[256];
+		for (int x = 0; x < 256; x++)
+		{
+			uint32_t pixel = src[x];
+			uint32_t red = RPART(pixel);
+			uint32_t green = GPART(pixel);
+			uint32_t blue = BPART(pixel);
+			uint32_t alpha = APART(pixel);
+			dest[x] = red | (green << 8) | (blue << 16) | (alpha << 24);
+		}
+
+		texture = std::make_shared<GPUTexture2D>(256, 1, false, 0, GPUPixelFormat::RGBA8, dest);
+	}
+	return texture;
+}
+
+std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTranslationTexturePal(const uint8_t *translation)
+{
+	auto &texture = mTranslationTexturesPal[translation];
 	if (!texture)
 	{
 		texture = std::make_shared<GPUTexture2D>(256, 1, false, 0, GPUPixelFormat::R8, translation);
@@ -461,7 +491,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTranslationTexture(const uint
 
 std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetEngineTexturePal(const uint8_t *src, int width, int height)
 {
-	auto &texture = mEngineTextures[src];
+	auto &texture = mEngineTexturesPal[src];
 	if (!texture)
 	{
 		std::vector<uint8_t> pixels;
@@ -489,9 +519,9 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetEngineTexturePal(const uint8_
 	return texture;
 }
 
-std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetColormapTexture(const uint8_t *basecolormap)
+std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetColormapTexturePal(const uint8_t *basecolormap)
 {
-	auto &texture = mColormaps[basecolormap];
+	auto &texture = mColormapsPal[basecolormap];
 	if (!texture)
 	{
 		uint32_t rgbacolormap[256 * NUMCOLORMAPS];
@@ -511,7 +541,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetColormapTexture(const uint8_t
 
 std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTextureBgra(FTexture *ztexture)
 {
-	auto &texture = mTextures[ztexture];
+	auto &texture = mTexturesBgra[ztexture];
 	if (!texture)
 	{
 		int width, height;
@@ -552,9 +582,17 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTextureBgra(FTexture *ztextur
 	return texture;
 }
 
+std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTexture(FTexture *texture, bool translated)
+{
+	if (!translated && PolyRenderer::Instance()->RenderTarget->IsBgra())
+		return GetTextureBgra(texture);
+	else
+		return GetTexturePal(texture);
+}
+
 std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTexturePal(FTexture *ztexture)
 {
-	auto &texture = mTextures[ztexture];
+	auto &texture = mTexturesPal[ztexture];
 	if (!texture)
 	{
 		int width, height;
@@ -592,6 +630,7 @@ void HardpolyRenderer::CompileShaders()
 	if (!mOpaqueProgram)
 	{
 		mOpaqueProgram = std::make_shared<GPUProgram>();
+		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mOpaqueProgram->SetDefine("TRUECOLOR");
 		mOpaqueProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/opaque.vp");
 		mOpaqueProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/opaque.fp");
 		mOpaqueProgram->SetAttribLocation("Position", 0);
@@ -604,6 +643,7 @@ void HardpolyRenderer::CompileShaders()
 	if (!mRectProgram)
 	{
 		mRectProgram = std::make_shared<GPUProgram>();
+		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mOpaqueProgram->SetDefine("TRUECOLOR");
 		mRectProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/rect.vp");
 		mRectProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/rect.fp");
 		mRectProgram->SetAttribLocation("Position", 0);
@@ -617,6 +657,7 @@ void HardpolyRenderer::CompileShaders()
 	if (!mStencilProgram)
 	{
 		mStencilProgram = std::make_shared<GPUProgram>();
+		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mOpaqueProgram->SetDefine("TRUECOLOR");
 		mStencilProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/stencil.vp");
 		mStencilProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/stencil.fp");
 		mStencilProgram->SetAttribLocation("Position", 0);
