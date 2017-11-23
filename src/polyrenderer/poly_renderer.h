@@ -66,6 +66,9 @@ public:
 	FRenderViewpoint Viewpoint;
 	PolyLightVisibility Light;
 
+	TriMatrix WorldToView;
+	TriMatrix WorldToClip;
+
 	bool RedirectToHardpoly = false;
 	std::shared_ptr<HardpolyRenderer> Hardpoly;
 
@@ -75,7 +78,6 @@ private:
 	void SetSceneViewport();
 	void SetupPerspectiveMatrix();
 
-	TriMatrix WorldToClip;
 	RenderPolyScene MainPortal;
 	PolySkyDome Skydome;
 	RenderPolyPlayerSprites PlayerSprites;

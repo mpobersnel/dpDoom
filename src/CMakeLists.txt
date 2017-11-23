@@ -757,6 +757,7 @@ set( POLYRENDER_SOURCES
 	polyrenderer/scene/poly_wall.cpp
 	polyrenderer/scene/poly_wallsprite.cpp
 	polyrenderer/scene/poly_sprite.cpp
+	polyrenderer/scene/poly_model.cpp
 	polyrenderer/scene/poly_sky.cpp
 	polyrenderer/scene/poly_light.cpp
 	polyrenderer/drawers/poly_buffer.cpp
@@ -964,6 +965,7 @@ set (PCH_SOURCES
 	stats.cpp
 	stringtable.cpp
 	teaminfo.cpp
+	umapinfo.cpp
 	v_blend.cpp
 	v_collection.cpp
 	v_draw.cpp
