@@ -178,7 +178,7 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 
 double PolyModelRenderer::GetTimeFloat()
 {
-	return (float)I_msTime() * (float)TICRATE / 1000.0f;
+	return (double)screen->FrameTime * (double)TICRATE / 1000.0;
 }
 
 /////////////////////////////////////////////////////////////////////////////

@@ -781,7 +781,6 @@ void D_Display ()
 
 
 	{
-		screen->FrameTime = I_msTime();
 		TexMan.UpdateAnimations(screen->FrameTime);
 		R_UpdateSky(screen->FrameTime);
 		switch (gamestate)
@@ -1034,6 +1033,7 @@ void D_DoomLoop ()
 				I_StartFrame ();
 			}
 			I_SetFrameTime();
+			screen->FrameTime = I_msTime();
 
 			// process one or more tics
 			if (singletics)
@@ -1055,10 +1055,10 @@ void D_DoomLoop ()
 			}
 			else
 			{
+				I_StartTic();
 				TryRunTics (); // will run at least one tic
 			}
 			// Update display, next frame, with current state.
-			I_StartTic ();
 			D_Display ();
 			if (wantToRestart)
 			{
