@@ -1022,7 +1022,7 @@ void G_DoLoadLevel (int position, bool autosave)
 
 		if (firstTime)
 		{
-			starttime = PresentTime.Tic;
+			starttime = I_GetTime ();
 			firstTime = false;
 		}
 	}
