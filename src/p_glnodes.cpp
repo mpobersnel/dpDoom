@@ -955,9 +955,9 @@ bool P_CheckNodes(MapData * map, bool rebuilt, int buildtime)
 		if (!loaded)
 		{
 			// none found - we have to build new ones!
-			unsigned int startTime, endTime;
+			uint64_t startTime, endTime;
 
-			startTime = I_ClockTimeMS();
+			startTime = I_msTime ();
 			TArray<FNodeBuilder::FPolyStart> polyspots, anchors;
 			P_GetPolySpots (map, polyspots, anchors);
 			FNodeBuilder::FLevel leveldata =
@@ -971,9 +971,9 @@ bool P_CheckNodes(MapData * map, bool rebuilt, int buildtime)
 			FNodeBuilder builder (leveldata, polyspots, anchors, true);
 			
 			builder.Extract (level);
-			endTime = I_ClockTimeMS();
+			endTime = I_msTime ();
 			DPrintf (DMSG_NOTIFY, "BSP generation took %.3f sec (%u segs)\n", (endTime - startTime) * 0.001, level.segs.Size());
-			buildtime = endTime - startTime;
+			buildtime = (int32_t)(endTime - startTime);
 		}
 	}
 

@@ -313,7 +313,7 @@ DEFINE_ACTION_FUNCTION(DVideoModeMenu, SetSelectedSize)
 		OldBits = DisplayBits;
 		NewBits = BitTranslate[DummyDepthCvar];
 		setmodeneeded = true;
-		testingmode = PresentTime.Tic + 5 * TICRATE;
+		testingmode = 1;
 		SetModesMenu (NewWidth, NewHeight, NewBits);
 		ACTION_RETURN_BOOL(true);
 	}

@@ -170,7 +170,7 @@ void FSoftwareRenderer::Precache(uint8_t *texhitlist, TMap<PClassActor*, bool> &
 	}
 }
 
-void FSoftwareRenderer::RenderView(player_t *player, unsigned int /*nowtime*/)
+void FSoftwareRenderer::RenderView(player_t *player)
 {
 	if (r_polyrenderer)
 	{

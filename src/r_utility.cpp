@@ -783,7 +783,7 @@ void R_SetupFrame (FRenderViewpoint &viewpoint, FViewWindow &viewwindow, AActor 
 
 	iview = FindPastViewer (viewpoint.camera);
 
-	int nowtic = PresentTime.Tic;
+	int nowtic = I_GetTime ();
 	if (iview->otic != -1 && nowtic > iview->otic)
 	{
 		iview->otic = nowtic;
@@ -831,8 +831,7 @@ void R_SetupFrame (FRenderViewpoint &viewpoint, FViewWindow &viewwindow, AActor 
 		iview->otic = nowtic;
 	}
 
-	viewpoint.FrameTime = PresentTime.Tic;
-	viewpoint.TicFrac = PresentTime.TicFrac;
+	viewpoint.TicFrac = I_GetTimeFrac ();
 	if (cl_capfps || r_NoInterpolate)
 	{
 		viewpoint.TicFrac = 1.;
@@ -983,7 +982,7 @@ void R_SetupFrame (FRenderViewpoint &viewpoint, FViewWindow &viewwindow, AActor 
 
 		if (hom == 3)
 		{
-			hom = ((PresentTime.Milliseconds / 128) & 1) + 1;
+			hom = ((screen->FrameTime / 128) & 1) + 1;
 		}
 		if (hom == 1)
 		{
@@ -995,7 +994,7 @@ void R_SetupFrame (FRenderViewpoint &viewpoint, FViewWindow &viewwindow, AActor 
 		}
 		else if (hom == 4)
 		{
-			color = (PresentTime.Milliseconds / 32) & 255;
+			color = (screen->FrameTime / 32) & 255;
 		}
 		else
 		{

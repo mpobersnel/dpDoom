@@ -2,28 +2,25 @@
 
 #include <stdint.h>
 
-struct FramePresentTime
-{
-	uint64_t Microseconds;
-	uint32_t Milliseconds;
-	double TicFrac;
-	int Tic;
-};
+// Called by D_DoomLoop, sets the time for the current frame
+void I_SetFrameTime();
 
-// Time point the frame is expected to be displayed on the monitor
-extern FramePresentTime PresentTime;
+// Called by D_DoomLoop, returns current time in tics.
+int I_GetTime();
 
-void I_SetupFramePresentTime();
+double I_GetTimeFrac();
 
-// Freezes tic counting temporarily. While frozen the present time stays the same.
-// You not call I_WaitForTic() while freezing time, since the tic will never arrive (unless it's the current one).
+// like I_GetTime, except it waits for a new tic before returning
+int I_WaitForTic(int);
+
+// Freezes tic counting temporarily. While frozen, calls to I_GetTime()
+// will always return the same value.
+// You must also not call I_WaitForTic() while freezing time, since the
+// tic will never arrive (unless it's the current one).
 void I_FreezeTime(bool frozen);
 
-// Wait until the specified tic has been presented. Time must not be frozen.
-void I_WaitForTic(int tic);
+// [RH] Returns millisecond-accurate time
+uint64_t I_msTime();
 
-// Returns the hardware clock time, in milliseconds
-uint32_t I_ClockTimeMS();
-
-// Returns the hardware clock time, in microseconds
-uint64_t I_ClockTimeMiS();
+// Nanosecond-accurate time
+uint64_t I_nsTime();
