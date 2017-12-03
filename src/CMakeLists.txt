@@ -476,8 +476,6 @@ set( PLAT_WIN32_SOURCES
 	sound/mididevices/music_win_mididevice.cpp
 	win32/eaxedit.cpp
 	win32/critsec.cpp
-	win32/fb_d3d9.cpp
-	win32/fb_d3d9_wipe.cpp
 	win32/fb_d3d11.cpp
 	win32/hardware.cpp
 	win32/helperthread.cpp
@@ -1214,10 +1212,6 @@ set_source_files_properties( ${FASTMATH_SOURCES} PROPERTIES COMPILE_FLAGS ${ZD_F
 set_source_files_properties( xlat/parse_xlat.cpp PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/xlat_parser.c" )
 set_source_files_properties( sc_man.cpp PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/sc_man_scanner.h" )
 set_source_files_properties( ${NOT_COMPILED_SOURCE_FILES} PROPERTIES HEADER_FILE_ONLY TRUE )
-if ( WIN32 )
-	set_source_files_properties( win32/fb_d3d9.cpp win32/fb_d3d9_wipe.cpp PROPERTIES COMPILE_FLAGS ${ZD_FASTMATH_FLAG} )
-endif()
-
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "SunOS")
 	# [BL] Solaris requires these to be explicitly linked.

@@ -18,7 +18,6 @@ class SDLGLVideo : public IVideo
 	SDLGLVideo (int parm);
 	~SDLGLVideo ();
 
-	EDisplayType GetDisplayType () { return DISPLAY_Both; }
 	void SetWindowedScale (float scale);
 
 	DFrameBuffer *CreateFrameBuffer (int width, int height, bool bgra, bool fs, DFrameBuffer *old);

@@ -256,17 +256,6 @@ void M_InitVideoModesMenu ()
 			BitTranslate[currval++] = i;
 		}
 	}
-
-	/* It doesn't look like this can be anything but DISPLAY_Both, regardless of any other settings.
-	switch (Video->GetDisplayType ())
-	{
-	case DISPLAY_FullscreenOnly:
-	case DISPLAY_WindowOnly:
-		// todo: gray out fullscreen option
-	default:
-		break;
-	}
-	*/
 }
 
 //=============================================================================

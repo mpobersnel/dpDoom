@@ -152,19 +152,7 @@ void I_CreateRenderer()
 
 DFrameBuffer *I_SetMode (int &width, int &height, DFrameBuffer *old)
 {
-	bool fs = false;
-	switch (Video->GetDisplayType ())
-	{
-	case DISPLAY_WindowOnly:
-		fs = false;
-		break;
-	case DISPLAY_FullscreenOnly:
-		fs = true;
-		break;
-	case DISPLAY_Both:
-		fs = fullscreen;
-		break;
-	}
+	bool fs = fullscreen;
 	DFrameBuffer *res = Video->CreateFrameBuffer (width, height, swtruecolor, fs, old);
 
 	/* Right now, CreateFrameBuffer cannot return NULL

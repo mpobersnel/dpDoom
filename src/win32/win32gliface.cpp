@@ -100,14 +100,12 @@ public:
 	Win32GLVideo(int parm);
 	virtual ~Win32GLVideo();
 
-	EDisplayType GetDisplayType() { return DISPLAY_Both; }
 	void SetWindowedScale(float scale);
 	void StartModeIterator(int bits, bool fs);
 	bool NextMode(int *width, int *height, bool *letterbox);
 	bool GoFullscreen(bool yes);
 	DFrameBuffer *CreateFrameBuffer (int width, int height, bool bgra, bool fs, DFrameBuffer *old);
 	virtual bool SetResolution(int width, int height, int bits);
-	void DumpAdapters();
 	bool InitHardware(HWND Window, int multisample);
 	void Shutdown();
 	bool SetFullscreen(const char *devicename, int w, int h, int bits, int hz);
@@ -526,71 +524,6 @@ bool Win32GLVideo::SetResolution (int width, int height, int bits)
 	
 	V_DoModeSetup(width, height, bits);
 	return true;	// We must return true because the old video context no longer exists.
-}
-
-//==========================================================================
-//
-// 
-//
-//==========================================================================
-
-struct DumpAdaptersState
-{
-	unsigned index;
-	char *displayDeviceName;
-};
-
-static BOOL CALLBACK DumpAdaptersMonitorEnumProc(HMONITOR hMonitor, HDC, LPRECT, LPARAM dwData)
-{
-	DumpAdaptersState *state = reinterpret_cast<DumpAdaptersState *>(dwData);
-
-	MONITORINFOEX mi;
-	mi.cbSize=sizeof mi;
-
-	char moreinfo[64] = "";
-
-	bool active = true;
-
-	if (GetMonitorInfo(hMonitor, &mi))
-	{
-		bool primary = !!(mi.dwFlags & MONITORINFOF_PRIMARY);
-
-		mysnprintf(moreinfo, countof(moreinfo), " [%ldx%ld @ (%ld,%ld)]%s",
-			mi.rcMonitor.right - mi.rcMonitor.left,
-			mi.rcMonitor.bottom - mi.rcMonitor.top,
-			mi.rcMonitor.left, mi.rcMonitor.top,
-			primary ? " (Primary)" : "");
-
-		if (!state->displayDeviceName && !primary)
-			active = false;//primary selected, but this ain't primary
-		else if (state->displayDeviceName && strcmp(state->displayDeviceName, mi.szDevice) != 0)
-			active = false;//this isn't the selected one
-	}
-
-	Printf("%s%u. %s\n",
-		active ? TEXTCOLOR_BOLD : "",
-		state->index,
-		moreinfo);
-
-	++state->index;
-
-	return TRUE;
-}
-
-//==========================================================================
-//
-// 
-//
-//==========================================================================
-
-void Win32GLVideo::DumpAdapters()
-{
-	DumpAdaptersState das;
-
-	das.index = 1;
-	das.displayDeviceName = m_DisplayDeviceName;
-
-	EnumDisplayMonitors(0, 0, DumpAdaptersMonitorEnumProc, LPARAM(&das));
 }
 
 //==========================================================================

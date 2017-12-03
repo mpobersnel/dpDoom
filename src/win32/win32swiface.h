@@ -296,23 +296,3 @@ enum
 	BQS_SpecialColormap,
 	BQS_InGameColormap,
 };
-
-#if _DEBUG && 0
-#define STARTLOG
-#define STOPLOG
-#define LOG(x)			{ OutputDebugString(x); }
-#define LOG1(x,y)		{ char poo[1024]; mysnprintf(poo, countof(poo), x, y); OutputDebugString(poo); }
-#define LOG2(x,y,z)		{ char poo[1024]; mysnprintf(poo, countof(poo), x, y, z); OutputDebugString(poo); }
-#define LOG3(x,y,z,zz)	{ char poo[1024]; mysnprintf(poo, countof(poo), x, y, z, zz); OutputDebugString(poo); }
-#define LOG4(x,y,z,a,b)	{ char poo[1024]; mysnprintf(poo, countof(poo), x, y, z, a, b); OutputDebugString(poo); }
-#define LOG5(x,y,z,a,b,c) { char poo[1024]; mysnprintf(poo, countof(poo), x, y, z, a, b, c); OutputDebugString(poo); }
-#else
-#define STARTLOG
-#define STOPLOG
-#define LOG(x)
-#define LOG1(x,y)
-#define LOG2(x,y,z)
-#define LOG3(x,y,z,zz)
-#define LOG4(x,y,z,a,b)
-#define LOG5(x,y,z,a,b,c)
-#endif

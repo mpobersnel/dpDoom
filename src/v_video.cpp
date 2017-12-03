@@ -1759,17 +1759,6 @@ void ScaleWithAspect (int &w, int &h, int Width, int Height)
 		h = static_cast<int>(y);
 }
 
-void IVideo::DumpAdapters ()
-{
-	Printf("Multi-monitor support unavailable.\n");
-}
-
-CCMD(vid_listadapters)
-{
-	if (Video != NULL)
-		Video->DumpAdapters();
-}
-
 DEFINE_GLOBAL(SmallFont)
 DEFINE_GLOBAL(SmallFont2)
 DEFINE_GLOBAL(BigFont)

@@ -42,7 +42,6 @@ class IVideo
  public:
 	virtual ~IVideo () {}
 
-	virtual EDisplayType GetDisplayType () = 0;
 	virtual void SetWindowedScale (float scale) = 0;
 
 	virtual DFrameBuffer *CreateFrameBuffer (int width, int height, bool bgra, bool fs, DFrameBuffer *old) = 0;
@@ -51,8 +50,6 @@ class IVideo
 	virtual bool NextMode (int *width, int *height, bool *letterbox) = 0;
 
 	virtual bool SetResolution (int width, int height, int bits);
-
-	virtual void DumpAdapters();
 };
 
 void I_InitGraphics ();

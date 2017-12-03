@@ -68,8 +68,10 @@ ADD_STAT(blit)
 	return out;
 }
 
-HMODULE D3D11_dll;
+HMODULE D3D11_dll, DXGI_dll;
 FuncD3D11CreateDeviceAndSwapChain D3D11_createdeviceandswapchain;
+FuncCreateDXGIFactory D3D11_createdxgifactory;
+
 
 D3D11FB::D3D11FB(int width, int height, bool bgra, bool fullscreen) : BaseWinFB(width, height, bgra)
 {

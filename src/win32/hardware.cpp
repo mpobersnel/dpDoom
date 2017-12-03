@@ -52,7 +52,6 @@ EXTERN_CVAR (Bool, ticker)
 EXTERN_CVAR (Bool, fullscreen)
 EXTERN_CVAR (Bool, swtruecolor)
 EXTERN_CVAR (Float, vid_winscale)
-EXTERN_CVAR (Bool, vid_forceddraw)
 
 CVAR(Int, win_x, -1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 CVAR(Int, win_y, -1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
@@ -207,10 +206,8 @@ void I_CreateRenderer()
 		Printf("Renderer: OpenGL\n");
 	else if (currentcanvas == 1)
 		Printf("Renderer: Software on OpenGL\n");
-	else if (currentcanvas == 0 && vid_forceddraw == false)
-		Printf("Renderer: Software on Direct3D\n");
 	else if (currentcanvas == 0)
-		Printf("Renderer: Software on DirectDraw\n");
+		Printf("Renderer: Software on Direct3D\n");
 	else
 		Printf("Renderer: Unknown\n");
 	if (Renderer == NULL)
@@ -227,25 +224,14 @@ void I_CreateRenderer()
 
 DFrameBuffer *I_SetMode (int &width, int &height, DFrameBuffer *old)
 {
-	bool fs = false;
-	switch (Video->GetDisplayType ())
+	bool fs;
+	if (ForceWindowed)
 	{
-	case DISPLAY_WindowOnly:
 		fs = false;
-		break;
-	case DISPLAY_FullscreenOnly:
-		fs = true;
-		break;
-	case DISPLAY_Both:
-		if (ForceWindowed)
-		{
-			fs = false;
-		}
-		else
-		{
-			fs = fullscreen;
-		}
-		break;
+	}
+	else
+	{
+		fs = fullscreen;
 	}
 	DFrameBuffer *res = Video->CreateFrameBuffer (width, height, swtruecolor, fs, old);
 

@@ -61,7 +61,6 @@ public:
 	~D3D11FB();
 
 	// BaseWinFB interface (legacy junk we don't need to support):
-	void Blank() override { }
 	bool PaintToWindow() override { return true; }
 	long GetHR() override { return 0; }
 	bool CreateResources() override { return true; }
@@ -131,5 +130,8 @@ typedef HRESULT(WINAPI *FuncD3D11CreateDeviceAndSwapChain)(
 	__out_opt D3D_FEATURE_LEVEL* pFeatureLevel,
 	__out_opt ID3D11DeviceContext** ppImmediateContext);
 
-extern HMODULE D3D11_dll;
+typedef HRESULT(WINAPI *FuncCreateDXGIFactory)(REFIID riid, _COM_Outptr_ void **ppFactory);
+
+extern HMODULE D3D11_dll, DXGI_dll;
 extern FuncD3D11CreateDeviceAndSwapChain D3D11_createdeviceandswapchain;
+extern FuncCreateDXGIFactory D3D11_createdxgifactory;

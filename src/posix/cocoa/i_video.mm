@@ -279,7 +279,6 @@ class CocoaVideo : public IVideo
 public:
 	CocoaVideo();
 
-	virtual EDisplayType GetDisplayType() { return DISPLAY_Both; }
 	virtual void SetWindowedScale(float scale);
 
 	virtual DFrameBuffer* CreateFrameBuffer(int width, int height, bool bgra, bool fs, DFrameBuffer* old);

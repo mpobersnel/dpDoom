@@ -31,16 +31,12 @@
 **
 */
 
-#ifndef __WIN32IFACE_H
-#define __WIN32IFACE_H
+#pragma once
 
 #include "hardware.h"
 
-
 EXTERN_CVAR (Bool, vid_vsync)
 
-class D3DTex;
-class D3DPal;
 struct FSoftwareRenderer;
 
 class Win32Video : public IVideo
@@ -50,9 +46,7 @@ class Win32Video : public IVideo
 	~Win32Video ();
 
 	bool InitD3D11();
-	bool InitD3D9();
 
-	EDisplayType GetDisplayType () { return DISPLAY_Both; }
 	void SetWindowedScale (float scale);
 
 	DFrameBuffer *CreateFrameBuffer (int width, int height, bool bgra, bool fs, DFrameBuffer *old);
@@ -61,43 +55,23 @@ class Win32Video : public IVideo
 	bool NextMode (int *width, int *height, bool *letterbox);
 
 	bool GoFullscreen (bool yes);
-	void BlankForGDI ();
 
-	void DumpAdapters ();
-	void AddMode(int x, int y, int bits, int baseHeight, int doubling);
+	void AddMode(int x, int y);
 
  private:
 	struct ModeInfo
 	{
-		ModeInfo (int inX, int inY, int inBits, int inRealY, int inDoubling)
-			: next (NULL),
-			  width (inX),
-			  height (inY),
-			  bits (inBits),
-			  realheight (inRealY),
-			  doubling (inDoubling)
-		{}
+		ModeInfo() { }
+		ModeInfo (int inX, int inY) : width (inX), height (inY) { }
 
-		ModeInfo *next;
-		int width, height, bits;
-		int realheight;
-		int doubling;
-	} *m_Modes;
+		int width = 0;
+		int height = 0;
+	};
 
-	ModeInfo *m_IteratorMode;
-	int m_IteratorBits;
-	bool m_IteratorFS;
-	bool m_IsFullscreen;
-	unsigned int m_Adapter;
+	TArray<ModeInfo> m_Modes;
 
-	void FreeModes ();
-
-	void AddD3DModes (unsigned adapter);
-	void AddLowResModes ();
-	void AddLetterboxModes ();
-	void ScaleModes (int doubling);
-
-	friend class D3DFB;
+	unsigned int m_IteratorPos;
+	bool m_IsFullscreen = false;
 };
 
 class BaseWinFB : public DFrameBuffer
@@ -107,7 +81,6 @@ public:
 	BaseWinFB(int width, int height, bool bgra) : DFrameBuffer(width, height, bgra), Windowed(true) {}
 
 	bool IsFullscreen () { return !Windowed; }
-	virtual void Blank () = 0;
 	virtual bool PaintToWindow () = 0;
 	virtual long/*HRESULT*/ GetHR () = 0;	// HRESULT is a long in Windows but this header should not be polluted with windows.h just for this single definition
 	virtual void ScaleCoordsFromWindow(int16_t &x, int16_t &y);
@@ -123,6 +96,3 @@ protected:
 
 	BaseWinFB() {}
 };
-
-
-#endif // __WIN32IFACE_H
