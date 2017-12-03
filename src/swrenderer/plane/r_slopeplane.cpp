@@ -213,20 +213,23 @@ namespace swrenderer
 
 	void RenderSlopePlane::RenderLine(int y, int x1, int x2)
 	{
-		// Calculate normalized device coordinates for the span
-		// 1.5 is not a typo. The range is [x1,x2]
-		double devY = -(y + 0.5 - Thread->Viewport->CenterY) / Thread->Viewport->InvZtoScale / Thread->Viewport->viewwindow.FocalTangent;
-		double devX1 = (x1 + 0.5 - Thread->Viewport->CenterX) / Thread->Viewport->CenterX;
-		double devX2 = (x2 + 1.5 - Thread->Viewport->CenterX) / Thread->Viewport->CenterX;
+		if (r_models)
+		{
+			// Calculate normalized device coordinates for the span
+			// 1.5 is not a typo. The range is [x1,x2]
+			double devY = -(y + 0.5 - Thread->Viewport->CenterY) / Thread->Viewport->InvZtoScale / Thread->Viewport->viewwindow.FocalTangent;
+			double devX1 = (x1 + 0.5 - Thread->Viewport->CenterX) / Thread->Viewport->CenterX;
+			double devX2 = (x2 + 1.5 - Thread->Viewport->CenterX) / Thread->Viewport->CenterX;
 
-		// Find depth values for the span
-		float zbufferdepth1 = (float)-planeD / (planeNormal | DVector3(devX1, 1.0, devY));
-		float zbufferdepth2 = (float)-planeD / (planeNormal | DVector3(devX2, 1.0, devY));
+			// Find depth values for the span
+			float zbufferdepth1 = (float)-planeD / (planeNormal | DVector3(devX1, 1.0, devY));
+			float zbufferdepth2 = (float)-planeD / (planeNormal | DVector3(devX2, 1.0, devY));
 
-		drawerargs.SetDestX1(x1);
-		drawerargs.SetDestX2(x2);
-		drawerargs.SetDestY(Thread->Viewport.get(), y);
-		drawerargs.DrawDepthSpan(Thread, 1.0f / zbufferdepth1, 1.0f / zbufferdepth2);
+			drawerargs.SetDestX1(x1);
+			drawerargs.SetDestX2(x2);
+			drawerargs.SetDestY(Thread->Viewport.get(), y);
+			drawerargs.DrawDepthSpan(Thread, 1.0f / zbufferdepth1, 1.0f / zbufferdepth2);
+		}
 
 		drawerargs.DrawTiltedSpan(Thread, y, x1, x2, plane_sz, plane_su, plane_sv, plane_shade, planeshade, planelightfloat, pviewx, pviewy, basecolormap);
 	}
