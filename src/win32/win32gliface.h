@@ -37,14 +37,6 @@ public:
 	virtual ~Win32GLFrameBuffer();
 
 
-	// unused but must be defined
-	virtual void Blank ();
-	virtual bool PaintToWindow ();
-	virtual long/*HRESULT*/ GetHR();	// windows.h pollution prevention.
-
-	virtual bool CreateResources ();
-	virtual void ReleaseResources ();
-
 	void SetVSync (bool vsync);
 	void SwapBuffers();
 	void NewRefreshRate ();
@@ -61,8 +53,6 @@ public:
 
 
 	bool IsFullscreen();
-	void PaletteChanged();
-	int QueryNewPalette();
 
 	void InitializeState();
 

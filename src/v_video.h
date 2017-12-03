@@ -444,12 +444,6 @@ public:
 
 	uint64_t GetLastFPS() const { return LastCount; }
 
-#ifdef _WIN32
-	virtual void PaletteChanged () = 0;
-	virtual int QueryNewPalette () = 0;
-	virtual bool Is8BitMode() = 0;
-#endif
-
 	virtual bool IsOpenGL() const { return true; }
 
 	// The original size of the framebuffer as selected in the video menu.

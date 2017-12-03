@@ -45,8 +45,6 @@ class Win32Video : public IVideo
 	Win32Video (int parm);
 	~Win32Video ();
 
-	bool InitD3D11();
-
 	void SetWindowedScale (float scale);
 
 	DFrameBuffer *CreateFrameBuffer (int width, int height, bool bgra, bool fs, DFrameBuffer *old);
@@ -55,8 +53,6 @@ class Win32Video : public IVideo
 	bool NextMode (int *width, int *height, bool *letterbox);
 
 	bool GoFullscreen (bool yes);
-
-	void AddMode(int x, int y);
 
  private:
 	struct ModeInfo
@@ -67,6 +63,9 @@ class Win32Video : public IVideo
 		int width = 0;
 		int height = 0;
 	};
+
+	bool InitD3D11();
+	void AddMode(int x, int y);
 
 	TArray<ModeInfo> m_Modes;
 
@@ -81,13 +80,9 @@ public:
 	BaseWinFB(int width, int height, bool bgra) : DFrameBuffer(width, height, bgra), Windowed(true) {}
 
 	bool IsFullscreen () { return !Windowed; }
-	virtual bool PaintToWindow () = 0;
-	virtual long/*HRESULT*/ GetHR () = 0;	// HRESULT is a long in Windows but this header should not be polluted with windows.h just for this single definition
 	virtual void ScaleCoordsFromWindow(int16_t &x, int16_t &y);
 
 protected:
-	virtual bool CreateResources () = 0;
-	virtual void ReleaseResources () = 0;
     virtual int GetTrueHeight() { return GetHeight(); }
 
 	bool Windowed;

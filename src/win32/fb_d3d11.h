@@ -61,13 +61,6 @@ public:
 	~D3D11FB();
 
 	// BaseWinFB interface (legacy junk we don't need to support):
-	bool PaintToWindow() override { return true; }
-	long GetHR() override { return 0; }
-	bool CreateResources() override { return true; }
-	void ReleaseResources() override { }
-	void PaletteChanged() override { }
-	int QueryNewPalette() override { return 0; }
-	bool Is8BitMode() override { return false; }
 	bool IsValid() override { return true; }
 
 	// DFrameBuffer interface:
