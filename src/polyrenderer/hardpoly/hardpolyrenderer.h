@@ -31,7 +31,7 @@ class PolyRenderThread;
 class HardpolyRenderer;
 class DCanvas;
 
-struct FrameUniforms
+struct MatrixUniforms
 {
 	Mat4f WorldToView;
 	Mat4f ViewToProjection;
@@ -74,12 +74,13 @@ struct DrawRun
 	uint32_t DestAlpha = 0;
 	bool DepthTest = true;
 	bool WriteDepth = true;
+	int MatrixUniformsIndex = -1;
 };
 
 struct DrawRunKey
 {
 	DrawRunKey() { }
-	DrawRunKey(const DrawRun &run) : Texture(run.Texture), Pixels(run.Pixels), BaseColormap(run.BaseColormap), Translation(run.Translation), BlendMode(run.BlendMode), SrcAlpha(run.SrcAlpha), DestAlpha(run.DestAlpha) { }
+	DrawRunKey(const DrawRun &run) : Texture(run.Texture), Pixels(run.Pixels), BaseColormap(run.BaseColormap), Translation(run.Translation), BlendMode(run.BlendMode), SrcAlpha(run.SrcAlpha), DestAlpha(run.DestAlpha), MatrixUniformsIndex(run.MatrixUniformsIndex) { }
 
 	FTexture *Texture = nullptr;
 	const uint8_t *Pixels = nullptr;
@@ -88,6 +89,7 @@ struct DrawRunKey
 	TriBlendMode BlendMode = TriBlendMode::TextureOpaque;
 	uint32_t SrcAlpha = 0xffffffff;
 	uint32_t DestAlpha = 0xffffffff;
+	int MatrixUniformsIndex = -1;
 
 	bool operator<(const DrawRunKey &other) const { return memcmp(this, &other, sizeof(DrawRunKey)) < 0; }
 	bool operator>(const DrawRunKey &other) const { return memcmp(this, &other, sizeof(DrawRunKey)) > 0; }
@@ -110,6 +112,8 @@ struct DrawBatch
 	std::vector<TriVertex> CpuVertices;
 	std::vector<::FaceUniforms> CpuFaceUniforms;
 	std::vector<uint16_t> CpuIndexBuffer;
+	std::vector<MatrixUniforms> CpuMatrices;
+	int MatrixUpdateGeneration = -1;
 };
 
 class DrawBatcher
@@ -129,6 +133,13 @@ public:
 	enum { MaxVertices = MaxFaceUniforms * 4 };
 	enum { MaxIndices = MaxVertices * 3 };
 
+	Mat4f WorldToView;
+	Mat4f ViewToClip;
+	int MatrixUpdateGeneration = 0;
+
+	void MatrixUpdated() { MatrixUpdateGeneration++; }
+	MatrixUniforms GetMatrixUniforms();
+
 private:
 	std::vector<std::unique_ptr<DrawBatch>> mCurrentFrameBatches;
 	std::vector<std::unique_ptr<DrawBatch>> mLastFrameBatches;
@@ -145,20 +156,17 @@ public:
 	void Begin();
 	void ClearBuffers(DCanvas *canvas);
 	void SetViewport(int x, int y, int width, int height, DCanvas *canvas);
+	void DrawElements(PolyRenderThread *thread, const PolyDrawArgs &args);
 	void DrawArray(PolyRenderThread *thread, const PolyDrawArgs &args);
-	void DrawRect(const RectDrawArgs &args);
+	void DrawRect(PolyRenderThread *thread, const RectDrawArgs &args);
 	void End();
 
 	void RenderBatch(DrawBatch *batch);
-
-	Mat4f worldToView;
-	Mat4f viewToClip;
 
 private:
 	void SetupFramebuffer();
 	void CompileShaders();
 	void CreateSamplers();
-	void UpdateFrameUniforms();
 
 	std::shared_ptr<GPUTexture2D> GetTexture(FTexture *texture, bool translated);
 	std::shared_ptr<GPUTexture2D> GetTexturePal(FTexture *texture);
@@ -179,10 +187,7 @@ private:
 	std::shared_ptr<GPUFrameBuffer> mSceneFB;
 	std::shared_ptr<GPUFrameBuffer> mTranslucentFB;
 
-	std::shared_ptr<GPUUniformBuffer> mFrameUniforms[3];
-	int mCurrentFrameUniforms = 0;
-	bool mFrameUniformsDirty = true;
-
+	std::shared_ptr<GPUUniformBuffer> mMatrixUniforms;
 	std::shared_ptr<GPUUniformBuffer> mRectUniforms;
 
 	std::shared_ptr<GPUVertexArray> mVertexArray;

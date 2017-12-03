@@ -168,7 +168,7 @@ void PolyDrawArgs::DrawElements(PolyRenderThread *thread, const TriVertex *verti
 	mVertexCount = count;
 	mDrawMode = mode;
 	if (PolyRenderer::Instance()->RedirectToHardpoly)
-		return; // PolyRenderer::Instance()->Hardpoly->DrawElements(thread, *this);
+		PolyRenderer::Instance()->Hardpoly->DrawElements(thread, *this);
 	else
 		thread->DrawQueue->Push<DrawPolyTrianglesCommand>(*this, PolyTriangleDrawer::is_mirror());
 }
@@ -320,7 +320,7 @@ void RectDrawArgs::Draw(PolyRenderThread *thread, double x0, double x1, double y
 	mV1 = (float)v1;
 
 	if (PolyRenderer::Instance()->RedirectToHardpoly)
-		PolyRenderer::Instance()->Hardpoly->DrawRect(*this);
+		PolyRenderer::Instance()->Hardpoly->DrawRect(thread, *this);
 	else
 		thread->DrawQueue->Push<DrawRectCommand>(*this);
 }

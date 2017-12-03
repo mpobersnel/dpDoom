@@ -140,6 +140,9 @@ void PolyModelRenderer::DrawArrays(int start, int count)
 	TriMatrix *transform = Thread->FrameMemory->NewObject<TriMatrix>();
 	*transform = WorldToClip * swapYZ * ObjectToWorld;
 
+	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld).matrix);
+	Thread->DrawBatcher.MatrixUpdated();
+
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sector->Colormap, sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
 	args.SetTransform(transform);
@@ -152,6 +155,9 @@ void PolyModelRenderer::DrawArrays(int start, int count)
 	args.SetWriteDepth(true);
 	args.SetWriteStencil(false);
 	args.DrawArray(Thread, VertexBuffer + start, count);
+
+	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView).matrix);
+	Thread->DrawBatcher.MatrixUpdated();
 }
 
 void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
@@ -174,6 +180,9 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 	TriMatrix *transform = Thread->FrameMemory->NewObject<TriMatrix>();
 	*transform = WorldToClip * swapYZ * ObjectToWorld;
 
+	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld).matrix);
+	Thread->DrawBatcher.MatrixUpdated();
+
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sector->Colormap, sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
 	args.SetTransform(transform);
@@ -186,6 +195,9 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 	args.SetWriteDepth(true);
 	args.SetWriteStencil(false);
 	args.DrawElements(Thread, VertexBuffer, IndexBuffer + offset / sizeof(unsigned int), numIndices);
+
+	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView).matrix);
+	Thread->DrawBatcher.MatrixUpdated();
 }
 
 double PolyModelRenderer::GetTimeFloat()

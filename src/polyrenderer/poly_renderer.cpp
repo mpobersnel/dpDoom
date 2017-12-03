@@ -231,7 +231,6 @@ void PolyRenderer::SetupPerspectiveMatrix()
 		bDidSetup = true;
 	}
 
-	// Code provided courtesy of Graf Zahl. Now we just have to plug it into the viewmatrix code...
 	// We have to scale the pitch to account for the pixel stretching, because the playsim doesn't know about this and treats it as 1:1.
 	double radPitch = Viewpoint.Angles.Pitch.Normalized180().Radians();
 	double angx = cos(radPitch);
@@ -256,14 +255,16 @@ void PolyRenderer::SetupPerspectiveMatrix()
 
 	if (RedirectToHardpoly)
 	{
-		Hardpoly->worldToView =
+		Threads.MainThread()->DrawBatcher.WorldToView =
+			Mat4f::Rotate((float)Viewpoint.Angles.Roll.Radians(), 0.0f, 0.0f, 1.0f) *
 			Mat4f::Rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
 			Mat4f::Rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
 			Mat4f::Scale(1.0f, level.info->pixelstretch, 1.0f) *
 			Mat4f::SwapYZ() *
 			Mat4f::Translate((float)-Viewpoint.Pos.X, (float)-Viewpoint.Pos.Y, (float)-Viewpoint.Pos.Z);
 
-		Hardpoly->viewToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f);
+		Threads.MainThread()->DrawBatcher.ViewToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f);
+		Threads.MainThread()->DrawBatcher.MatrixUpdated();
 	}
 }
 

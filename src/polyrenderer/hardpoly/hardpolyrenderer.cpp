@@ -50,7 +50,6 @@ HardpolyRenderer::~HardpolyRenderer()
 
 void HardpolyRenderer::Begin()
 {
-	mFrameUniformsDirty = true;
 	mContext->Begin();
 	SetupFramebuffer();
 	CompileShaders();
@@ -99,17 +98,15 @@ void HardpolyRenderer::SetViewport(int x, int y, int width, int height, DCanvas 
 	mContext->SetViewport(x, y, width, height);
 }
 
-void HardpolyRenderer::DrawArray(PolyRenderThread *thread, const PolyDrawArgs &drawargs)
+void HardpolyRenderer::DrawElements(PolyRenderThread *thread, const PolyDrawArgs &drawargs)
 {
 	if (!drawargs.WriteColor())
 		return;
 
 	bool ccw = drawargs.FaceCullCCW();
-	int vcount = drawargs.VertexCount();
-	if (vcount < 3)
+	int totalvcount = drawargs.VertexCount();
+	if (totalvcount < 3)
 		return;
-
-	thread->DrawBatcher.GetVertices(vcount);
 
 	DrawRun run;
 	run.Texture = drawargs.Texture();
@@ -126,6 +123,96 @@ void HardpolyRenderer::DrawArray(PolyRenderThread *thread, const PolyDrawArgs &d
 	run.DestAlpha = drawargs.DestAlpha();
 	run.DepthTest = drawargs.DepthTest();
 	run.WriteDepth = drawargs.WriteDepth();
+
+	FaceUniforms uniforms;
+	uniforms.AlphaTest = 0.5f;
+	uniforms.Light = drawargs.Light();
+	if (drawargs.FixedLight())
+		uniforms.Light = -uniforms.Light - 1;
+	uniforms.Mode = GetSamplerMode(drawargs.BlendMode());
+	uniforms.FillColor.X = RPART(drawargs.Color()) / 255.0f;
+	uniforms.FillColor.Y = GPART(drawargs.Color()) / 255.0f;
+	uniforms.FillColor.Z = BPART(drawargs.Color()) / 255.0f;
+	uniforms.FillColor.W = drawargs.Color();
+	uniforms.ClipPlane0 = { drawargs.ClipPlane(0).A, drawargs.ClipPlane(0).B, drawargs.ClipPlane(0).C, drawargs.ClipPlane(0).D };
+	uniforms.ClipPlane1 = { drawargs.ClipPlane(1).A, drawargs.ClipPlane(1).B, drawargs.ClipPlane(1).C, drawargs.ClipPlane(1).D };
+	uniforms.ClipPlane2 = { drawargs.ClipPlane(2).A, drawargs.ClipPlane(2).B, drawargs.ClipPlane(2).C, drawargs.ClipPlane(2).D };
+
+	DrawRunKey key(run);
+
+	const int indexBatchCount = 500 * 3;
+	for (int indexRun = 0; indexRun < totalvcount; indexRun += indexBatchCount)
+	{
+		int vcount = MIN(indexRun + indexBatchCount, totalvcount) - indexRun;
+		thread->DrawBatcher.GetVertices(vcount);
+
+		if (thread->DrawBatcher.mCurrentBatch->MatrixUpdateGeneration != thread->DrawBatcher.MatrixUpdateGeneration || thread->DrawBatcher.mCurrentBatch->CpuMatrices.empty())
+		{
+			thread->DrawBatcher.mCurrentBatch->CpuMatrices.push_back(thread->DrawBatcher.GetMatrixUniforms());
+		}
+
+		run.MatrixUniformsIndex = (int)(thread->DrawBatcher.mCurrentBatch->CpuMatrices.size() - 1);
+		key.MatrixUniformsIndex = run.MatrixUniformsIndex;
+
+		float faceIndex = (float)thread->DrawBatcher.mCurrentBatch->CpuFaceUniforms.size();
+		auto vsrc = drawargs.Vertices();
+		auto vdest = thread->DrawBatcher.mVertices + thread->DrawBatcher.mNextVertex;
+		auto elements = drawargs.Elements();
+		for (int i = 0; i < vcount; i++)
+		{
+			vdest[i] = vsrc[elements[indexRun + i]];
+			vdest[i].w = faceIndex;
+		}
+
+		int startv = thread->DrawBatcher.mNextVertex;
+		auto &indexBuffer = thread->DrawBatcher.mCurrentBatch->CpuIndexBuffer;
+		run.Start = (int)indexBuffer.size();
+		for (int i = 0; i < vcount; i++)
+			indexBuffer.push_back(startv + i);
+		run.NumVertices = vcount;
+
+		auto &drawRuns = thread->DrawBatcher.mCurrentBatch->SortedDrawRuns[key];
+		drawRuns.push_back(run);
+		thread->DrawBatcher.mCurrentBatch->HasSortedDrawRuns = true;
+
+		thread->DrawBatcher.mNextVertex += vcount;
+		thread->DrawBatcher.mCurrentBatch->CpuFaceUniforms.push_back(uniforms);
+	}
+}
+
+void HardpolyRenderer::DrawArray(PolyRenderThread *thread, const PolyDrawArgs &drawargs)
+{
+	if (!drawargs.WriteColor())
+		return;
+
+	bool ccw = drawargs.FaceCullCCW();
+	int vcount = drawargs.VertexCount();
+	if (vcount < 3)
+		return;
+
+	thread->DrawBatcher.GetVertices(vcount);
+
+	if (thread->DrawBatcher.mCurrentBatch->MatrixUpdateGeneration != thread->DrawBatcher.MatrixUpdateGeneration || thread->DrawBatcher.mCurrentBatch->CpuMatrices.empty())
+	{
+		thread->DrawBatcher.mCurrentBatch->CpuMatrices.push_back(thread->DrawBatcher.GetMatrixUniforms());
+	}
+
+	DrawRun run;
+	run.Texture = drawargs.Texture();
+	if (!run.Texture)
+	{
+		run.Pixels = drawargs.TexturePixels();
+		run.PixelsWidth = drawargs.TextureWidth();
+		run.PixelsHeight = drawargs.TextureHeight();
+	}
+	run.Translation = drawargs.Translation();
+	run.BaseColormap = drawargs.BaseColormap();
+	run.BlendMode = drawargs.BlendMode();
+	run.SrcAlpha = drawargs.SrcAlpha();
+	run.DestAlpha = drawargs.DestAlpha();
+	run.DepthTest = drawargs.DepthTest();
+	run.WriteDepth = drawargs.WriteDepth();
+	run.MatrixUniformsIndex = (int)(thread->DrawBatcher.mCurrentBatch->CpuMatrices.size() - 1);
 
 	FaceUniforms uniforms;
 	uniforms.AlphaTest = 0.5f;
@@ -220,29 +307,12 @@ void HardpolyRenderer::DrawArray(PolyRenderThread *thread, const PolyDrawArgs &d
 	thread->DrawBatcher.mCurrentBatch->CpuFaceUniforms.push_back(uniforms);
 }
 
-void HardpolyRenderer::UpdateFrameUniforms()
+void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &args)
 {
-	if (mFrameUniformsDirty)
-	{
-		mCurrentFrameUniforms = (mCurrentFrameUniforms + 1) % 3;
-
-		if (!mFrameUniforms[mCurrentFrameUniforms])
-			mFrameUniforms[mCurrentFrameUniforms] = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(FrameUniforms));
-
-		FrameUniforms frameUniforms;
-		frameUniforms.WorldToView = worldToView;
-		frameUniforms.ViewToProjection = viewToClip;
-		frameUniforms.GlobVis = R_GetGlobVis(PolyRenderer::Instance()->Viewwindow, r_visibility);
-
-		mFrameUniforms[mCurrentFrameUniforms]->Upload(&frameUniforms, (int)sizeof(FrameUniforms));
-
-		mFrameUniformsDirty = false;
-	}
-}
-
-void HardpolyRenderer::DrawRect(const RectDrawArgs &args)
-{
-	UpdateFrameUniforms();
+	MatrixUniforms cpuMatrixUniforms = thread->DrawBatcher.GetMatrixUniforms();
+	if (!mMatrixUniforms)
+		mMatrixUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(MatrixUniforms));
+	mMatrixUniforms->Upload(&cpuMatrixUniforms, (int)sizeof(MatrixUniforms));
 
 	if (!mScreenQuad)
 	{
@@ -293,7 +363,7 @@ void HardpolyRenderer::DrawRect(const RectDrawArgs &args)
 	if (loc != -1)
 		glUniform1i(loc, 2);
 
-	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
+	mContext->SetUniforms(0, mMatrixUniforms);
 	mContext->SetUniforms(1, mRectUniforms);
 	mContext->SetSampler(0, mSamplerNearest);
 	mContext->SetSampler(1, mSamplerNearest);
@@ -314,12 +384,13 @@ void HardpolyRenderer::DrawRect(const RectDrawArgs &args)
 
 void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 {
-	UpdateFrameUniforms();
+	if (!mMatrixUniforms)
+		mMatrixUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(MatrixUniforms));
 
 	mContext->SetVertexArray(batch->VertexArray);
 	mContext->SetIndexBuffer(batch->IndexBuffer);
 	mContext->SetProgram(mOpaqueProgram);
-	mContext->SetUniforms(0, mFrameUniforms[mCurrentFrameUniforms]);
+	mContext->SetUniforms(0, mMatrixUniforms);
 	//mContext->SetUniforms(1, batch->FaceUniforms);
 
 	int loc = glGetUniformLocation(mOpaqueProgram->Handle(), "FaceUniformsTexture");
@@ -363,6 +434,11 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 		DrawRunKey current(run);
 		if (current != last)
 		{
+			if (run.MatrixUniformsIndex != last.MatrixUniformsIndex || last.MatrixUniformsIndex == -1)
+			{
+				mMatrixUniforms->Upload(batch->CpuMatrices.data() + run.MatrixUniformsIndex, (int)sizeof(MatrixUniforms));
+			}
+
 			if (current.BlendMode != last.BlendMode || (current.BlendMode == last.BlendMode && (current.SrcAlpha != last.SrcAlpha || current.DestAlpha != last.DestAlpha)))
 			{
 				BlendSetterFunc blendSetter = GetBlendSetter(run.BlendMode);
@@ -904,11 +980,12 @@ void DrawBatcher::GetVertices(int numVertices)
 
 		mCurrentBatch = mCurrentFrameBatches[mNextBatch++].get();
 		mCurrentBatch->DrawRuns.clear();
-		for (auto &run : mCurrentBatch->SortedDrawRuns) run.second.clear();
+		mCurrentBatch->SortedDrawRuns.clear();
 		mCurrentBatch->HasSortedDrawRuns = false;
 		mCurrentBatch->CpuVertices.resize(MaxVertices);
 		mCurrentBatch->CpuFaceUniforms.clear();// resize(MaxFaceUniforms);
 		mCurrentBatch->CpuIndexBuffer.clear();
+		mCurrentBatch->CpuMatrices.clear();
 		mVertices = mCurrentBatch->CpuVertices.data();
 	}
 }
@@ -925,4 +1002,13 @@ void DrawBatcher::NextFrame()
 	mCurrentFrameBatches.swap(mLastFrameBatches);
 	mNextBatch = 0;
 	mDrawStart = 0;
+}
+
+MatrixUniforms DrawBatcher::GetMatrixUniforms()
+{
+	MatrixUniforms uniforms;
+	uniforms.WorldToView = WorldToView;
+	uniforms.ViewToProjection = ViewToClip;
+	uniforms.GlobVis = R_GetGlobVis(PolyRenderer::Instance()->Viewwindow, r_visibility);
+	return uniforms;
 }

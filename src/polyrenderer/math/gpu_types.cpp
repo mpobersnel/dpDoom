@@ -42,6 +42,13 @@ Mat4f Mat4f::Identity()
 	return m;
 }
 
+Mat4f Mat4f::FromValues(float *matrix)
+{
+	Mat4f m;
+	memcpy(m.Matrix, matrix, sizeof(m.Matrix));
+	return m;
+}
+
 Mat4f Mat4f::Transpose(const Mat4f &matrix)
 {
 	Mat4f m;
@@ -176,6 +183,13 @@ Mat3f Mat3f::Identity()
 	m.Matrix[0] = 1.0f;
 	m.Matrix[4] = 1.0f;
 	m.Matrix[8] = 1.0f;
+	return m;
+}
+
+Mat3f Mat3f::FromValues(float *matrix)
+{
+	Mat3f m;
+	memcpy(m.Matrix, matrix, sizeof(m.Matrix));
 	return m;
 }
 

@@ -94,6 +94,7 @@ class Mat4f
 public:
 	static Mat4f Null();
 	static Mat4f Identity();
+	static Mat4f FromValues(float *matrix);
 	static Mat4f Transpose(const Mat4f &matrix);
 	static Mat4f Translate(float x, float y, float z);
 	static Mat4f Scale(float x, float y, float z);
@@ -116,6 +117,7 @@ public:
 
 	static Mat3f Null();
 	static Mat3f Identity();
+	static Mat3f FromValues(float *matrix);
 	static Mat3f Transpose(const Mat3f &matrix);
 
 	Vec3f operator*(const Vec3f &v) const;
