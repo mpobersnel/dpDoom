@@ -34,10 +34,42 @@ extern BOOL AppActive;
 extern int SessionState;
 extern bool VidResizing;
 
+CVAR(Bool, vid_palettehack, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+CVAR(Bool, vid_noblitter, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+CVAR(Int, vid_displaybits, 8, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+CUSTOM_CVAR(Float, rgamma, 1.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+{
+	if (screen != NULL)
+	{
+		screen->SetGamma(Gamma);
+	}
+}
+CUSTOM_CVAR(Float, ggamma, 1.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+{
+	if (screen != NULL)
+	{
+		screen->SetGamma(Gamma);
+	}
+}
+CUSTOM_CVAR(Float, bgamma, 1.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+{
+	if (screen != NULL)
+	{
+		screen->SetGamma(Gamma);
+	}
+}
+
+cycle_t BlitCycles;
+
+ADD_STAT(blit)
+{
+	FString out;
+	out.Format("blit=%04.1f ms", BlitCycles.TimeMS());
+	return out;
+}
+
 HMODULE D3D11_dll;
 FuncD3D11CreateDeviceAndSwapChain D3D11_createdeviceandswapchain;
-
-IMPLEMENT_CLASS(D3D11FB, false, false)
 
 D3D11FB::D3D11FB(int width, int height, bool bgra, bool fullscreen) : BaseWinFB(width, height, bgra)
 {
@@ -114,7 +146,7 @@ void D3D11FB::Unlock()
 bool D3D11FB::Begin2D(bool copy3d)
 {
 	// To do: call Update if Lock was called
-	return false;
+	return BaseWinFB::Begin2D(copy3d);
 }
 
 void D3D11FB::Update()

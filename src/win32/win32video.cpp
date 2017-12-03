@@ -149,10 +149,7 @@ Win32Video::Win32Video (int parm)
 {
 	I_SetWndProc();
 	InitD3D11();
-	if (!InitD3D9())
-	{
-		InitDDraw();
-	}
+	InitD3D9();
 }
 
 Win32Video::~Win32Video ()
@@ -277,77 +274,6 @@ static HRESULT WINAPI EnumDDModesCB(LPDDSURFACEDESC desc, void *data)
 {
 	((Win32Video *)data)->AddMode(desc->dwWidth, desc->dwHeight, 8, desc->dwHeight, 0);
 	return DDENUMRET_OK;
-}
-
-void Win32Video::InitDDraw ()
-{
-	DIRECTDRAWCREATEFUNC directdraw_create;
-	LPDIRECTDRAW ddraw1;
-	STARTLOG;
-
-	HRESULT dderr;
-
-	// Load the DirectDraw library.
-	if ((DDraw_dll = LoadLibraryA ("ddraw.dll")) == NULL)
-	{
-		I_FatalError ("Could not load ddraw.dll");
-	}
-
-	// Obtain an IDirectDraw interface.
-	if ((directdraw_create = (DIRECTDRAWCREATEFUNC)GetProcAddress (DDraw_dll, "DirectDrawCreate")) == NULL)
-	{
-		I_FatalError ("The system file ddraw.dll is missing the DirectDrawCreate export");
-	}
-
-	dderr = directdraw_create (NULL, &ddraw1, NULL);
-
-	if (FAILED(dderr))
-		I_FatalError ("Could not create DirectDraw object: %08lx", dderr);
-
-	static const GUID IDIRECTDRAW2_GUID = { 0xB3A6F3E0, 0x2B43, 0x11CF, 0xA2, 0xDE, 0x00, 0xAA, 0x00, 0xB9, 0x33, 0x56 };
-
-	dderr = ddraw1->QueryInterface (IDIRECTDRAW2_GUID, (LPVOID*)&DDraw);
-	if (FAILED(dderr))
-	{
-		ddraw1->Release ();
-		DDraw = NULL;
-		I_FatalError ("Could not initialize IDirectDraw2 interface: %08lx", dderr);
-	}
-
-	// Okay, we have the IDirectDraw2 interface now, so we can release the
-	// really old-fashioned IDirectDraw one.
-	ddraw1->Release ();
-
-	DDraw->SetCooperativeLevel (Window, DDSCL_NORMAL);
-	FreeModes ();
-	dderr = DDraw->EnumDisplayModes (0, NULL, this, EnumDDModesCB);
-	if (FAILED(dderr))
-	{
-		DDraw->Release ();
-		DDraw = NULL;
-		I_FatalError ("Could not enumerate display modes: %08lx", dderr);
-	}
-	if (m_Modes == NULL)
-	{
-		DDraw->Release ();
-		DDraw = NULL;
-		I_FatalError ("DirectDraw returned no display modes.\n\n"
-					"If you started " GAMENAME " from a fullscreen DOS box, run it from "
-					"a DOS window instead. If that does not work, you may need to reboot.");
-	}
-	if (Args->CheckParm ("-2"))
-	{ // Force all modes to be pixel-doubled.
-		ScaleModes(1);
-	}
-	else if (Args->CheckParm ("-4"))
-	{ // Force all modes to be pixel-quadrupled.
-		ScaleModes(2);
-	}
-	else
-	{
-		AddLowResModes ();
-	}
-	AddLetterboxModes ();
 }
 
 // Returns true if fullscreen, false otherwise
@@ -652,9 +578,6 @@ bool Win32Video::NextMode (int *width, int *height, bool *letterbox)
 
 DFrameBuffer *Win32Video::CreateFrameBuffer (int width, int height, bool bgra, bool fullscreen, DFrameBuffer *old)
 {
-	static int retry = 0;
-	static int owidth, oheight;
-
 	BaseWinFB *fb;
 	PalEntry flashColor;
 	int flashAmount;
@@ -690,75 +613,18 @@ DFrameBuffer *Win32Video::CreateFrameBuffer (int width, int height, bool bgra, b
 	{
 		fb = new D3D11FB (width, height, bgra, fullscreen);
 	}
-	else if (D3D != NULL)
+	else
 	{
 		fb = new D3DFB (m_Adapter, width, height, bgra, fullscreen);
 	}
-	else
+
+	if (fb == nullptr || !fb->IsValid())
 	{
-		fb = new DDrawFB (width, height, fullscreen);
+		LOG2("Could not create new screen (%d x %d): %08lx", width, height);
+		I_FatalError("Could not create new screen (%d x %d): %08lx", width, height);
 	}
 
 	LOG1 ("New fb created @ %p\n", fb);
-
-	// If we could not create the framebuffer, try again with slightly
-	// different parameters in this order:
-	// 1. Try with the closest size
-	// 2. Try in the opposite screen mode with the original size
-	// 3. Try in the opposite screen mode with the closest size
-	// This is a somewhat confusing mass of recursion here.
-
-	while (fb == NULL || !fb->IsValid ())
-	{
-		static HRESULT hr;
-
-		if (fb != NULL)
-		{
-			if (retry == 0)
-			{
-				hr = fb->GetHR ();
-			}
-			delete fb;
-
-			LOG1 ("fb is bad: %08lx\n", hr);
-		}
-		else
-		{
-			LOG ("Could not create fb at all\n");
-		}
-		screen = NULL;
-
-		LOG1 ("Retry number %d\n", retry);
-
-		switch (retry)
-		{
-		case 0:
-			owidth = width;
-			oheight = height;
-		case 2:
-			// Try a different resolution. Hopefully that will work.
-			I_ClosestResolution (&width, &height, 8);
-			LOG2 ("Retry with size %d,%d\n", width, height);
-			break;
-
-		case 1:
-			// Try changing fullscreen mode. Maybe that will work.
-			width = owidth;
-			height = oheight;
-			fullscreen = !fullscreen;
-			LOG1 ("Retry with fullscreen %d\n", fullscreen);
-			break;
-
-		default:
-			// I give up!
-			LOG3 ("Could not create new screen (%d x %d): %08lx", owidth, oheight, hr);
-			I_FatalError ("Could not create new screen (%d x %d): %08lx", owidth, oheight, hr);
-		}
-
-		++retry;
-		fb = static_cast<DDrawFB *>(CreateFrameBuffer (width, height, bgra, fullscreen, NULL));
-	}
-	retry = 0;
 
 	fb->SetFlash (flashColor, flashAmount);
 	return fb;

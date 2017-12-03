@@ -56,8 +56,6 @@ private:
 
 class D3D11FB : public BaseWinFB
 {
-	DECLARE_CLASS(D3D11FB, BaseWinFB)
-	D3D11FB() { }
 public:
 	D3D11FB(int width, int height, bool bgra, bool fullscreen);
 	~D3D11FB();
@@ -74,6 +72,7 @@ public:
 	bool IsValid() override { return true; }
 
 	// DFrameBuffer interface:
+	bool IsOpenGL() const override { return false; }
 	bool Lock(bool buffered) override;
 	void Unlock() override;
 	bool Begin2D(bool copy3d) override;

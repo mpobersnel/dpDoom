@@ -450,6 +450,8 @@ public:
 	virtual bool Is8BitMode() = 0;
 #endif
 
+	virtual bool IsOpenGL() const { return true; }
+
 	// The original size of the framebuffer as selected in the video menu.
 	int VideoWidth = 0;
 	int VideoHeight = 0;

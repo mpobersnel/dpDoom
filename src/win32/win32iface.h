@@ -51,7 +51,6 @@ class Win32Video : public IVideo
 
 	bool InitD3D11();
 	bool InitD3D9();
-	void InitDDraw();
 
 	EDisplayType GetDisplayType () { return DISPLAY_Both; }
 	void SetWindowedScale (float scale);
@@ -98,7 +97,6 @@ class Win32Video : public IVideo
 	void AddLetterboxModes ();
 	void ScaleModes (int doubling);
 
-	friend class DDrawFB;
 	friend class D3DFB;
 };
 

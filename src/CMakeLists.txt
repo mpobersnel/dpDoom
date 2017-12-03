@@ -478,7 +478,6 @@ set( PLAT_WIN32_SOURCES
 	win32/critsec.cpp
 	win32/fb_d3d9.cpp
 	win32/fb_d3d9_wipe.cpp
-	win32/fb_ddraw.cpp
 	win32/fb_d3d11.cpp
 	win32/hardware.cpp
 	win32/helperthread.cpp
