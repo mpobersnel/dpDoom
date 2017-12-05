@@ -220,4 +220,6 @@ private:
 	void SetShadedBlend(int srcalpha, int destalpha);
 	void SetAddClampShadedBlend(int srcalpha, int destalpha);
 	void SetAlphaBlendFunc(int srcalpha, int destalpha);
+
+	friend class DrawBatcher;
 };

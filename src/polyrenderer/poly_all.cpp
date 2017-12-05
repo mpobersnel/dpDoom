@@ -20,4 +20,6 @@
 #include "scene/poly_wallsprite.cpp"
 #include "scene/poly_light.cpp"
 #include "hardpoly/gpu_context.cpp"
+#include "hardpoly/gl_context.cpp"
+#include "hardpoly/d3d11_context.cpp"
 #include "hardpoly/hardpolyrenderer.cpp"

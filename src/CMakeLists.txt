@@ -765,6 +765,8 @@ set( POLYRENDER_SOURCES
 	polyrenderer/math/tri_matrix.cpp
 	polyrenderer/math/gpu_types.cpp
 	polyrenderer/hardpoly/gpu_context.cpp
+	polyrenderer/hardpoly/gl_context.cpp
+	polyrenderer/hardpoly/d3d11_context.cpp
 	polyrenderer/hardpoly/hardpolyrenderer.cpp
 )
 

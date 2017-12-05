@@ -49,73 +49,29 @@ public:
 class GPUTexture2D : public GPUTexture
 {
 public:
-	GPUTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr);
-	~GPUTexture2D();
-
-	void Upload(int x, int y, int width, int height, int level, const void *pixels);
-
-	int Handle() const override { return mHandle; }
-	int SampleCount() const { return mSampleCount; }
-	int Width() const { return mWidth; }
-	int Height() const { return mHeight; }
-
-private:
-	GPUTexture2D(const GPUTexture2D &) = delete;
-	GPUTexture2D &operator =(const GPUTexture2D &) = delete;
-
-	static int NumLevels(int width, int height);
-	static int ToInternalFormat(GPUPixelFormat format);
-	static int ToUploadFormat(GPUPixelFormat format);
-	static int ToUploadType(GPUPixelFormat format);
-
-	int mHandle = 0;
-	int mWidth = 0;
-	int mHeight = 0;
-	bool mMipmap = false;
-	int mSampleCount = 0;
-	GPUPixelFormat mFormat;
+	virtual void Upload(int x, int y, int width, int height, int level, const void *pixels) = 0;
+	virtual int SampleCount() const = 0;
+	virtual int Width() const = 0;
+	virtual int Height() const = 0;
 };
-
-/////////////////////////////////////////////////////////////////////////////
 
 class GPUFrameBuffer
 {
 public:
-	GPUFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil);
-	~GPUFrameBuffer();
-
-	int Handle() const { return mHandle; }
-
-private:
-	GPUFrameBuffer(const GPUFrameBuffer &) = delete;
-	GPUFrameBuffer &operator =(const GPUFrameBuffer &) = delete;
-
-	int mHandle = 0;
+	virtual ~GPUFrameBuffer() { }
+	virtual int Handle() const = 0;
 };
-
-/////////////////////////////////////////////////////////////////////////////
 
 class GPUIndexBuffer
 {
 public:
-	GPUIndexBuffer(const void *data, int size);
-	~GPUIndexBuffer();
+	virtual ~GPUIndexBuffer() { }
 
-	int Handle() const { return mHandle; }
-
-	void Upload(const void *data, int size);
-
-	void *MapWriteOnly();
-	void Unmap();
-
-private:
-	GPUIndexBuffer(const GPUIndexBuffer &) = delete;
-	GPUIndexBuffer &operator =(const GPUIndexBuffer &) = delete;
-
-	int mHandle = 0;
+	virtual int Handle() const = 0;
+	virtual void Upload(const void *data, int size) = 0;
+	virtual void *MapWriteOnly() = 0;
+	virtual void Unmap() = 0;
 };
-
-/////////////////////////////////////////////////////////////////////////////
 
 enum class GPUShaderType
 {
@@ -126,37 +82,27 @@ enum class GPUShaderType
 class GPUProgram
 {
 public:
-	GPUProgram();
-	~GPUProgram();
+	virtual ~GPUProgram() { }
 
-	int Handle() const { return mHandle; }
+	virtual int Handle() const = 0;
 
 	void SetDefine(const std::string &name);
 	void SetDefine(const std::string &name, int value);
 	void SetDefine(const std::string &name, float value);
 	void SetDefine(const std::string &name, double value);
 	void SetDefine(const std::string &name, const std::string &value);
+
 	void Compile(GPUShaderType type, const char *lumpName);
-	void Compile(GPUShaderType type, const char *name, const std::string &code);
-	void SetAttribLocation(const std::string &name, int index);
-	void SetFragOutput(const std::string &name, int index);
-	void Link(const std::string &name);
-	void SetUniformBlock(const std::string &name, int index);
 
-private:
-	GPUProgram(const GPUProgram &) = delete;
-	GPUProgram &operator =(const GPUProgram &) = delete;
+	virtual void Compile(GPUShaderType type, const char *name, const std::string &code) = 0;
+	virtual void SetAttribLocation(const std::string &name, int index) = 0;
+	virtual void SetFragOutput(const std::string &name, int index) = 0;
+	virtual void Link(const std::string &name) = 0;
+	virtual void SetUniformBlock(const std::string &name, int index) = 0;
 
-	std::string PrefixCode() const;
-	std::string GetShaderInfoLog(int handle) const;
-	std::string GetProgramInfoLog() const;
-
-	int mHandle = 0;
-	std::map<int, int> mShaderHandle;
+protected:
 	std::map<std::string, std::string> mDefines;
 };
-
-/////////////////////////////////////////////////////////////////////////////
 
 enum class GPUSampleMode
 {
@@ -181,65 +127,27 @@ enum class GPUWrapMode
 class GPUSampler
 {
 public:
-	GPUSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV);
-	~GPUSampler();
-
-	int Handle() const { return mHandle; }
-
-private:
-	GPUSampler(const GPUSampler &) = delete;
-	GPUSampler &operator =(const GPUSampler &) = delete;
-
-	int mHandle = 0;
-	GPUSampleMode mMinfilter = GPUSampleMode::Nearest;
-	GPUSampleMode mMagfilter = GPUSampleMode::Nearest;
-	GPUMipmapMode mMipmap = GPUMipmapMode::None;
-	GPUWrapMode mWrapU = GPUWrapMode::Repeat;
-	GPUWrapMode mWrapV = GPUWrapMode::Repeat;
+	virtual ~GPUSampler() { }
+	virtual int Handle() const = 0;
 };
-
-/////////////////////////////////////////////////////////////////////////////
 
 class GPUStorageBuffer
 {
 public:
-	GPUStorageBuffer(const void *data, int size);
-	~GPUStorageBuffer();
-
-	void Upload(const void *data, int size);
-
-	int Handle() const { return mHandle; }
-
-private:
-	GPUStorageBuffer(const GPUStorageBuffer &) = delete;
-	GPUStorageBuffer &operator =(const GPUStorageBuffer &) = delete;
-
-	int mHandle = 0;
+	virtual ~GPUStorageBuffer() { }
+	virtual void Upload(const void *data, int size) = 0;
+	virtual int Handle() const = 0;
 };
-
-/////////////////////////////////////////////////////////////////////////////
 
 class GPUUniformBuffer
 {
 public:
-	GPUUniformBuffer(const void *data, int size);
-	~GPUUniformBuffer();
-
-	void Upload(const void *data, int size);
-
-	void *MapWriteOnly();
-	void Unmap();
-
-	int Handle() const { return mHandle; }
-
-private:
-	GPUUniformBuffer(const GPUUniformBuffer &) = delete;
-	GPUUniformBuffer &operator =(const GPUUniformBuffer &) = delete;
-
-	int mHandle = 0;
+	virtual ~GPUUniformBuffer() { }
+	virtual void Upload(const void *data, int size) = 0;
+	virtual void *MapWriteOnly() = 0;
+	virtual void Unmap() = 0;
+	virtual int Handle() const = 0;
 };
-
-/////////////////////////////////////////////////////////////////////////////
 
 class GPUVertexBuffer;
 
@@ -273,19 +181,8 @@ public:
 class GPUVertexArray
 {
 public:
-	GPUVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes);
-	~GPUVertexArray();
-
-	int Handle() const { return mHandle; }
-
-private:
-	GPUVertexArray(const GPUVertexArray &) = delete;
-	GPUVertexArray &operator =(const GPUVertexArray &) = delete;
-
-	static int FromType(GPUVertexAttributeType type);
-
-	int mHandle = 0;
-	std::vector<GPUVertexAttributeDesc> mAttributes;
+	virtual ~GPUVertexArray() { }
+	virtual int Handle() const = 0;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -293,21 +190,11 @@ private:
 class GPUVertexBuffer
 {
 public:
-	GPUVertexBuffer(const void *data, int size);
-	~GPUVertexBuffer();
-
-	void Upload(const void *data, int size);
-
-	void *MapWriteOnly();
-	void Unmap();
-
-	int Handle() const { return mHandle; }
-
-private:
-	GPUVertexBuffer(const GPUVertexBuffer &) = delete;
-	GPUVertexBuffer &operator =(const GPUVertexBuffer &) = delete;
-
-	int mHandle = 0;
+	virtual ~GPUVertexBuffer() { }
+	virtual void Upload(const void *data, int size) = 0;
+	virtual void *MapWriteOnly() = 0;
+	virtual void Unmap() = 0;
+	virtual int Handle() const = 0;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -332,50 +219,45 @@ enum class GPUDrawMode
 class GPUContext
 {
 public:
-	GPUContext();
-	~GPUContext();
+	virtual ~GPUContext() { }
+
+	virtual std::shared_ptr<GPUTexture2D> CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr) = 0;
+	virtual std::shared_ptr<GPUFrameBuffer> CreateFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil) = 0;
+	virtual std::shared_ptr<GPUIndexBuffer> CreateIndexBuffer(const void *data, int size) = 0;
+	virtual std::shared_ptr<GPUProgram> CreateProgram() = 0;
+	virtual std::shared_ptr<GPUSampler> CreateSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV) = 0;
+	virtual std::shared_ptr<GPUStorageBuffer> CreateStorageBuffer(const void *data, int size) = 0;
+	virtual std::shared_ptr<GPUUniformBuffer> CreateUniformBuffer(const void *data, int size) = 0;
+	virtual std::shared_ptr<GPUVertexArray> CreateVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes) = 0;
+	virtual std::shared_ptr<GPUVertexBuffer> CreateVertexBuffer(const void *data, int size) = 0;
+
+	virtual void Begin() = 0;
+	virtual void End() = 0;
 	
-	void Begin();
-	void End();
-	
-	void ClearError();
-	void CheckError();
+	virtual void ClearError() = 0;
+	virtual void CheckError() = 0;
 
-	void SetFrameBuffer(const std::shared_ptr<GPUFrameBuffer> &fb);
-	void SetViewport(int x, int y, int width, int height);
+	virtual void SetFrameBuffer(const std::shared_ptr<GPUFrameBuffer> &fb) = 0;
+	virtual void SetViewport(int x, int y, int width, int height) = 0;
 
-	void SetProgram(const std::shared_ptr<GPUProgram> &program);
+	virtual void SetProgram(const std::shared_ptr<GPUProgram> &program) = 0;
 
-	void SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler);
-	void SetTexture(int index, const std::shared_ptr<GPUTexture> &texture);
-	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer);
-	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size);
-	void SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage);
+	virtual void SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler) = 0;
+	virtual void SetTexture(int index, const std::shared_ptr<GPUTexture> &texture) = 0;
+	virtual void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer) = 0;
+	virtual void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size) = 0;
+	virtual void SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage) = 0;
 
-	void SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray);
-	void SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16);
+	virtual void SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray) = 0;
+	virtual void SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16) = 0;
 
-	void Draw(GPUDrawMode mode, int vertexStart, int vertexCount);
-	void DrawIndexed(GPUDrawMode mode, int indexStart, int indexCount);
-	void DrawInstanced(GPUDrawMode mode, int vertexStart, int vertexCount, int instanceCount);
-	void DrawIndexedInstanced(GPUDrawMode mode, int indexStart, int indexCount, int instanceCount);
+	virtual void Draw(GPUDrawMode mode, int vertexStart, int vertexCount) = 0;
+	virtual void DrawIndexed(GPUDrawMode mode, int indexStart, int indexCount) = 0;
+	virtual void DrawInstanced(GPUDrawMode mode, int vertexStart, int vertexCount, int instanceCount) = 0;
+	virtual void DrawIndexedInstanced(GPUDrawMode mode, int indexStart, int indexCount, int instanceCount) = 0;
 
-	void ClearColorBuffer(int index, float r, float g, float b, float a);
-	void ClearDepthBuffer(float depth);
-	void ClearStencilBuffer(int stencil);
-	void ClearDepthStencilBuffer(float depth, int stencil);
-
-private:
-	GPUContext(const GPUContext &) = delete;
-	GPUContext &operator =(const GPUContext &) = delete;
-
-	static int FromDrawMode(GPUDrawMode mode);
-
-	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
-	
-	int oldDrawFramebufferBinding = 0;
-	int oldReadFramebufferBinding = 0;
-	int oldProgram = 0;
-	int oldTextureBinding0 = 0;
-	int oldTextureBinding1 = 0;
+	virtual void ClearColorBuffer(int index, float r, float g, float b, float a) = 0;
+	virtual void ClearDepthBuffer(float depth) = 0;
+	virtual void ClearStencilBuffer(int stencil) = 0;
+	virtual void ClearDepthStencilBuffer(float depth, int stencil) = 0;
 };

@@ -38,10 +38,11 @@
 #include "r_data/r_interpolate.h"
 #include "p_effect.h"
 #include "g_levellocals.h"
+#include "gl_context.h"
 
 HardpolyRenderer::HardpolyRenderer()
 {
-	mContext = std::make_shared<GPUContext>();
+	mContext = std::make_shared<GLContext>();
 }
 
 HardpolyRenderer::~HardpolyRenderer()
@@ -311,7 +312,7 @@ void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &ar
 {
 	MatrixUniforms cpuMatrixUniforms = thread->DrawBatcher.GetMatrixUniforms();
 	if (!mMatrixUniforms)
-		mMatrixUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(MatrixUniforms));
+		mMatrixUniforms = mContext->CreateUniformBuffer(nullptr, (int)sizeof(MatrixUniforms));
 	mMatrixUniforms->Upload(&cpuMatrixUniforms, (int)sizeof(MatrixUniforms));
 
 	if (!mScreenQuad)
@@ -323,17 +324,17 @@ void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &ar
 			{ 0.0f, 1.0f },
 			{ 1.0f, 1.0f },
 		};
-		mScreenQuadVertexBuffer = std::make_shared<GPUVertexBuffer>(quad, (int)(sizeof(Vec2f) * 4));
+		mScreenQuadVertexBuffer = mContext->CreateVertexBuffer(quad, (int)(sizeof(Vec2f) * 4));
 		std::vector<GPUVertexAttributeDesc> desc =
 		{
 			{ 0, 2, GPUVertexAttributeType::Float, false, 0, 0, mScreenQuadVertexBuffer }
 		};
-		mScreenQuad = std::make_shared<GPUVertexArray>(desc);
+		mScreenQuad = mContext->CreateVertexArray(desc);
 	}
 
 	if (!mRectUniforms)
 	{
-		mRectUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(RectUniforms));
+		mRectUniforms = mContext->CreateUniformBuffer(nullptr, (int)sizeof(RectUniforms));
 	}
 
 	RectUniforms uniforms;
@@ -385,7 +386,7 @@ void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &ar
 void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 {
 	if (!mMatrixUniforms)
-		mMatrixUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)sizeof(MatrixUniforms));
+		mMatrixUniforms = mContext->CreateUniformBuffer(nullptr, (int)sizeof(MatrixUniforms));
 
 	mContext->SetVertexArray(batch->VertexArray);
 	mContext->SetIndexBuffer(batch->IndexBuffer);
@@ -498,16 +499,16 @@ void HardpolyRenderer::SetupFramebuffer()
 		mNormalBuffer.reset();
 		mSpriteDepthBuffer.reset();
 
-		mAlbedoBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
-		mNormalBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::RGBA16f);
-		mDepthStencilBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
-		mSpriteDepthBuffer = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::R32f);
+		mAlbedoBuffer = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mNormalBuffer = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mDepthStencilBuffer = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
+		mSpriteDepthBuffer = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R32f);
 
 		std::vector<std::shared_ptr<GPUTexture2D>> colorbuffers = { mAlbedoBuffer, mNormalBuffer, mSpriteDepthBuffer };
-		mSceneFB = std::make_shared<GPUFrameBuffer>(colorbuffers, mDepthStencilBuffer);
+		mSceneFB = mContext->CreateFrameBuffer(colorbuffers, mDepthStencilBuffer);
 
 		std::vector<std::shared_ptr<GPUTexture2D>> translucentcolorbuffers = { mAlbedoBuffer, mNormalBuffer };
-		mTranslucentFB = std::make_shared<GPUFrameBuffer>(translucentcolorbuffers, mDepthStencilBuffer);
+		mTranslucentFB = mContext->CreateFrameBuffer(translucentcolorbuffers, mDepthStencilBuffer);
 	}
 
 	mContext->SetFrameBuffer(mSceneFB);
@@ -520,8 +521,8 @@ void HardpolyRenderer::CreateSamplers()
 {
 	if (!mSamplerNearest)
 	{
-		mSamplerLinear = std::make_shared<GPUSampler>(GPUSampleMode::Linear, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
-		mSamplerNearest = std::make_shared<GPUSampler>(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+		mSamplerLinear = mContext->CreateSampler(GPUSampleMode::Linear, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+		mSamplerNearest = mContext->CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
 	}
 }
 
@@ -550,7 +551,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTranslationTextureBgra(const 
 			dest[x] = red | (green << 8) | (blue << 16) | (alpha << 24);
 		}
 
-		texture = std::make_shared<GPUTexture2D>(256, 1, false, 0, GPUPixelFormat::RGBA8, dest);
+		texture = mContext->CreateTexture2D(256, 1, false, 0, GPUPixelFormat::RGBA8, dest);
 	}
 	return texture;
 }
@@ -560,7 +561,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTranslationTexturePal(const u
 	auto &texture = mTranslationTexturesPal[translation];
 	if (!texture)
 	{
-		texture = std::make_shared<GPUTexture2D>(256, 1, false, 0, GPUPixelFormat::R8, translation);
+		texture = mContext->CreateTexture2D(256, 1, false, 0, GPUPixelFormat::R8, translation);
 	}
 	return texture;
 }
@@ -590,7 +591,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetEngineTexturePal(const uint8_
 			pixels.push_back(0);
 		}
 
-		texture = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::R8, pixels.data());
+		texture = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R8, pixels.data());
 	}
 	return texture;
 }
@@ -610,7 +611,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetColormapTexturePal(const uint
 			uint32_t alpha = 255;
 			rgbacolormap[i] = red | (green << 8) | (blue << 16) | (alpha << 24);
 		}
-		texture = std::make_shared<GPUTexture2D>(256, NUMCOLORMAPS, false, 0, GPUPixelFormat::RGBA8, rgbacolormap);
+		texture = mContext->CreateTexture2D(256, NUMCOLORMAPS, false, 0, GPUPixelFormat::RGBA8, rgbacolormap);
 	}
 	return texture;
 }
@@ -653,7 +654,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTextureBgra(FTexture *ztextur
 			pixels.push_back(0xff00ffff);
 		}
 
-		texture = std::make_shared<GPUTexture2D>(width, height, mipmap, 0, GPUPixelFormat::RGBA8, pixels.data());
+		texture = mContext->CreateTexture2D(width, height, mipmap, 0, GPUPixelFormat::RGBA8, pixels.data());
 	}
 	return texture;
 }
@@ -696,7 +697,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTexturePal(FTexture *ztexture
 			pixels.push_back(0);
 		}
 
-		texture = std::make_shared<GPUTexture2D>(width, height, false, 0, GPUPixelFormat::R8, pixels.data());
+		texture = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R8, pixels.data());
 	}
 	return texture;
 }
@@ -705,7 +706,7 @@ void HardpolyRenderer::CompileShaders()
 {
 	if (!mOpaqueProgram)
 	{
-		mOpaqueProgram = std::make_shared<GPUProgram>();
+		mOpaqueProgram = mContext->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mOpaqueProgram->SetDefine("TRUECOLOR");
 		mOpaqueProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/opaque.vp");
 		mOpaqueProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/opaque.fp");
@@ -718,7 +719,7 @@ void HardpolyRenderer::CompileShaders()
 
 	if (!mRectProgram)
 	{
-		mRectProgram = std::make_shared<GPUProgram>();
+		mRectProgram = mContext->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mRectProgram->SetDefine("TRUECOLOR");
 		mRectProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/rect.vp");
 		mRectProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/rect.fp");
@@ -732,7 +733,7 @@ void HardpolyRenderer::CompileShaders()
 
 	if (!mStencilProgram)
 	{
-		mStencilProgram = std::make_shared<GPUProgram>();
+		mStencilProgram = mContext->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mStencilProgram->SetDefine("TRUECOLOR");
 		mStencilProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/stencil.vp");
 		mStencilProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/stencil.fp");
@@ -904,7 +905,7 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 
 		if (!current->Vertices)
 		{
-			current->Vertices = std::make_shared<GPUVertexBuffer>(nullptr, MaxVertices * (int)sizeof(TriVertex));
+			current->Vertices = hardpoly->mContext->CreateVertexBuffer(nullptr, MaxVertices * (int)sizeof(TriVertex));
 
 			std::vector<GPUVertexAttributeDesc> attributes =
 			{
@@ -912,10 +913,10 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 				{ 1, 2, GPUVertexAttributeType::Float, false, sizeof(TriVertex), offsetof(TriVertex, u), current->Vertices }
 			};
 
-			current->VertexArray = std::make_shared<GPUVertexArray>(attributes);
-			current->IndexBuffer = std::make_shared<GPUIndexBuffer>(nullptr, (int)(MaxIndices * sizeof(int32_t)));
-			//current->FaceUniforms = std::make_shared<GPUUniformBuffer>(nullptr, (int)(DrawBatcher::MaxFaceUniforms * sizeof(FaceUniforms)));
-			current->FaceUniformsTexture = std::make_shared<GPUTexture2D>(256, 128, false, 0, GPUPixelFormat::RGBA32f);
+			current->VertexArray = hardpoly->mContext->CreateVertexArray(attributes);
+			current->IndexBuffer = hardpoly->mContext->CreateIndexBuffer(nullptr, (int)(MaxIndices * sizeof(int32_t)));
+			//current->FaceUniforms = hardpoly->mContext->CreateUniformBuffer(nullptr, (int)(DrawBatcher::MaxFaceUniforms * sizeof(FaceUniforms)));
+			current->FaceUniformsTexture = hardpoly->mContext->CreateTexture2D(256, 128, false, 0, GPUPixelFormat::RGBA32f);
 		}
 
 		TriVertex *gpuVertices = (TriVertex*)current->Vertices->MapWriteOnly();
