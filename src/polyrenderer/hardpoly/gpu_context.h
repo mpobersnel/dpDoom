@@ -43,7 +43,6 @@ class GPUTexture
 {
 public:
 	virtual ~GPUTexture() { }
-	virtual int Handle() const = 0;
 };
 
 class GPUTexture2D : public GPUTexture
@@ -59,7 +58,6 @@ class GPUFrameBuffer
 {
 public:
 	virtual ~GPUFrameBuffer() { }
-	virtual int Handle() const = 0;
 };
 
 class GPUIndexBuffer
@@ -67,7 +65,6 @@ class GPUIndexBuffer
 public:
 	virtual ~GPUIndexBuffer() { }
 
-	virtual int Handle() const = 0;
 	virtual void Upload(const void *data, int size) = 0;
 	virtual void *MapWriteOnly() = 0;
 	virtual void Unmap() = 0;
@@ -84,8 +81,6 @@ class GPUProgram
 public:
 	virtual ~GPUProgram() { }
 
-	virtual int Handle() const = 0;
-
 	void SetDefine(const std::string &name);
 	void SetDefine(const std::string &name, int value);
 	void SetDefine(const std::string &name, float value);
@@ -99,6 +94,7 @@ public:
 	virtual void SetFragOutput(const std::string &name, int index) = 0;
 	virtual void Link(const std::string &name) = 0;
 	virtual void SetUniformBlock(const std::string &name, int index) = 0;
+	virtual int GetUniformLocation(const char *name) = 0;
 
 protected:
 	std::map<std::string, std::string> mDefines;
@@ -128,7 +124,6 @@ class GPUSampler
 {
 public:
 	virtual ~GPUSampler() { }
-	virtual int Handle() const = 0;
 };
 
 class GPUStorageBuffer
@@ -136,7 +131,6 @@ class GPUStorageBuffer
 public:
 	virtual ~GPUStorageBuffer() { }
 	virtual void Upload(const void *data, int size) = 0;
-	virtual int Handle() const = 0;
 };
 
 class GPUUniformBuffer
@@ -146,7 +140,6 @@ public:
 	virtual void Upload(const void *data, int size) = 0;
 	virtual void *MapWriteOnly() = 0;
 	virtual void Unmap() = 0;
-	virtual int Handle() const = 0;
 };
 
 class GPUVertexBuffer;
@@ -182,7 +175,6 @@ class GPUVertexArray
 {
 public:
 	virtual ~GPUVertexArray() { }
-	virtual int Handle() const = 0;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -194,7 +186,6 @@ public:
 	virtual void Upload(const void *data, int size) = 0;
 	virtual void *MapWriteOnly() = 0;
 	virtual void Unmap() = 0;
-	virtual int Handle() const = 0;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -241,12 +232,25 @@ public:
 	virtual void SetViewport(int x, int y, int width, int height) = 0;
 
 	virtual void SetProgram(const std::shared_ptr<GPUProgram> &program) = 0;
+	virtual void SetUniform1i(int location, int value) = 0;
 
 	virtual void SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler) = 0;
 	virtual void SetTexture(int index, const std::shared_ptr<GPUTexture> &texture) = 0;
 	virtual void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer) = 0;
 	virtual void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size) = 0;
 	virtual void SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage) = 0;
+
+	virtual void SetClipDistance(int index, bool enable) = 0;
+
+	virtual void SetOpaqueBlend(int srcalpha, int destalpha) = 0;
+	virtual void SetMaskedBlend(int srcalpha, int destalpha) = 0;
+	virtual void SetAlphaBlendFunc(int srcalpha, int destalpha) = 0;
+	virtual void SetAddClampBlend(int srcalpha, int destalpha) = 0;
+	virtual void SetSubClampBlend(int srcalpha, int destalpha) = 0;
+	virtual void SetRevSubClampBlend(int srcalpha, int destalpha) = 0;
+	virtual void SetAddSrcColorBlend(int srcalpha, int destalpha) = 0;
+	virtual void SetShadedBlend(int srcalpha, int destalpha) = 0;
+	virtual void SetAddClampShadedBlend(int srcalpha, int destalpha) = 0;
 
 	virtual void SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray) = 0;
 	virtual void SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16) = 0;

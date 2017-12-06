@@ -32,7 +32,6 @@ public:
 
 	void Upload(int x, int y, int width, int height, int level, const void *pixels);
 
-	int Handle() const override { return mHandle; }
 	int SampleCount() const override { return mSampleCount; }
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }
@@ -43,7 +42,6 @@ private:
 
 	static int NumLevels(int width, int height);
 
-	int mHandle = 0;
 	int mWidth = 0;
 	int mHeight = 0;
 	bool mMipmap = false;
@@ -57,13 +55,9 @@ public:
 	D3D11FrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil);
 	~D3D11FrameBuffer();
 
-	int Handle() const override { return mHandle; }
-
 private:
 	D3D11FrameBuffer(const D3D11FrameBuffer &) = delete;
 	D3D11FrameBuffer &operator =(const D3D11FrameBuffer &) = delete;
-
-	int mHandle = 0;
 };
 
 class D3D11IndexBuffer : public GPUIndexBuffer
@@ -71,8 +65,6 @@ class D3D11IndexBuffer : public GPUIndexBuffer
 public:
 	D3D11IndexBuffer(const void *data, int size);
 	~D3D11IndexBuffer();
-
-	int Handle() const override { return mHandle; }
 
 	void Upload(const void *data, int size) override;
 
@@ -82,8 +74,6 @@ public:
 private:
 	D3D11IndexBuffer(const D3D11IndexBuffer &) = delete;
 	D3D11IndexBuffer &operator =(const D3D11IndexBuffer &) = delete;
-
-	int mHandle = 0;
 };
 
 class D3D11Program : public GPUProgram
@@ -92,13 +82,12 @@ public:
 	D3D11Program();
 	~D3D11Program();
 
-	int Handle() const override { return mHandle; }
-
 	void Compile(GPUShaderType type, const char *name, const std::string &code) override;
 	void SetAttribLocation(const std::string &name, int index) override;
 	void SetFragOutput(const std::string &name, int index) override;
 	void Link(const std::string &name) override;
 	void SetUniformBlock(const std::string &name, int index) override;
+	int GetUniformLocation(const char *name) override;
 
 private:
 	D3D11Program(const D3D11Program &) = delete;
@@ -106,7 +95,6 @@ private:
 
 	std::string PrefixCode() const;
 
-	int mHandle = 0;
 	std::map<std::string, std::string> mDefines;
 };
 
@@ -116,13 +104,10 @@ public:
 	D3D11Sampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV);
 	~D3D11Sampler();
 
-	int Handle() const override { return mHandle; }
-
 private:
 	D3D11Sampler(const D3D11Sampler &) = delete;
 	D3D11Sampler &operator =(const D3D11Sampler &) = delete;
 
-	int mHandle = 0;
 	GPUSampleMode mMinfilter = GPUSampleMode::Nearest;
 	GPUSampleMode mMagfilter = GPUSampleMode::Nearest;
 	GPUMipmapMode mMipmap = GPUMipmapMode::None;
@@ -138,13 +123,9 @@ public:
 
 	void Upload(const void *data, int size) override;
 
-	int Handle() const override { return mHandle; }
-
 private:
 	D3D11StorageBuffer(const D3D11StorageBuffer &) = delete;
 	D3D11StorageBuffer &operator =(const D3D11StorageBuffer &) = delete;
-
-	int mHandle = 0;
 };
 
 class D3D11UniformBuffer : public GPUUniformBuffer
@@ -158,13 +139,9 @@ public:
 	void *MapWriteOnly() override;
 	void Unmap() override;
 
-	int Handle() const override { return mHandle; }
-
 private:
 	D3D11UniformBuffer(const D3D11UniformBuffer &) = delete;
 	D3D11UniformBuffer &operator =(const D3D11UniformBuffer &) = delete;
-
-	int mHandle = 0;
 };
 
 class D3D11VertexArray : public GPUVertexArray
@@ -173,13 +150,10 @@ public:
 	D3D11VertexArray(const std::vector<GPUVertexAttributeDesc> &attributes);
 	~D3D11VertexArray();
 
-	int Handle() const override { return mHandle; }
-
 private:
 	D3D11VertexArray(const D3D11VertexArray &) = delete;
 	D3D11VertexArray &operator =(const D3D11VertexArray &) = delete;
 
-	int mHandle = 0;
 	std::vector<GPUVertexAttributeDesc> mAttributes;
 };
 
@@ -194,13 +168,9 @@ public:
 	void *MapWriteOnly() override;
 	void Unmap() override;
 
-	int Handle() const override { return mHandle; }
-
 private:
 	D3D11VertexBuffer(const D3D11VertexBuffer &) = delete;
 	D3D11VertexBuffer &operator =(const D3D11VertexBuffer &) = delete;
-
-	int mHandle = 0;
 };
 
 class D3D11Context : public GPUContext
@@ -229,12 +199,25 @@ public:
 	void SetViewport(int x, int y, int width, int height) override;
 
 	void SetProgram(const std::shared_ptr<GPUProgram> &program) override;
+	void SetUniform1i(int location, int value) override;
 
 	void SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler) override;
 	void SetTexture(int index, const std::shared_ptr<GPUTexture> &texture) override;
 	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer) override;
 	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size) override;
 	void SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage) override;
+
+	void SetClipDistance(int index, bool enable) override;
+
+	void SetOpaqueBlend(int srcalpha, int destalpha) override;
+	void SetMaskedBlend(int srcalpha, int destalpha) override;
+	void SetAlphaBlendFunc(int srcalpha, int destalpha) override;
+	void SetAddClampBlend(int srcalpha, int destalpha) override;
+	void SetSubClampBlend(int srcalpha, int destalpha) override;
+	void SetRevSubClampBlend(int srcalpha, int destalpha) override;
+	void SetAddSrcColorBlend(int srcalpha, int destalpha) override;
+	void SetShadedBlend(int srcalpha, int destalpha) override;
+	void SetAddClampShadedBlend(int srcalpha, int destalpha) override;
 
 	void SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray) override;
 	void SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16) override;

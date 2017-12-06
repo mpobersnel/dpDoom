@@ -32,7 +32,7 @@ public:
 
 	void Upload(int x, int y, int width, int height, int level, const void *pixels);
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
 	int SampleCount() const override { return mSampleCount; }
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }
@@ -60,13 +60,15 @@ public:
 	GLFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil);
 	~GLFrameBuffer();
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
+	int NumColorBuffers() const { return mNumColorBuffers; }
 
 private:
 	GLFrameBuffer(const GLFrameBuffer &) = delete;
 	GLFrameBuffer &operator =(const GLFrameBuffer &) = delete;
 
 	int mHandle = 0;
+	int mNumColorBuffers = 0;
 };
 
 class GLIndexBuffer : public GPUIndexBuffer
@@ -75,7 +77,7 @@ public:
 	GLIndexBuffer(const void *data, int size);
 	~GLIndexBuffer();
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
 
 	void Upload(const void *data, int size) override;
 
@@ -95,13 +97,14 @@ public:
 	GLProgram();
 	~GLProgram();
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
 
 	void Compile(GPUShaderType type, const char *name, const std::string &code) override;
 	void SetAttribLocation(const std::string &name, int index) override;
 	void SetFragOutput(const std::string &name, int index) override;
 	void Link(const std::string &name) override;
 	void SetUniformBlock(const std::string &name, int index) override;
+	int GetUniformLocation(const char *name) override;
 
 private:
 	GLProgram(const GLProgram &) = delete;
@@ -122,7 +125,7 @@ public:
 	GLSampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV);
 	~GLSampler();
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
 
 private:
 	GLSampler(const GLSampler &) = delete;
@@ -144,7 +147,7 @@ public:
 
 	void Upload(const void *data, int size) override;
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
 
 private:
 	GLStorageBuffer(const GLStorageBuffer &) = delete;
@@ -164,7 +167,7 @@ public:
 	void *MapWriteOnly() override;
 	void Unmap() override;
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
 
 private:
 	GLUniformBuffer(const GLUniformBuffer &) = delete;
@@ -179,7 +182,7 @@ public:
 	GLVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes);
 	~GLVertexArray();
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
 
 private:
 	GLVertexArray(const GLVertexArray &) = delete;
@@ -202,7 +205,7 @@ public:
 	void *MapWriteOnly() override;
 	void Unmap() override;
 
-	int Handle() const override { return mHandle; }
+	int Handle() const { return mHandle; }
 
 private:
 	GLVertexBuffer(const GLVertexBuffer &) = delete;
@@ -237,12 +240,25 @@ public:
 	void SetViewport(int x, int y, int width, int height) override;
 
 	void SetProgram(const std::shared_ptr<GPUProgram> &program) override;
+	void SetUniform1i(int location, int value) override;
 
 	void SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler) override;
 	void SetTexture(int index, const std::shared_ptr<GPUTexture> &texture) override;
 	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer) override;
 	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size) override;
 	void SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage) override;
+
+	void SetClipDistance(int index, bool enable) override;
+
+	void SetOpaqueBlend(int srcalpha, int destalpha) override;
+	void SetMaskedBlend(int srcalpha, int destalpha) override;
+	void SetAlphaBlendFunc(int srcalpha, int destalpha) override;
+	void SetAddClampBlend(int srcalpha, int destalpha) override;
+	void SetSubClampBlend(int srcalpha, int destalpha) override;
+	void SetRevSubClampBlend(int srcalpha, int destalpha) override;
+	void SetAddSrcColorBlend(int srcalpha, int destalpha) override;
+	void SetShadedBlend(int srcalpha, int destalpha) override;
+	void SetAddClampShadedBlend(int srcalpha, int destalpha) override;
 
 	void SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray) override;
 	void SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16) override;

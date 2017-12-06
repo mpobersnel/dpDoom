@@ -133,9 +133,20 @@ void GLContext::CheckError()
 void GLContext::SetFrameBuffer(const std::shared_ptr<GPUFrameBuffer> &fb)
 {
 	if (fb)
-		glBindFramebuffer(GL_FRAMEBUFFER, fb->Handle());
+	{
+		auto fbgl = std::static_pointer_cast<GLFrameBuffer>(fb);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbgl->Handle());
+
+		int count = MIN(fbgl->NumColorBuffers(), 16);
+		GLenum drawbuffers[16];
+		for (int i = 0; i < count; i++)
+			drawbuffers[i] = GL_COLOR_ATTACHMENT0 + i;
+		glDrawBuffers(count, drawbuffers);
+	}
 	else
+	{
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
 }
 
 void GLContext::SetViewport(int x, int y, int width, int height)
@@ -146,15 +157,21 @@ void GLContext::SetViewport(int x, int y, int width, int height)
 void GLContext::SetProgram(const std::shared_ptr<GPUProgram> &program)
 {
 	if (program)
-		glUseProgram(program->Handle());
+		glUseProgram(std::static_pointer_cast<GLProgram>(program)->Handle());
 	else
 		glUseProgram(0);
+}
+
+void GLContext::SetUniform1i(int location, int value)
+{
+	if (location != -1)
+		glUniform1i(location, value);
 }
 
 void GLContext::SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler)
 {
 	if (sampler)
-		glBindSampler(index, sampler->Handle());
+		glBindSampler(index, std::static_pointer_cast<GLSampler>(sampler)->Handle());
 	else
 		glBindSampler(index, 0);
 }
@@ -163,7 +180,7 @@ void GLContext::SetTexture(int index, const std::shared_ptr<GPUTexture> &texture
 {
 	glActiveTexture(GL_TEXTURE0 + index);
 	if (texture)
-		glBindTexture(GL_TEXTURE_2D, texture->Handle());
+		glBindTexture(GL_TEXTURE_2D, std::static_pointer_cast<GLTexture2D>(texture)->Handle());
 	else
 		glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -171,7 +188,7 @@ void GLContext::SetTexture(int index, const std::shared_ptr<GPUTexture> &texture
 void GLContext::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer)
 {
 	if (buffer)
-		glBindBufferBase(GL_UNIFORM_BUFFER, index, buffer->Handle());
+		glBindBufferBase(GL_UNIFORM_BUFFER, index, std::static_pointer_cast<GLUniformBuffer>(buffer)->Handle());
 	else
 		glBindBufferBase(GL_UNIFORM_BUFFER, index, 0);
 }
@@ -179,7 +196,7 @@ void GLContext::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &
 void GLContext::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size)
 {
 	if (buffer)
-		glBindBufferRange(GL_UNIFORM_BUFFER, index, buffer->Handle(), offset, size);
+		glBindBufferRange(GL_UNIFORM_BUFFER, index, std::static_pointer_cast<GLUniformBuffer>(buffer)->Handle(), offset, size);
 	else
 		glBindBufferBase(GL_UNIFORM_BUFFER, index, 0);
 }
@@ -187,15 +204,103 @@ void GLContext::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &
 void GLContext::SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage)
 {
 	if (storage)
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index, storage->Handle());
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index, std::static_pointer_cast<GLStorageBuffer>(storage)->Handle());
 	else
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index, 0);
+}
+
+void GLContext::SetClipDistance(int index, bool enable)
+{
+	if (enable)
+		glEnable(GL_CLIP_DISTANCE0 + index);
+	else
+		glDisable(GL_CLIP_DISTANCE0 + index);
+}
+
+void GLContext::SetOpaqueBlend(int srcalpha, int destalpha)
+{
+	glDisable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ZERO);
+}
+
+void GLContext::SetMaskedBlend(int srcalpha, int destalpha)
+{
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+void GLContext::SetAlphaBlendFunc(int srcalpha, int destalpha)
+{
+	int srcblend;
+	if (srcalpha == 0.0f)
+		srcblend = GL_ZERO;
+	else if (srcalpha == 1.0f)
+		srcblend = GL_ONE;
+	else
+		srcblend = GL_CONSTANT_ALPHA;
+
+	int destblend;
+	if (destalpha == 0.0f)
+		destblend = GL_ZERO;
+	else if (destalpha == 1.0f)
+		destblend = GL_ONE;
+	else if (srcalpha + destalpha >= 255)
+		destblend = GL_ONE_MINUS_CONSTANT_ALPHA;
+	else
+		destblend = GL_CONSTANT_COLOR;
+
+	glBlendColor(destalpha / 256.0f, destalpha / 256.0f, destalpha / 256.0f, srcalpha / 256.0f);
+	glBlendFunc(srcblend, destblend);
+}
+
+void GLContext::SetAddClampBlend(int srcalpha, int destalpha)
+{
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	SetAlphaBlendFunc(srcalpha, destalpha);
+}
+
+void GLContext::SetSubClampBlend(int srcalpha, int destalpha)
+{
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_SUBTRACT);
+	SetAlphaBlendFunc(srcalpha, destalpha);
+}
+
+void GLContext::SetRevSubClampBlend(int srcalpha, int destalpha)
+{
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+	SetAlphaBlendFunc(srcalpha, destalpha);
+}
+
+void GLContext::SetAddSrcColorBlend(int srcalpha, int destalpha)
+{
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
+}
+
+void GLContext::SetShadedBlend(int srcalpha, int destalpha)
+{
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+void GLContext::SetAddClampShadedBlend(int srcalpha, int destalpha)
+{
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ONE);
 }
 
 void GLContext::SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray)
 {
 	if (vertexarray)
-		glBindVertexArray(vertexarray->Handle());
+		glBindVertexArray(std::static_pointer_cast<GLVertexArray>(vertexarray)->Handle());
 	else
 		glBindVertexArray(0);
 }
@@ -203,7 +308,7 @@ void GLContext::SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarra
 void GLContext::SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format)
 {
 	if (indexbuffer)
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexbuffer->Handle());
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, std::static_pointer_cast<GLIndexBuffer>(indexbuffer)->Handle());
 	else
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
@@ -272,7 +377,7 @@ void GLContext::ClearDepthStencilBuffer(float depth, int stencil)
 
 /////////////////////////////////////////////////////////////////////////////
 
-GLFrameBuffer::GLFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil)
+GLFrameBuffer::GLFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil) : mNumColorBuffers((int)color.size())
 {
 	GLint oldHandle;
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldHandle);
@@ -282,7 +387,7 @@ GLFrameBuffer::GLFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &c
 
 	for (size_t i = 0; i < color.size(); i++)
 	{
-		const auto &texture = color[i];
+		const auto &texture = std::static_pointer_cast<GLTexture2D>(color[i]);
 		if (texture->SampleCount() > 1)
 			glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, GL_TEXTURE_2D_MULTISAMPLE, texture->Handle(), 0);
 		else
@@ -290,9 +395,9 @@ GLFrameBuffer::GLFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &c
 	}
 
 	if (depthstencil && depthstencil->SampleCount() > 1)
-		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, depthstencil->Handle(), 0);
+		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, std::static_pointer_cast<GLTexture2D>(depthstencil)->Handle(), 0);
 	else if (depthstencil)
-		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthstencil->Handle(), 0);
+		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, std::static_pointer_cast<GLTexture2D>(depthstencil)->Handle(), 0);
 
 	GLenum result = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
 	if (result != GL_FRAMEBUFFER_COMPLETE)
@@ -436,6 +541,11 @@ void GLProgram::SetUniformBlock(const std::string &name, int index)
 	GLuint uniformBlockIndex = glGetUniformBlockIndex(mHandle, name.c_str());
 	if (uniformBlockIndex != GL_INVALID_INDEX)
 		glUniformBlockBinding(mHandle, uniformBlockIndex, index);
+}
+
+int GLProgram::GetUniformLocation(const char *name)
+{
+	return glGetUniformLocation(mHandle, name);
 }
 
 void GLProgram::Link(const std::string &name)
@@ -750,7 +860,7 @@ GLVertexArray::GLVertexArray(const std::vector<GPUVertexAttributeDesc> &attribut
 
 	for (const auto &attr : attributes)
 	{
-		glBindBuffer(GL_ARRAY_BUFFER, attr.Buffer->Handle());
+		glBindBuffer(GL_ARRAY_BUFFER, std::static_pointer_cast<GLVertexBuffer>(attr.Buffer)->Handle());
 		glEnableVertexAttribArray(attr.Index);
 		glVertexAttribPointer(attr.Index, attr.Size, FromType(attr.Type), attr.Normalized ? GL_TRUE : GL_FALSE, attr.Stride, (const GLvoid *)attr.Offset);
 	}

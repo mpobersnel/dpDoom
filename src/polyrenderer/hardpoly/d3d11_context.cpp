@@ -109,6 +109,10 @@ void D3D11Context::SetProgram(const std::shared_ptr<GPUProgram> &program)
 {
 }
 
+void D3D11Context::SetUniform1i(int location, int value)
+{
+}
+
 void D3D11Context::SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler)
 {
 }
@@ -126,6 +130,46 @@ void D3D11Context::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer
 }
 
 void D3D11Context::SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage)
+{
+}
+
+void D3D11Context::SetClipDistance(int index, bool enable)
+{
+}
+
+void D3D11Context::SetOpaqueBlend(int srcalpha, int destalpha)
+{
+}
+
+void D3D11Context::SetMaskedBlend(int srcalpha, int destalpha)
+{
+}
+
+void D3D11Context::SetAlphaBlendFunc(int srcalpha, int destalpha)
+{
+}
+
+void D3D11Context::SetAddClampBlend(int srcalpha, int destalpha)
+{
+}
+
+void D3D11Context::SetSubClampBlend(int srcalpha, int destalpha)
+{
+}
+
+void D3D11Context::SetRevSubClampBlend(int srcalpha, int destalpha)
+{
+}
+
+void D3D11Context::SetAddSrcColorBlend(int srcalpha, int destalpha)
+{
+}
+
+void D3D11Context::SetShadedBlend(int srcalpha, int destalpha)
+{
+}
+
+void D3D11Context::SetAddClampShadedBlend(int srcalpha, int destalpha)
 {
 }
 
@@ -238,6 +282,11 @@ void D3D11Program::SetFragOutput(const std::string &name, int index)
 
 void D3D11Program::SetUniformBlock(const std::string &name, int index)
 {
+}
+
+int D3D11Program::GetUniformLocation(const char *name)
+{
+	return -1;
 }
 
 void D3D11Program::Link(const std::string &name)

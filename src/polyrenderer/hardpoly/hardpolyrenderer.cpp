@@ -73,7 +73,7 @@ void HardpolyRenderer::End()
 	mContext->End();
 
 	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
-	swframebuffer->SetViewFB(mSceneFB->Handle());
+	swframebuffer->SetViewFB(std::static_pointer_cast<GLFrameBuffer>(mSceneFB)->Handle());
 }
 
 void HardpolyRenderer::ClearBuffers(DCanvas *canvas)
@@ -352,17 +352,9 @@ void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &ar
 	mContext->SetVertexArray(mScreenQuad);
 	mContext->SetProgram(mRectProgram);
 
-	int loc = glGetUniformLocation(mRectProgram->Handle(), "DiffuseTexture");
-	if (loc != -1)
-		glUniform1i(loc, 0);
-
-	loc = glGetUniformLocation(mRectProgram->Handle(), "BasecolormapTexture");
-	if (loc != -1)
-		glUniform1i(loc, 1);
-
-	loc = glGetUniformLocation(mRectProgram->Handle(), "TranslationTexture");
-	if (loc != -1)
-		glUniform1i(loc, 2);
+	mContext->SetUniform1i(mRectProgram->GetUniformLocation("DiffuseTexture"), 0);
+	mContext->SetUniform1i(mRectProgram->GetUniformLocation("BasecolormapTexture"), 1);
+	mContext->SetUniform1i(mRectProgram->GetUniformLocation("TranslationTexture"), 2);
 
 	mContext->SetUniforms(0, mMatrixUniforms);
 	mContext->SetUniforms(1, mRectUniforms);
@@ -394,29 +386,18 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 	mContext->SetUniforms(0, mMatrixUniforms);
 	//mContext->SetUniforms(1, batch->FaceUniforms);
 
-	int loc = glGetUniformLocation(mOpaqueProgram->Handle(), "FaceUniformsTexture");
-	if (loc != -1)
-		glUniform1i(loc, 0);
-
-	loc = glGetUniformLocation(mOpaqueProgram->Handle(), "DiffuseTexture");
-	if (loc != -1)
-		glUniform1i(loc, 1);
-
-	loc = glGetUniformLocation(mOpaqueProgram->Handle(), "BasecolormapTexture");
-	if (loc != -1)
-		glUniform1i(loc, 2);
-
-	loc = glGetUniformLocation(mOpaqueProgram->Handle(), "TranslationTexture");
-	if (loc != -1)
-		glUniform1i(loc, 3);
+	mContext->SetUniform1i(mRectProgram->GetUniformLocation("FaceUniformsTexture"), 0);
+	mContext->SetUniform1i(mRectProgram->GetUniformLocation("DiffuseTexture"), 1);
+	mContext->SetUniform1i(mRectProgram->GetUniformLocation("BasecolormapTexture"), 2);
+	mContext->SetUniform1i(mRectProgram->GetUniformLocation("TranslationTexture"), 3);
 
 	//glEnable(GL_STENCIL_TEST);
 	//glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 	//glStencilFunc(GL_ALWAYS, 1, 0xffffffff);
 
-	glEnable(GL_CLIP_DISTANCE0);
-	glEnable(GL_CLIP_DISTANCE1);
-	glEnable(GL_CLIP_DISTANCE2);
+	mContext->SetClipDistance(0, true);
+	mContext->SetClipDistance(1, true);
+	mContext->SetClipDistance(2, true);
 
 	mContext->SetSampler(0, mSamplerNearest);
 	mContext->SetSampler(1, mSamplerNearest);
@@ -474,9 +455,9 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 	mContext->SetSampler(2, nullptr);
 	mContext->SetSampler(3, nullptr);
 
-	glDisable(GL_CLIP_DISTANCE0);
-	glDisable(GL_CLIP_DISTANCE1);
-	glDisable(GL_CLIP_DISTANCE2);
+	mContext->SetClipDistance(0, false);
+	mContext->SetClipDistance(1, false);
+	mContext->SetClipDistance(2, false);
 
 	//glDisable(GL_STENCIL_TEST);
 
@@ -512,9 +493,6 @@ void HardpolyRenderer::SetupFramebuffer()
 	}
 
 	mContext->SetFrameBuffer(mSceneFB);
-
-	GLenum drawbuffers[3] = { GL_COLOR_ATTACHMENT0 + 0, GL_COLOR_ATTACHMENT0 + 1, GL_COLOR_ATTACHMENT0 + 2 };
-	glDrawBuffers(3, drawbuffers);
 }
 
 void HardpolyRenderer::CreateSamplers()
@@ -811,82 +789,47 @@ HardpolyRenderer::BlendSetterFunc HardpolyRenderer::GetBlendSetter(TriBlendMode 
 
 void HardpolyRenderer::SetOpaqueBlend(int srcalpha, int destalpha)
 {
-	glDisable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_ONE, GL_ZERO);
+	mContext->SetOpaqueBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetMaskedBlend(int srcalpha, int destalpha)
 {
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	mContext->SetMaskedBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetAlphaBlendFunc(int srcalpha, int destalpha)
 {
-	int srcblend;
-	if (srcalpha == 0.0f)
-		srcblend = GL_ZERO;
-	else if (srcalpha == 1.0f)
-		srcblend = GL_ONE;
-	else
-		srcblend = GL_CONSTANT_ALPHA;
-
-	int destblend;
-	if (destalpha == 0.0f)
-		destblend = GL_ZERO;
-	else if (destalpha == 1.0f)
-		destblend = GL_ONE;
-	else if (srcalpha + destalpha >= 255)
-		destblend = GL_ONE_MINUS_CONSTANT_ALPHA;
-	else
-		destblend = GL_CONSTANT_COLOR;
-
-	glBlendColor(destalpha / 256.0f, destalpha / 256.0f, destalpha / 256.0f, srcalpha / 256.0f);
-	glBlendFunc(srcblend, destblend);
+	mContext->SetAlphaBlendFunc(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetAddClampBlend(int srcalpha, int destalpha)
 {
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	SetAlphaBlendFunc(srcalpha, destalpha);
+	mContext->SetAddClampBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetSubClampBlend(int srcalpha, int destalpha)
 {
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_SUBTRACT);
-	SetAlphaBlendFunc(srcalpha, destalpha);
+	mContext->SetSubClampBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetRevSubClampBlend(int srcalpha, int destalpha)
 {
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
-	SetAlphaBlendFunc(srcalpha, destalpha);
+	mContext->SetRevSubClampBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetAddSrcColorBlend(int srcalpha, int destalpha)
 {
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
+	mContext->SetAddSrcColorBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetShadedBlend(int srcalpha, int destalpha)
 {
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	mContext->SetShadedBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetAddClampShadedBlend(int srcalpha, int destalpha)
 {
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_ONE, GL_ONE);
+	mContext->SetAddClampShadedBlend(srcalpha, destalpha);
 }
 
 /////////////////////////////////////////////////////////////////////////////
