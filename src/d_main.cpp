@@ -1033,7 +1033,7 @@ void D_DoomLoop ()
 				I_StartFrame ();
 			}
 			I_SetFrameTime();
-			screen->FrameTime = I_msTime();
+			screen->FrameTime = I_msTimeFS();
 
 			// process one or more tics
 			if (singletics)

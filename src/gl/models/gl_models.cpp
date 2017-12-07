@@ -157,7 +157,7 @@ void FGLModelRenderer::DrawElements(int numIndices, size_t offset)
 
 double FGLModelRenderer::GetTimeFloat()
 {
-	return (float)screen->FrameTime * (float)TICRATE / 1000.0f;
+	return (double)screen->FrameTime * (double)TICRATE / 1000.0;
 }
 
 //===========================================================================
