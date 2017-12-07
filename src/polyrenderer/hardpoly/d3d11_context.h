@@ -23,11 +23,15 @@
 #pragma once
 
 #include "gpu_context.h"
+#undef APIENTRY
+#include "win32/fb_d3d11.h"
+
+class D3D11Context;
 
 class D3D11Texture2D : public GPUTexture2D
 {
 public:
-	D3D11Texture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr);
+	D3D11Texture2D(D3D11Context *context, int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr);
 	~D3D11Texture2D();
 
 	void Upload(int x, int y, int width, int height, int level, const void *pixels);
@@ -41,18 +45,23 @@ private:
 	D3D11Texture2D &operator =(const D3D11Texture2D &) = delete;
 
 	static int NumLevels(int width, int height);
+	static DXGI_FORMAT ToD3DFormat(GPUPixelFormat format);
+	static int GetBytesPerPixel(GPUPixelFormat format);
+	static bool IsStencilOrDepthFormat(GPUPixelFormat format);
 
+	D3D11Context *mContext = nullptr;
 	int mWidth = 0;
 	int mHeight = 0;
 	bool mMipmap = false;
 	int mSampleCount = 0;
 	GPUPixelFormat mFormat;
+	ComPtr<ID3D11Texture2D> mHandle;
 };
 
 class D3D11FrameBuffer : public GPUFrameBuffer
 {
 public:
-	D3D11FrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil);
+	D3D11FrameBuffer(D3D11Context *context, const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil);
 	~D3D11FrameBuffer();
 
 private:
@@ -63,7 +72,7 @@ private:
 class D3D11IndexBuffer : public GPUIndexBuffer
 {
 public:
-	D3D11IndexBuffer(const void *data, int size);
+	D3D11IndexBuffer(D3D11Context *context, const void *data, int size);
 	~D3D11IndexBuffer();
 
 	void Upload(const void *data, int size) override;
@@ -74,12 +83,16 @@ public:
 private:
 	D3D11IndexBuffer(const D3D11IndexBuffer &) = delete;
 	D3D11IndexBuffer &operator =(const D3D11IndexBuffer &) = delete;
+
+	D3D11Context *mContext;
+	int mSize;
+	ComPtr<ID3D11Buffer> mHandle;
 };
 
 class D3D11Program : public GPUProgram
 {
 public:
-	D3D11Program();
+	D3D11Program(D3D11Context *context);
 	~D3D11Program();
 
 	void Compile(GPUShaderType type, const char *name, const std::string &code) override;
@@ -95,19 +108,23 @@ private:
 
 	std::string PrefixCode() const;
 
-	std::map<std::string, std::string> mDefines;
+	D3D11Context *mContext;
 };
 
 class D3D11Sampler : public GPUSampler
 {
 public:
-	D3D11Sampler(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV);
+	D3D11Sampler(D3D11Context *context, GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV);
 	~D3D11Sampler();
 
 private:
+	static D3D11_TEXTURE_ADDRESS_MODE ToD3DWrap(GPUWrapMode mode);
+	static D3D11_FILTER ToD3DFilter(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap);
+
 	D3D11Sampler(const D3D11Sampler &) = delete;
 	D3D11Sampler &operator =(const D3D11Sampler &) = delete;
 
+	ComPtr<ID3D11SamplerState> mHandle;
 	GPUSampleMode mMinfilter = GPUSampleMode::Nearest;
 	GPUSampleMode mMagfilter = GPUSampleMode::Nearest;
 	GPUMipmapMode mMipmap = GPUMipmapMode::None;
@@ -118,7 +135,7 @@ private:
 class D3D11StorageBuffer : public GPUStorageBuffer
 {
 public:
-	D3D11StorageBuffer(const void *data, int size);
+	D3D11StorageBuffer(D3D11Context *context, const void *data, int size);
 	~D3D11StorageBuffer();
 
 	void Upload(const void *data, int size) override;
@@ -126,12 +143,16 @@ public:
 private:
 	D3D11StorageBuffer(const D3D11StorageBuffer &) = delete;
 	D3D11StorageBuffer &operator =(const D3D11StorageBuffer &) = delete;
+
+	D3D11Context *mContext;
+	int mSize;
+	ComPtr<ID3D11Buffer> mHandle;
 };
 
 class D3D11UniformBuffer : public GPUUniformBuffer
 {
 public:
-	D3D11UniformBuffer(const void *data, int size);
+	D3D11UniformBuffer(D3D11Context *context, const void *data, int size);
 	~D3D11UniformBuffer();
 
 	void Upload(const void *data, int size) override;
@@ -142,12 +163,16 @@ public:
 private:
 	D3D11UniformBuffer(const D3D11UniformBuffer &) = delete;
 	D3D11UniformBuffer &operator =(const D3D11UniformBuffer &) = delete;
+
+	D3D11Context *mContext;
+	int mSize;
+	ComPtr<ID3D11Buffer> mHandle;
 };
 
 class D3D11VertexArray : public GPUVertexArray
 {
 public:
-	D3D11VertexArray(const std::vector<GPUVertexAttributeDesc> &attributes);
+	D3D11VertexArray(D3D11Context *context, const std::vector<GPUVertexAttributeDesc> &attributes);
 	~D3D11VertexArray();
 
 private:
@@ -160,7 +185,7 @@ private:
 class D3D11VertexBuffer : public GPUVertexBuffer
 {
 public:
-	D3D11VertexBuffer(const void *data, int size);
+	D3D11VertexBuffer(D3D11Context *context, const void *data, int size);
 	~D3D11VertexBuffer();
 
 	void Upload(const void *data, int size) override;
@@ -171,6 +196,10 @@ public:
 private:
 	D3D11VertexBuffer(const D3D11VertexBuffer &) = delete;
 	D3D11VertexBuffer &operator =(const D3D11VertexBuffer &) = delete;
+
+	D3D11Context *mContext;
+	int mSize;
+	ComPtr<ID3D11Buffer> mHandle;
 };
 
 class D3D11Context : public GPUContext
@@ -231,6 +260,9 @@ public:
 	void ClearDepthBuffer(float depth) override;
 	void ClearStencilBuffer(int stencil) override;
 	void ClearDepthStencilBuffer(float depth, int stencil) override;
+
+	ComPtr<ID3D11Device> Device;
+	ComPtr<ID3D11DeviceContext> DeviceContext;
 
 private:
 	D3D11Context(const D3D11Context &) = delete;

@@ -116,7 +116,6 @@ private:
 
 	int mHandle = 0;
 	std::map<int, int> mShaderHandle;
-	std::map<std::string, std::string> mDefines;
 };
 
 class GLSampler : public GPUSampler
