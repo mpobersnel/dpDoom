@@ -27,6 +27,7 @@
 #include "SkylineBinPack.h"
 #include "swrenderer/scene/r_light.h"
 #include "fb_d3d11.h"
+#include "r_videoscale.h"
 
 extern HWND Window;
 extern IVideo *Video;
@@ -180,9 +181,11 @@ void D3D11FB::Update()
 	{
 		RECT box;
 		GetClientRect(Window, &box);
-		if (box.right > 0 && box.right > 0 && (Width != box.right || Height != box.bottom))
+		int clientWidth = ViewportScaledWidth(box.right, box.bottom);
+		int clientHeight = ViewportScaledHeight(box.right, box.bottom);
+		if (clientWidth > 0 && clientHeight > 0 && (Width != clientWidth || Height != clientHeight))
 		{
-			Resize(box.right, box.bottom);
+			Resize(clientWidth, clientHeight);
 
 			result = mSwapChain->ResizeBuffers(0, Width, Height, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH);
 			if (FAILED(result))
