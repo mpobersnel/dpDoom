@@ -159,6 +159,7 @@ enum class GPUVertexAttributeType
 class GPUVertexAttributeDesc
 {
 public:
+	GPUVertexAttributeDesc() { }
 	GPUVertexAttributeDesc(int index, int size, GPUVertexAttributeType type, bool normalized, int stride, std::size_t offset, std::shared_ptr<GPUVertexBuffer> buffer)
 		: Index(index), Size(size), Type(type), Normalized(normalized), Stride(stride), Offset(offset), Buffer(buffer) { }
 

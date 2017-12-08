@@ -25,6 +25,7 @@
 #include "gpu_context.h"
 #undef APIENTRY
 #include "win32/fb_d3d11.h"
+#include <D3Dcompiler.h>
 
 class D3D11Context;
 
@@ -39,6 +40,8 @@ public:
 	int SampleCount() const override { return mSampleCount; }
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }
+
+	ID3D11Texture2D *Handle() const { return mHandle.Get(); }
 
 private:
 	D3D11Texture2D(const D3D11Texture2D &) = delete;
@@ -63,6 +66,9 @@ class D3D11FrameBuffer : public GPUFrameBuffer
 public:
 	D3D11FrameBuffer(D3D11Context *context, const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil);
 	~D3D11FrameBuffer();
+
+	std::vector<ComPtr<ID3D11RenderTargetView>> RenderTargetViews;
+	ComPtr<ID3D11DepthStencilView> DepthStencilView;
 
 private:
 	D3D11FrameBuffer(const D3D11FrameBuffer &) = delete;
@@ -89,6 +95,38 @@ private:
 	ComPtr<ID3D11Buffer> mHandle;
 };
 
+class D3D11Shader
+{
+public:
+	D3D11Shader(D3D11Context *context, GPUShaderType type, const char *name, const std::string &source);
+	D3D11Shader(D3D11Context *context, GPUShaderType type, const char *name, const void *bytecode, int bytecodeSize);
+
+	ID3D11VertexShader *HandleVertex() { return static_cast<ID3D11VertexShader*>(mHandle.Get()); }
+	ID3D11PixelShader *HandlePixel() { return static_cast<ID3D11PixelShader*>(mHandle.Get()); }
+	ID3D11GeometryShader *HandleGeometry() { return static_cast<ID3D11GeometryShader*>(mHandle.Get()); }
+	ID3D11DomainShader *HandleDomain() { return static_cast<ID3D11DomainShader*>(mHandle.Get()); }
+	ID3D11HullShader *HandleHull() { return static_cast<ID3D11HullShader*>(mHandle.Get()); }
+	ID3D11ComputeShader *HandleCompute() { return static_cast<ID3D11ComputeShader*>(mHandle.Get()); }
+
+	std::vector<uint8_t> Bytecode;
+
+	std::map<std::string, int> SamplerLocations;
+	std::map<std::string, int> TextureLocations;
+	std::map<std::string, int> ImageLocations;
+	std::map<std::string, int> UniformBufferLocations;
+	std::map<std::string, int> StorageBufferSrvLocations;
+	std::map<std::string, int> StorageBufferUavLocations;
+
+private:
+	D3D11Shader(const D3D11Shader &) = delete;
+	D3D11Shader &operator =(const D3D11Shader &) = delete;
+
+	void CreateShader(D3D11Context *context, GPUShaderType type);
+	void FindLocations();
+
+	ComPtr<ID3D11DeviceChild> mHandle;
+};
+
 class D3D11Program : public GPUProgram
 {
 public:
@@ -101,6 +139,15 @@ public:
 	void Link(const std::string &name) override;
 	void SetUniformBlock(const std::string &name, int index) override;
 	int GetUniformLocation(const char *name) override;
+
+	struct AttributeBinding
+	{
+		std::string SemanticName;
+		int SemanticIndex = 0;
+	};
+
+	std::map<int, AttributeBinding> AttributeBindings;
+	std::map<GPUShaderType, std::unique_ptr<D3D11Shader>> ShaderHandle;
 
 private:
 	D3D11Program(const D3D11Program &) = delete;
@@ -175,11 +222,18 @@ public:
 	D3D11VertexArray(D3D11Context *context, const std::vector<GPUVertexAttributeDesc> &attributes);
 	~D3D11VertexArray();
 
+	ID3D11InputLayout *GetInputLayout(D3D11Program *program);
+
 private:
 	D3D11VertexArray(const D3D11VertexArray &) = delete;
 	D3D11VertexArray &operator =(const D3D11VertexArray &) = delete;
 
-	std::vector<GPUVertexAttributeDesc> mAttributes;
+	ComPtr<ID3D11InputLayout> CreateInputLayout(D3D11Program *program);
+	static DXGI_FORMAT ToD3DFormat(const GPUVertexAttributeDesc &data);
+
+	D3D11Context *mContext;
+	std::map<int, GPUVertexAttributeDesc> mAttributes;
+	std::map<void *, ComPtr<ID3D11InputLayout>> mInputLayouts;
 };
 
 class D3D11VertexBuffer : public GPUVertexBuffer
@@ -263,6 +317,7 @@ public:
 
 	ComPtr<ID3D11Device> Device;
 	ComPtr<ID3D11DeviceContext> DeviceContext;
+	D3D_FEATURE_LEVEL FeatureLevel = D3D_FEATURE_LEVEL_11_1;
 
 private:
 	D3D11Context(const D3D11Context &) = delete;
