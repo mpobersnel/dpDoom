@@ -54,6 +54,19 @@ public:
 	virtual int Height() const = 0;
 };
 
+class GPUStagingTexture
+{
+public:
+	virtual ~GPUStagingTexture() { }
+
+	virtual void Upload(int x, int y, int width, int height, const void *pixels) = 0;
+	virtual int Width() const = 0;
+	virtual int Height() const = 0;
+
+	virtual void *Map() = 0;
+	virtual void Unmap() = 0;
+};
+
 class GPUFrameBuffer
 {
 public:
@@ -138,8 +151,8 @@ class GPUUniformBuffer
 public:
 	virtual ~GPUUniformBuffer() { }
 	virtual void Upload(const void *data, int size) = 0;
-	virtual void *MapWriteOnly() = 0;
-	virtual void Unmap() = 0;
+	//virtual void *MapWriteOnly() = 0;
+	//virtual void Unmap() = 0;
 };
 
 class GPUVertexBuffer;
@@ -213,6 +226,7 @@ class GPUContext
 public:
 	virtual ~GPUContext() { }
 
+	virtual std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) = 0;
 	virtual std::shared_ptr<GPUTexture2D> CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr) = 0;
 	virtual std::shared_ptr<GPUFrameBuffer> CreateFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil) = 0;
 	virtual std::shared_ptr<GPUIndexBuffer> CreateIndexBuffer(const void *data, int size) = 0;

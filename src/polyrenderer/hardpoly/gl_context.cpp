@@ -36,6 +36,11 @@ GLContext::~GLContext()
 {
 }
 
+std::shared_ptr<GPUStagingTexture> GLContext::CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels)
+{
+	return std::make_shared<GLStagingTexture>(width, height, format, pixels);
+}
+
 std::shared_ptr<GPUTexture2D> GLContext::CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels)
 {
 	return std::make_shared<GLTexture2D>(width, height, mipmap, sampleCount, format, pixels);
@@ -662,6 +667,94 @@ GLStorageBuffer::~GLStorageBuffer()
 
 /////////////////////////////////////////////////////////////////////////////
 
+GLStagingTexture::GLStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels)
+{
+	mWidth = width;
+	mHeight = height;
+	mFormat = format;
+
+	GL_PIXEL_UNPACK_BUFFER_BINDING;
+	GL_PIXEL_UNPACK_BUFFER;
+
+	glGenBuffers(1, (GLuint*)&mHandle);
+
+	GLint oldHandle;
+	glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &oldHandle);
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mHandle);
+	glBufferData(GL_PIXEL_UNPACK_BUFFER, GetBytesPerPixel(format) * width * height, pixels, GL_DYNAMIC_COPY);
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldHandle);
+}
+
+GLStagingTexture::~GLStagingTexture()
+{
+	glDeleteBuffers(1, (GLuint*)&mHandle);
+}
+
+int GLStagingTexture::GetBytesPerPixel(GPUPixelFormat format)
+{
+	switch (format)
+	{
+	default:
+	case GPUPixelFormat::R8:
+		return 1;
+	case GPUPixelFormat::RGBA8:
+	case GPUPixelFormat::sRGB8_Alpha8:
+	case GPUPixelFormat::Depth24_Stencil8:
+	case GPUPixelFormat::R32f:
+		return 4;
+	case GPUPixelFormat::RGBA16:
+	case GPUPixelFormat::RGBA16f:
+		return 8;
+	case GPUPixelFormat::RGBA32f:
+		return 16;
+	}
+}
+
+void GLStagingTexture::Upload(int x, int y, int width, int height, const void *pixels)
+{
+	if (x == 0 && y == 0 && width == mWidth && height == mHeight)
+	{
+		GLint oldHandle;
+		glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &oldHandle);
+
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mHandle);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, GetBytesPerPixel(mFormat) * width * height, pixels, GL_STATIC_DRAW);
+
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldHandle);
+	}
+	else
+	{
+		I_FatalError("GLStagingTexture::Upload currently only supports full texture uploads");
+	}
+}
+
+void *GLStagingTexture::Map()
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &oldHandle);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mHandle);
+
+	void *data = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_READ_WRITE);
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldHandle);
+	return data;
+}
+
+void GLStagingTexture::Unmap()
+{
+	GLint oldHandle;
+	glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &oldHandle);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mHandle);
+
+	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldHandle);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 GLTexture2D::GLTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels)
 {
 	mWidth = width;
@@ -818,7 +911,7 @@ void GLUniformBuffer::Upload(const void *data, int size)
 	glBindBuffer(GL_UNIFORM_BUFFER, oldHandle);
 }
 
-void *GLUniformBuffer::MapWriteOnly()
+/*void *GLUniformBuffer::MapWriteOnly()
 {
 	GLint oldHandle;
 	glGetIntegerv(GL_UNIFORM_BUFFER_BINDING, &oldHandle);
@@ -840,7 +933,7 @@ void GLUniformBuffer::Unmap()
 	glUnmapBuffer(GL_UNIFORM_BUFFER);
 
 	glBindBuffer(GL_UNIFORM_BUFFER, oldHandle);
-}
+}*/
 
 GLUniformBuffer::~GLUniformBuffer()
 {

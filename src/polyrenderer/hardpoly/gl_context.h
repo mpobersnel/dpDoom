@@ -24,6 +24,34 @@
 
 #include "gpu_context.h"
 
+class GLStagingTexture : public GPUStagingTexture
+{
+public:
+	GLStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr);
+	~GLStagingTexture();
+
+	void Upload(int x, int y, int width, int height, const void *pixels);
+
+	int Width() const override { return mWidth; }
+	int Height() const override { return mHeight; }
+
+	int Handle() const { return mHandle; }
+
+	void *Map() override;
+	void Unmap() override;
+
+private:
+	GLStagingTexture(const GLStagingTexture &) = delete;
+	GLStagingTexture &operator =(const GLStagingTexture &) = delete;
+
+	static int GetBytesPerPixel(GPUPixelFormat format);
+
+	int mHandle = 0;
+	int mWidth = 0;
+	int mHeight = 0;
+	GPUPixelFormat mFormat;
+};
+
 class GLTexture2D : public GPUTexture2D
 {
 public:
@@ -37,14 +65,14 @@ public:
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }
 
-private:
-	GLTexture2D(const GLTexture2D &) = delete;
-	GLTexture2D &operator =(const GLTexture2D &) = delete;
-
 	static int NumLevels(int width, int height);
 	static int ToInternalFormat(GPUPixelFormat format);
 	static int ToUploadFormat(GPUPixelFormat format);
 	static int ToUploadType(GPUPixelFormat format);
+
+private:
+	GLTexture2D(const GLTexture2D &) = delete;
+	GLTexture2D &operator =(const GLTexture2D &) = delete;
 
 	int mHandle = 0;
 	int mWidth = 0;
@@ -163,8 +191,8 @@ public:
 
 	void Upload(const void *data, int size) override;
 
-	void *MapWriteOnly() override;
-	void Unmap() override;
+	//void *MapWriteOnly() override;
+	//void Unmap() override;
 
 	int Handle() const { return mHandle; }
 
@@ -219,6 +247,7 @@ public:
 	GLContext();
 	~GLContext();
 	
+	std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) override;
 	std::shared_ptr<GPUTexture2D> CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr) override;
 	std::shared_ptr<GPUFrameBuffer> CreateFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil) override;
 	std::shared_ptr<GPUIndexBuffer> CreateIndexBuffer(const void *data, int size) override;

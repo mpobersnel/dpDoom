@@ -81,6 +81,34 @@ private:
 
 class D3D11Context;
 
+class D3D11StagingTexture : public GPUStagingTexture
+{
+public:
+	D3D11StagingTexture(D3D11Context *context, int width, int height, GPUPixelFormat format, const void *pixels = nullptr);
+	~D3D11StagingTexture();
+
+	void Upload(int x, int y, int width, int height, const void *pixels);
+
+	int Width() const override { return mWidth; }
+	int Height() const override { return mHeight; }
+
+	ID3D11Texture2D *Handle() const { return mHandle.Get(); }
+
+	void *Map() override;
+	void Unmap() override;
+
+private:
+	D3D11StagingTexture(const D3D11StagingTexture &) = delete;
+	D3D11StagingTexture &operator =(const D3D11StagingTexture &) = delete;
+
+	D3D11Context *mContext = nullptr;
+	int mWidth = 0;
+	int mHeight = 0;
+	GPUPixelFormat mFormat;
+	ComPtr<ID3D11Texture2D> mHandle;
+	D3D11_MAPPED_SUBRESOURCE mMappedSubresource;
+};
+
 class D3D11Texture2D : public GPUTexture2D
 {
 public:
@@ -95,14 +123,14 @@ public:
 
 	ID3D11Texture2D *Handle() const { return mHandle.Get(); }
 
-private:
-	D3D11Texture2D(const D3D11Texture2D &) = delete;
-	D3D11Texture2D &operator =(const D3D11Texture2D &) = delete;
-
 	static int NumLevels(int width, int height);
 	static DXGI_FORMAT ToD3DFormat(GPUPixelFormat format);
 	static int GetBytesPerPixel(GPUPixelFormat format);
 	static bool IsStencilOrDepthFormat(GPUPixelFormat format);
+
+private:
+	D3D11Texture2D(const D3D11Texture2D &) = delete;
+	D3D11Texture2D &operator =(const D3D11Texture2D &) = delete;
 
 	D3D11Context *mContext = nullptr;
 	int mWidth = 0;
@@ -145,6 +173,7 @@ private:
 	D3D11Context *mContext;
 	int mSize;
 	ComPtr<ID3D11Buffer> mHandle;
+	D3D11_MAPPED_SUBRESOURCE mMappedSubresource;
 };
 
 class D3D11Shader
@@ -256,8 +285,8 @@ public:
 
 	void Upload(const void *data, int size) override;
 
-	void *MapWriteOnly() override;
-	void Unmap() override;
+	//void *MapWriteOnly() override;
+	//void Unmap() override;
 
 private:
 	D3D11UniformBuffer(const D3D11UniformBuffer &) = delete;
@@ -306,6 +335,7 @@ private:
 	D3D11Context *mContext;
 	int mSize;
 	ComPtr<ID3D11Buffer> mHandle;
+	D3D11_MAPPED_SUBRESOURCE mMappedSubresource;
 };
 
 class D3D11Context : public GPUContext
@@ -314,6 +344,7 @@ public:
 	D3D11Context();
 	~D3D11Context();
 
+	std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) override;
 	std::shared_ptr<GPUTexture2D> CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr) override;
 	std::shared_ptr<GPUFrameBuffer> CreateFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil) override;
 	std::shared_ptr<GPUIndexBuffer> CreateIndexBuffer(const void *data, int size) override;

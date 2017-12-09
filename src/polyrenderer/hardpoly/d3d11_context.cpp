@@ -39,6 +39,11 @@ D3D11Context::~D3D11Context()
 {
 }
 
+std::shared_ptr<GPUStagingTexture> D3D11Context::CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels)
+{
+	return std::make_shared<D3D11StagingTexture>(this, width, height, format, pixels);
+}
+
 std::shared_ptr<GPUTexture2D> D3D11Context::CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels)
 {
 	return std::make_shared<D3D11Texture2D>(this, width, height, mipmap, sampleCount, format, pixels);
@@ -276,9 +281,9 @@ D3D11IndexBuffer::D3D11IndexBuffer(D3D11Context *context, const void *data, int 
 
 	D3D11_BUFFER_DESC desc;
 	desc.ByteWidth = size;
-	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.Usage = D3D11_USAGE_DYNAMIC;
 	desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	desc.CPUAccessFlags = 0;
+	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	desc.MiscFlags = 0;
 	desc.StructureByteStride = 0;
 	HRESULT result = context->Device->CreateBuffer(&desc, &resource_data, mHandle.OutputVariable());
@@ -300,11 +305,15 @@ void D3D11IndexBuffer::Upload(const void *data, int size)
 
 void *D3D11IndexBuffer::MapWriteOnly()
 {
-	return nullptr;
+	HRESULT result = mContext->DeviceContext->Map(mHandle, 0, D3D11_MAP_WRITE_DISCARD, 0, &mMappedSubresource);
+	if (FAILED(result))
+		I_FatalError("ID3D11Device.MapWriteOnly(index) failed");
+	return mMappedSubresource.pData;
 }
 
 void D3D11IndexBuffer::Unmap()
 {
+	mContext->DeviceContext->Unmap(mHandle, 0);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -615,6 +624,77 @@ D3D11StorageBuffer::~D3D11StorageBuffer()
 
 /////////////////////////////////////////////////////////////////////////////
 
+D3D11StagingTexture::D3D11StagingTexture(D3D11Context *context, int width, int height, GPUPixelFormat format, const void *pixels)
+{
+	mContext = context;
+	mWidth = width;
+	mHeight = height;
+	mFormat = format;
+
+	D3D11_TEXTURE2D_DESC desc;
+	desc.Width = width;
+	desc.Height = height;
+	desc.MipLevels = 1;
+	desc.Format = D3D11Texture2D::ToD3DFormat(format);
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
+	desc.Usage = D3D11_USAGE_STAGING;
+	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ | D3D11_CPU_ACCESS_WRITE;
+	desc.MiscFlags = 0;
+	desc.ArraySize = 1;
+	desc.BindFlags = 0;
+
+	D3D11_SUBRESOURCE_DATA initdata;
+	initdata.pSysMem = pixels;
+	initdata.SysMemPitch = width * D3D11Texture2D::GetBytesPerPixel(format);
+	initdata.SysMemSlicePitch = height * initdata.SysMemPitch;
+
+	HRESULT result = context->Device->CreateTexture2D(&desc, pixels ? &initdata : nullptr, mHandle.OutputVariable());
+	if (FAILED(result))
+		I_FatalError("ID3D11Device.CreateTexture2D(staging) failed");
+}
+
+D3D11StagingTexture::~D3D11StagingTexture()
+{
+}
+
+void D3D11StagingTexture::Upload(int x, int y, int width, int height, const void *pixels)
+{
+	D3D11_TEXTURE2D_DESC desc;
+	mHandle->GetDesc(&desc);
+
+	if (x < 0 || x + width > desc.Width || y < 0 || y + height > desc.Height)
+		I_FatalError("D3D11Texture2D.Upload: out of bounds!");
+
+	D3D11_BOX box;
+	box.left = x;
+	box.top = y;
+	box.right = x + width;
+	box.bottom = y + height;
+	box.front = 0;
+	box.back = 1;
+
+	int rowPitch = width * D3D11Texture2D::GetBytesPerPixel(mFormat);
+	int slicePitch = rowPitch * height;
+
+	mContext->DeviceContext->UpdateSubresource(mHandle, 0, &box, pixels, rowPitch, slicePitch);
+}
+
+void *D3D11StagingTexture::Map()
+{
+	HRESULT result = mContext->DeviceContext->Map(mHandle, 0, D3D11_MAP_WRITE_DISCARD, 0, &mMappedSubresource);
+	if (FAILED(result))
+		I_FatalError("ID3D11Device.MapWriteOnly(vertex) failed");
+	return mMappedSubresource.pData;
+}
+
+void D3D11StagingTexture::Unmap()
+{
+	mContext->DeviceContext->Unmap(mHandle, 0);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 D3D11Texture2D::D3D11Texture2D(D3D11Context *context, int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels)
 {
 	mContext = context;
@@ -791,14 +871,14 @@ void D3D11UniformBuffer::Upload(const void *data, int size)
 	mContext->DeviceContext->UpdateSubresource(mHandle, 0, 0, data, 0, 0);
 }
 
-void *D3D11UniformBuffer::MapWriteOnly()
+/*void *D3D11UniformBuffer::MapWriteOnly()
 {
 	return nullptr;
 }
 
 void D3D11UniformBuffer::Unmap()
 {
-}
+}*/
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -939,9 +1019,9 @@ D3D11VertexBuffer::D3D11VertexBuffer(D3D11Context *context, const void *data, in
 
 	D3D11_BUFFER_DESC desc;
 	desc.ByteWidth = size;
-	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.Usage = D3D11_USAGE_DYNAMIC;
 	desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-	desc.CPUAccessFlags = 0;
+	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	desc.MiscFlags = 0;
 	desc.StructureByteStride = 0;
 	HRESULT result = context->Device->CreateBuffer(&desc, &resource_data, mHandle.OutputVariable());
@@ -963,9 +1043,13 @@ void D3D11VertexBuffer::Upload(const void *data, int size)
 
 void *D3D11VertexBuffer::MapWriteOnly()
 {
-	return nullptr;
+	HRESULT result = mContext->DeviceContext->Map(mHandle, 0, D3D11_MAP_WRITE_DISCARD, 0, &mMappedSubresource);
+	if (FAILED(result))
+		I_FatalError("ID3D11Device.MapWriteOnly(vertex) failed");
+	return mMappedSubresource.pData;
 }
 
 void D3D11VertexBuffer::Unmap()
 {
+	mContext->DeviceContext->Unmap(mHandle, 0);
 }
