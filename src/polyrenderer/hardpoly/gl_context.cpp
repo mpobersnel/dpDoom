@@ -86,6 +86,28 @@ std::shared_ptr<GPUVertexBuffer> GLContext::CreateVertexBuffer(const void *data,
 	return std::make_shared<GLVertexBuffer>(data, size);
 }
 
+void GLContext::CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source)
+{
+	auto destimpl = std::static_pointer_cast<GLTexture2D>(dest);
+	auto sourceimpl = std::static_pointer_cast<GLStagingTexture>(source);
+
+	GLint oldBinding = 0, oldBufferBinding = 0;
+	glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &oldBufferBinding);
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
+
+	glBindTexture(GL_TEXTURE_2D, destimpl->Handle());
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sourceimpl->Handle());
+
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+		sourceimpl->Width(), sourceimpl->Height(),
+		GLTexture2D::ToUploadFormat(sourceimpl->Format()),
+		GLTexture2D::ToUploadType(sourceimpl->Format()),
+		nullptr);
+
+	glBindTexture(GL_TEXTURE_2D, oldBinding);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldBufferBinding);
+}
+
 void GLContext::Begin()
 {
 	ClearError();
@@ -700,6 +722,7 @@ int GLStagingTexture::GetBytesPerPixel(GPUPixelFormat format)
 	case GPUPixelFormat::R8:
 		return 1;
 	case GPUPixelFormat::RGBA8:
+	case GPUPixelFormat::BGRA8:
 	case GPUPixelFormat::sRGB8_Alpha8:
 	case GPUPixelFormat::Depth24_Stencil8:
 	case GPUPixelFormat::R32f:
@@ -843,6 +866,7 @@ int GLTexture2D::ToInternalFormat(GPUPixelFormat format)
 	{
 	default:
 	case GPUPixelFormat::RGBA8: return GL_RGBA8;
+	case GPUPixelFormat::BGRA8: return GL_RGBA8;
 	case GPUPixelFormat::sRGB8_Alpha8: return GL_SRGB8_ALPHA8;
 	case GPUPixelFormat::RGBA16: return GL_RGBA16;
 	case GPUPixelFormat::RGBA16f: return GL_RGBA16F;
@@ -859,6 +883,7 @@ int GLTexture2D::ToUploadFormat(GPUPixelFormat format)
 	{
 	default:
 	case GPUPixelFormat::RGBA8: return GL_RGBA;
+	case GPUPixelFormat::BGRA8: return GL_BGRA;
 	case GPUPixelFormat::sRGB8_Alpha8: return GL_RGBA;
 	case GPUPixelFormat::RGBA16: return GL_RGBA;
 	case GPUPixelFormat::RGBA16f: return GL_RGBA;
@@ -875,6 +900,7 @@ int GLTexture2D::ToUploadType(GPUPixelFormat format)
 	{
 	default:
 	case GPUPixelFormat::RGBA8: return GL_UNSIGNED_BYTE;
+	case GPUPixelFormat::BGRA8: return GL_UNSIGNED_BYTE;
 	case GPUPixelFormat::sRGB8_Alpha8: return GL_UNSIGNED_BYTE;
 	case GPUPixelFormat::RGBA16: return GL_UNSIGNED_SHORT;
 	case GPUPixelFormat::RGBA16f: return GL_HALF_FLOAT;

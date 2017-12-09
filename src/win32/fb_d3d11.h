@@ -52,9 +52,8 @@ private:
 	float mLastGamma = 0.0f;
 
 	D3D11Context mContext;
-	ComPtr<ID3D11Texture2D> mFBTexture;
-	ComPtr<ID3D11Texture2D> mFBStaging;
-	D3D11_MAPPED_SUBRESOURCE mMappedFBStaging = D3D11_MAPPED_SUBRESOURCE();
+	std::shared_ptr<GPUTexture2D> mFBTexture;
+	std::shared_ptr<GPUStagingTexture> mFBStaging;
 };
 
 typedef HRESULT(WINAPI *FuncD3D11CreateDeviceAndSwapChain)(

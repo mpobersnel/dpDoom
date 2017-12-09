@@ -91,11 +91,13 @@ public:
 
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }
+	GPUPixelFormat Format() const override { return mFormat; }
 
 	ID3D11Texture2D *Handle() const { return mHandle.Get(); }
 
 	void *Map() override;
 	void Unmap() override;
+	int GetMappedRowPitch() override { return mMappedSubresource.RowPitch; }
 
 private:
 	D3D11StagingTexture(const D3D11StagingTexture &) = delete;
@@ -120,6 +122,7 @@ public:
 	int SampleCount() const override { return mSampleCount; }
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }
+	GPUPixelFormat Format() const override { return mFormat; }
 
 	ID3D11Texture2D *Handle() const { return mHandle.Get(); }
 
@@ -354,6 +357,8 @@ public:
 	std::shared_ptr<GPUUniformBuffer> CreateUniformBuffer(const void *data, int size) override;
 	std::shared_ptr<GPUVertexArray> CreateVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes) override;
 	std::shared_ptr<GPUVertexBuffer> CreateVertexBuffer(const void *data, int size) override;
+
+	void CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source) override;
 
 	void Begin() override;
 	void End() override;

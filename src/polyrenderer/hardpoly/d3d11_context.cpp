@@ -89,6 +89,13 @@ std::shared_ptr<GPUVertexBuffer> D3D11Context::CreateVertexBuffer(const void *da
 	return std::make_shared<D3D11VertexBuffer>(this, data, size);
 }
 
+void D3D11Context::CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source)
+{
+	auto destimpl = std::static_pointer_cast<D3D11Texture2D>(dest);
+	auto sourceimpl = std::static_pointer_cast<D3D11StagingTexture>(source);
+	DeviceContext->CopyResource(destimpl->Handle(), sourceimpl->Handle());
+}
+
 void D3D11Context::Begin()
 {
 }
@@ -682,9 +689,9 @@ void D3D11StagingTexture::Upload(int x, int y, int width, int height, const void
 
 void *D3D11StagingTexture::Map()
 {
-	HRESULT result = mContext->DeviceContext->Map(mHandle, 0, D3D11_MAP_WRITE_DISCARD, 0, &mMappedSubresource);
+	HRESULT result = mContext->DeviceContext->Map(mHandle, 0, D3D11_MAP_READ_WRITE, 0, &mMappedSubresource);
 	if (FAILED(result))
-		I_FatalError("ID3D11Device.MapWriteOnly(vertex) failed");
+		I_FatalError("ID3D11Device.Map(staging texture) failed");
 	return mMappedSubresource.pData;
 }
 
@@ -801,6 +808,7 @@ DXGI_FORMAT D3D11Texture2D::ToD3DFormat(GPUPixelFormat format)
 	{
 	default:
 	case GPUPixelFormat::RGBA8: return DXGI_FORMAT_R8G8B8A8_UNORM;
+	case GPUPixelFormat::BGRA8: return DXGI_FORMAT_B8G8R8A8_UNORM;
 	case GPUPixelFormat::sRGB8_Alpha8: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	case GPUPixelFormat::RGBA16: return DXGI_FORMAT_R16G16B16A16_UNORM;
 	case GPUPixelFormat::RGBA16f: return DXGI_FORMAT_R16G16B16A16_FLOAT;
@@ -819,6 +827,7 @@ int D3D11Texture2D::GetBytesPerPixel(GPUPixelFormat format)
 	case GPUPixelFormat::R8:
 		return 1;
 	case GPUPixelFormat::RGBA8:
+	case GPUPixelFormat::BGRA8:
 	case GPUPixelFormat::sRGB8_Alpha8:
 	case GPUPixelFormat::Depth24_Stencil8:
 	case GPUPixelFormat::R32f:

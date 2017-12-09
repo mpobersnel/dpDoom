@@ -126,13 +126,9 @@ bool D3D11FB::Lock(bool buffered)
 {
 	if (LockCount++ > 0) return false;
 
-	HRESULT result = mContext.DeviceContext->Map(mFBStaging, 0, D3D11_MAP_READ_WRITE, 0, &mMappedFBStaging);
-	if (FAILED(result))
-		I_FatalError("Map failed");
-
 	int pixelsize = IsBgra() ? 4 : 1;
-	Buffer = (uint8_t*)mMappedFBStaging.pData;
-	Pitch = mMappedFBStaging.RowPitch / pixelsize;
+	Buffer = (uint8_t*)mFBStaging->Map();
+	Pitch = mFBStaging->GetMappedRowPitch() / pixelsize;
 	return true;
 }
 
@@ -142,7 +138,7 @@ void D3D11FB::Unlock()
 	if (--LockCount == 0)
 	{
 		Buffer = nullptr;
-		mContext.DeviceContext->Unmap(mFBStaging, 0);
+		mFBStaging->Unmap();
 	}
 }
 
@@ -160,17 +156,16 @@ void D3D11FB::Update()
 	if (isLocked)
 	{
 		Buffer = nullptr;
-		mContext.DeviceContext->Unmap(mFBStaging, 0);
+		mFBStaging->Unmap();
 	}
 
 	int pixelsize = IsBgra() ? 4 : 1;
-	//mDeviceContext->UpdateSubresource(mFBTexture.Get(), 0, nullptr, MemBuffer, Pitch * pixelsize, 0);
-	mContext.DeviceContext->CopyResource(mFBTexture, mFBStaging);
+	mContext.CopyTexture(mFBTexture, mFBStaging);
 
 	ComPtr<ID3D11Texture2D> backbuffer;
 	HRESULT result = mContext.SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)backbuffer.OutputVariable());
 	if (SUCCEEDED(result))
-		mContext.DeviceContext->CopyResource(backbuffer, mFBTexture);
+		mContext.DeviceContext->CopyResource(backbuffer, std::static_pointer_cast<D3D11Texture2D>(mFBTexture)->Handle());
 	backbuffer.Clear();
 
 	// Limiting the frame rate is as simple as waiting for the timer to signal this event.
@@ -199,11 +194,8 @@ void D3D11FB::Update()
 
 	if (isLocked)
 	{
-		result = mContext.DeviceContext->Map(mFBStaging, 0, D3D11_MAP_READ_WRITE, 0, &mMappedFBStaging);
-		if (FAILED(result))
-			I_FatalError("Map failed");
-		Buffer = (uint8_t*)mMappedFBStaging.pData;
-		Pitch = mMappedFBStaging.RowPitch / pixelsize;
+		Buffer = (uint8_t*)mFBStaging->Map();
+		Pitch = mFBStaging->GetMappedRowPitch() / pixelsize;
 	}
 }
 
@@ -253,42 +245,12 @@ void D3D11FB::GetFlash(PalEntry &rgb, int &amount)
 
 void D3D11FB::CreateFBTexture()
 {
-	D3D11_TEXTURE2D_DESC desc;
-	desc.Width = Width;
-	desc.Height = Height;
-	desc.MipLevels = 1;
-	desc.ArraySize = 1;
-	desc.Format = IsBgra() ? DXGI_FORMAT_B8G8R8A8_UNORM : DXGI_FORMAT_R8_UNORM;
-	desc.SampleDesc.Count = 1;
-	desc.SampleDesc.Quality = 0;
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.CPUAccessFlags = 0;
-	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-	desc.MiscFlags = 0;
-
-	HRESULT result = mContext.Device->CreateTexture2D(&desc, 0, (ID3D11Texture2D **)mFBTexture.OutputVariable());
-	if (FAILED(result))
-		I_FatalError("Could not create frame buffer texture: CreateTexture2D failed");
+	mFBTexture = mContext.CreateTexture2D(Width, Height, false, 1, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
 }
 
 void D3D11FB::CreateFBStagingTexture()
 {
-	D3D11_TEXTURE2D_DESC desc;
-	desc.Width = Width;
-	desc.Height = Height;
-	desc.MipLevels = 1;
-	desc.ArraySize = 1;
-	desc.Format = IsBgra() ? DXGI_FORMAT_B8G8R8A8_UNORM : DXGI_FORMAT_R8_UNORM;
-	desc.SampleDesc.Count = 1;
-	desc.SampleDesc.Quality = 0;
-	desc.Usage = D3D11_USAGE_STAGING;
-	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ | D3D11_CPU_ACCESS_WRITE;
-	desc.BindFlags = 0;
-	desc.MiscFlags = 0;
-
-	HRESULT result = mContext.Device->CreateTexture2D(&desc, 0, (ID3D11Texture2D **)mFBStaging.OutputVariable());
-	if (FAILED(result))
-		I_FatalError("Could not create frame buffer texture: CreateTexture2D failed");
+	mFBStaging = mContext.CreateStagingTexture(Width, Height, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
 }
 
 void D3D11FB::SetInitialWindowLocation()

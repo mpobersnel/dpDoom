@@ -30,6 +30,7 @@
 enum class GPUPixelFormat
 {
 	RGBA8,
+	BGRA8,
 	sRGB8_Alpha8,
 	RGBA16,
 	RGBA16f,
@@ -52,6 +53,7 @@ public:
 	virtual int SampleCount() const = 0;
 	virtual int Width() const = 0;
 	virtual int Height() const = 0;
+	virtual GPUPixelFormat Format() const = 0;
 };
 
 class GPUStagingTexture
@@ -62,9 +64,11 @@ public:
 	virtual void Upload(int x, int y, int width, int height, const void *pixels) = 0;
 	virtual int Width() const = 0;
 	virtual int Height() const = 0;
+	virtual GPUPixelFormat Format() const = 0;
 
 	virtual void *Map() = 0;
 	virtual void Unmap() = 0;
+	virtual int GetMappedRowPitch() = 0;
 };
 
 class GPUFrameBuffer
@@ -236,6 +240,8 @@ public:
 	virtual std::shared_ptr<GPUUniformBuffer> CreateUniformBuffer(const void *data, int size) = 0;
 	virtual std::shared_ptr<GPUVertexArray> CreateVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes) = 0;
 	virtual std::shared_ptr<GPUVertexBuffer> CreateVertexBuffer(const void *data, int size) = 0;
+
+	virtual void CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source) = 0;
 
 	virtual void Begin() = 0;
 	virtual void End() = 0;

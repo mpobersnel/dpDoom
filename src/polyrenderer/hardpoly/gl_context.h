@@ -34,11 +34,13 @@ public:
 
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }
+	GPUPixelFormat Format() const override { return mFormat; }
 
 	int Handle() const { return mHandle; }
 
 	void *Map() override;
 	void Unmap() override;
+	int GetMappedRowPitch() override { return GetBytesPerPixel(mFormat) * mWidth; }
 
 private:
 	GLStagingTexture(const GLStagingTexture &) = delete;
@@ -64,6 +66,7 @@ public:
 	int SampleCount() const override { return mSampleCount; }
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }
+	GPUPixelFormat Format() const override { return mFormat; }
 
 	static int NumLevels(int width, int height);
 	static int ToInternalFormat(GPUPixelFormat format);
@@ -257,6 +260,8 @@ public:
 	std::shared_ptr<GPUUniformBuffer> CreateUniformBuffer(const void *data, int size) override;
 	std::shared_ptr<GPUVertexArray> CreateVertexArray(const std::vector<GPUVertexAttributeDesc> &attributes) override;
 	std::shared_ptr<GPUVertexBuffer> CreateVertexBuffer(const void *data, int size) override;
+
+	void CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source) override;
 
 	void Begin() override;
 	void End() override;
