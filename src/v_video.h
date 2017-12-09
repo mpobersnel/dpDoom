@@ -350,6 +350,8 @@ public:
 	virtual bool Update() = 0;
 };
 
+class GPUContext;
+
 // A canvas that represents the actual display. The video code is responsible
 // for actually implementing this. Built on top of SimpleCanvas, because it
 // needs a system memory buffer when buffered output is enabled.
@@ -445,6 +447,7 @@ public:
 	uint64_t GetLastFPS() const { return LastCount; }
 
 	virtual bool IsOpenGL() const { return true; }
+	virtual GPUContext *GetContext() { return nullptr; }
 
 	// The original size of the framebuffer as selected in the video menu.
 	int VideoWidth = 0;

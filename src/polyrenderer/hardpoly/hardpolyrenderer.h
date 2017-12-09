@@ -177,8 +177,6 @@ private:
 	std::shared_ptr<GPUTexture2D> GetTranslationTextureBgra(const uint8_t *translation);
 	std::shared_ptr<GPUTexture2D> GetEngineTexturePal(const uint8_t *pixels, int width, int height);
 
-	std::shared_ptr<GPUContext> mContext;
-
 	std::shared_ptr<GPUTexture2D> mAlbedoBuffer;
 	std::shared_ptr<GPUTexture2D> mDepthStencilBuffer;
 	std::shared_ptr<GPUTexture2D> mNormalBuffer;

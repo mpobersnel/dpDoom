@@ -106,7 +106,7 @@ D3D11FB::D3D11FB(int width, int height, bool bgra, bool fullscreen) : BaseWinFB(
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
-	HRESULT result = D3D11_createdeviceandswapchain(nullptr, D3D_DRIVER_TYPE_HARDWARE, 0, 0, requestLevels.data(), (UINT)requestLevels.size(), D3D11_SDK_VERSION, &swapChainDesc, mSwapChain.OutputVariable(), mDevice.OutputVariable(), &mFeatureLevel, mDeviceContext.OutputVariable());
+	HRESULT result = D3D11_createdeviceandswapchain(nullptr, D3D_DRIVER_TYPE_HARDWARE, 0, 0, requestLevels.data(), (UINT)requestLevels.size(), D3D11_SDK_VERSION, &swapChainDesc, mContext.SwapChain.OutputVariable(), mContext.Device.OutputVariable(), &mContext.FeatureLevel, mContext.DeviceContext.OutputVariable());
 	if (FAILED(result))
 		I_FatalError("D3D11CreateDeviceAndSwapChain failed");
 
@@ -115,7 +115,7 @@ D3D11FB::D3D11FB(int width, int height, bool bgra, bool fullscreen) : BaseWinFB(
 	SetInitialWindowLocation();
 
 	if (!Windowed)
-		mSwapChain->SetFullscreenState(TRUE, nullptr);
+		mContext.SwapChain->SetFullscreenState(TRUE, nullptr);
 }
 
 D3D11FB::~D3D11FB()
@@ -126,7 +126,7 @@ bool D3D11FB::Lock(bool buffered)
 {
 	if (LockCount++ > 0) return false;
 
-	HRESULT result = mDeviceContext->Map(mFBStaging, 0, D3D11_MAP_READ_WRITE, 0, &mMappedFBStaging);
+	HRESULT result = mContext.DeviceContext->Map(mFBStaging, 0, D3D11_MAP_READ_WRITE, 0, &mMappedFBStaging);
 	if (FAILED(result))
 		I_FatalError("Map failed");
 
@@ -142,7 +142,7 @@ void D3D11FB::Unlock()
 	if (--LockCount == 0)
 	{
 		Buffer = nullptr;
-		mDeviceContext->Unmap(mFBStaging, 0);
+		mContext.DeviceContext->Unmap(mFBStaging, 0);
 	}
 }
 
@@ -160,22 +160,22 @@ void D3D11FB::Update()
 	if (isLocked)
 	{
 		Buffer = nullptr;
-		mDeviceContext->Unmap(mFBStaging, 0);
+		mContext.DeviceContext->Unmap(mFBStaging, 0);
 	}
 
 	int pixelsize = IsBgra() ? 4 : 1;
 	//mDeviceContext->UpdateSubresource(mFBTexture.Get(), 0, nullptr, MemBuffer, Pitch * pixelsize, 0);
-	mDeviceContext->CopyResource(mFBTexture, mFBStaging);
+	mContext.DeviceContext->CopyResource(mFBTexture, mFBStaging);
 
 	ComPtr<ID3D11Texture2D> backbuffer;
-	HRESULT result = mSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)backbuffer.OutputVariable());
+	HRESULT result = mContext.SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)backbuffer.OutputVariable());
 	if (SUCCEEDED(result))
-		mDeviceContext->CopyResource(backbuffer, mFBTexture);
+		mContext.DeviceContext->CopyResource(backbuffer, mFBTexture);
 	backbuffer.Clear();
 
 	// Limiting the frame rate is as simple as waiting for the timer to signal this event.
 	I_FPSLimit();
-	mSwapChain->Present(1, 0);
+	mContext.SwapChain->Present(1, 0);
 
 	if (Windowed)
 	{
@@ -187,7 +187,7 @@ void D3D11FB::Update()
 		{
 			Resize(clientWidth, clientHeight);
 
-			result = mSwapChain->ResizeBuffers(0, Width, Height, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH);
+			result = mContext.SwapChain->ResizeBuffers(0, Width, Height, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH);
 			if (FAILED(result))
 				I_FatalError("ResizeBuffers failed");
 			CreateFBTexture();
@@ -199,7 +199,7 @@ void D3D11FB::Update()
 
 	if (isLocked)
 	{
-		result = mDeviceContext->Map(mFBStaging, 0, D3D11_MAP_READ_WRITE, 0, &mMappedFBStaging);
+		result = mContext.DeviceContext->Map(mFBStaging, 0, D3D11_MAP_READ_WRITE, 0, &mMappedFBStaging);
 		if (FAILED(result))
 			I_FatalError("Map failed");
 		Buffer = (uint8_t*)mMappedFBStaging.pData;
@@ -266,7 +266,7 @@ void D3D11FB::CreateFBTexture()
 	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 	desc.MiscFlags = 0;
 
-	HRESULT result = mDevice->CreateTexture2D(&desc, 0, (ID3D11Texture2D **)mFBTexture.OutputVariable());
+	HRESULT result = mContext.Device->CreateTexture2D(&desc, 0, (ID3D11Texture2D **)mFBTexture.OutputVariable());
 	if (FAILED(result))
 		I_FatalError("Could not create frame buffer texture: CreateTexture2D failed");
 }
@@ -286,7 +286,7 @@ void D3D11FB::CreateFBStagingTexture()
 	desc.BindFlags = 0;
 	desc.MiscFlags = 0;
 
-	HRESULT result = mDevice->CreateTexture2D(&desc, 0, (ID3D11Texture2D **)mFBStaging.OutputVariable());
+	HRESULT result = mContext.Device->CreateTexture2D(&desc, 0, (ID3D11Texture2D **)mFBStaging.OutputVariable());
 	if (FAILED(result))
 		I_FatalError("Could not create frame buffer texture: CreateTexture2D failed");
 }

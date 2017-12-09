@@ -9,6 +9,8 @@
 #include "SkylineBinPack.h"
 #include "textures.h"
 
+#include "polyrenderer/hardpoly/gl_context.h"
+
 #include <memory>
 
 class FGLDebug;
@@ -70,6 +72,8 @@ public:
 #endif
 
 	void ScaleCoordsFromWindow(int16_t &x, int16_t &y) override;
+
+	GPUContext *GetContext() override { return &mContext; }
 
 private:
 	struct FBVERTEX
@@ -175,6 +179,8 @@ private:
 		int NewScreenLocation = -1;
 		int BurnLocation = -1;
 	};
+
+	GLContext mContext;
 
 	std::unique_ptr<HWFrameBuffer> CreateFrameBuffer(const FString &name, int width, int height);
 	std::unique_ptr<HWPixelShader> CreatePixelShader(FString vertexsrc, FString fragmentsrc, const FString &defines);

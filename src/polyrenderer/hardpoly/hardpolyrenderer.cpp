@@ -42,7 +42,6 @@
 
 HardpolyRenderer::HardpolyRenderer()
 {
-	mContext = std::make_shared<GLContext>();
 }
 
 HardpolyRenderer::~HardpolyRenderer()
@@ -51,7 +50,7 @@ HardpolyRenderer::~HardpolyRenderer()
 
 void HardpolyRenderer::Begin()
 {
-	mContext->Begin();
+	screen->GetContext()->Begin();
 	SetupFramebuffer();
 	CompileShaders();
 	CreateSamplers();
@@ -69,8 +68,8 @@ void HardpolyRenderer::End()
 		thread->DrawBatcher.NextFrame();
 	}
 
-	mContext->SetViewport(0, 0, screen->GetWidth(), screen->GetHeight());
-	mContext->End();
+	screen->GetContext()->SetViewport(0, 0, screen->GetWidth(), screen->GetHeight());
+	screen->GetContext()->End();
 
 	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
 	swframebuffer->SetViewFB(std::static_pointer_cast<GLFrameBuffer>(mSceneFB)->Handle());
@@ -83,10 +82,10 @@ void HardpolyRenderer::ClearBuffers(DCanvas *canvas)
 		thread->DrawBatcher.DrawBatches(this);
 	}
 
-	mContext->ClearColorBuffer(0, 0.5f, 0.5f, 0.2f, 1.0f);
-	mContext->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
-	mContext->ClearColorBuffer(2, 1.0f, 0.0f, 0.0f, 0.0f);
-	mContext->ClearDepthStencilBuffer(1.0f, 0);
+	screen->GetContext()->ClearColorBuffer(0, 0.5f, 0.5f, 0.2f, 1.0f);
+	screen->GetContext()->ClearColorBuffer(1, 0.0f, 0.0f, 0.0f, 0.0f);
+	screen->GetContext()->ClearColorBuffer(2, 1.0f, 0.0f, 0.0f, 0.0f);
+	screen->GetContext()->ClearDepthStencilBuffer(1.0f, 0);
 }
 
 void HardpolyRenderer::SetViewport(int x, int y, int width, int height, DCanvas *canvas)
@@ -96,7 +95,7 @@ void HardpolyRenderer::SetViewport(int x, int y, int width, int height, DCanvas 
 		thread->DrawBatcher.DrawBatches(this);
 	}
 
-	mContext->SetViewport(x, y, width, height);
+	screen->GetContext()->SetViewport(x, y, width, height);
 }
 
 void HardpolyRenderer::DrawElements(PolyRenderThread *thread, const PolyDrawArgs &drawargs)
@@ -312,7 +311,7 @@ void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &ar
 {
 	MatrixUniforms cpuMatrixUniforms = thread->DrawBatcher.GetMatrixUniforms();
 	if (!mMatrixUniforms)
-		mMatrixUniforms = mContext->CreateUniformBuffer(nullptr, (int)sizeof(MatrixUniforms));
+		mMatrixUniforms = screen->GetContext()->CreateUniformBuffer(nullptr, (int)sizeof(MatrixUniforms));
 	mMatrixUniforms->Upload(&cpuMatrixUniforms, (int)sizeof(MatrixUniforms));
 
 	if (!mScreenQuad)
@@ -324,17 +323,17 @@ void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &ar
 			{ 0.0f, 1.0f },
 			{ 1.0f, 1.0f },
 		};
-		mScreenQuadVertexBuffer = mContext->CreateVertexBuffer(quad, (int)(sizeof(Vec2f) * 4));
+		mScreenQuadVertexBuffer = screen->GetContext()->CreateVertexBuffer(quad, (int)(sizeof(Vec2f) * 4));
 		std::vector<GPUVertexAttributeDesc> desc =
 		{
 			{ 0, 2, GPUVertexAttributeType::Float, false, 0, 0, mScreenQuadVertexBuffer }
 		};
-		mScreenQuad = mContext->CreateVertexArray(desc);
+		mScreenQuad = screen->GetContext()->CreateVertexArray(desc);
 	}
 
 	if (!mRectUniforms)
 	{
-		mRectUniforms = mContext->CreateUniformBuffer(nullptr, (int)sizeof(RectUniforms));
+		mRectUniforms = screen->GetContext()->CreateUniformBuffer(nullptr, (int)sizeof(RectUniforms));
 	}
 
 	RectUniforms uniforms;
@@ -349,62 +348,66 @@ void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &ar
 	uniforms.Light = args.Light();
 	mRectUniforms->Upload(&uniforms, (int)sizeof(RectUniforms));
 
-	mContext->SetVertexArray(mScreenQuad);
-	mContext->SetProgram(mRectProgram);
+	auto context = screen->GetContext();
 
-	mContext->SetUniform1i(mRectProgram->GetUniformLocation("DiffuseTexture"), 0);
-	mContext->SetUniform1i(mRectProgram->GetUniformLocation("BasecolormapTexture"), 1);
-	mContext->SetUniform1i(mRectProgram->GetUniformLocation("TranslationTexture"), 2);
+	context->SetVertexArray(mScreenQuad);
+	context->SetProgram(mRectProgram);
 
-	mContext->SetUniforms(0, mMatrixUniforms);
-	mContext->SetUniforms(1, mRectUniforms);
-	mContext->SetSampler(0, mSamplerNearest);
-	mContext->SetSampler(1, mSamplerNearest);
-	mContext->SetTexture(0, GetTexture(args.Texture(), args.Translation() != nullptr));
-	mContext->SetTexture(1, GetColormapTexturePal(args.BaseColormap()));
+	context->SetUniform1i(mRectProgram->GetUniformLocation("DiffuseTexture"), 0);
+	context->SetUniform1i(mRectProgram->GetUniformLocation("BasecolormapTexture"), 1);
+	context->SetUniform1i(mRectProgram->GetUniformLocation("TranslationTexture"), 2);
 
-	mContext->Draw(GPUDrawMode::TriangleStrip, 0, 4);
+	context->SetUniforms(0, mMatrixUniforms);
+	context->SetUniforms(1, mRectUniforms);
+	context->SetSampler(0, mSamplerNearest);
+	context->SetSampler(1, mSamplerNearest);
+	context->SetTexture(0, GetTexture(args.Texture(), args.Translation() != nullptr));
+	context->SetTexture(1, GetColormapTexturePal(args.BaseColormap()));
 
-	mContext->SetTexture(0, nullptr);
-	mContext->SetTexture(1, nullptr);
-	mContext->SetSampler(0, nullptr);
-	mContext->SetSampler(1, nullptr);
-	mContext->SetUniforms(0, nullptr);
-	mContext->SetUniforms(1, nullptr);
-	mContext->SetVertexArray(nullptr);
-	mContext->SetProgram(nullptr);
+	context->Draw(GPUDrawMode::TriangleStrip, 0, 4);
+
+	context->SetTexture(0, nullptr);
+	context->SetTexture(1, nullptr);
+	context->SetSampler(0, nullptr);
+	context->SetSampler(1, nullptr);
+	context->SetUniforms(0, nullptr);
+	context->SetUniforms(1, nullptr);
+	context->SetVertexArray(nullptr);
+	context->SetProgram(nullptr);
 }
 
 void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 {
+	auto context = screen->GetContext();
+
 	if (!mMatrixUniforms)
-		mMatrixUniforms = mContext->CreateUniformBuffer(nullptr, (int)sizeof(MatrixUniforms));
+		mMatrixUniforms = context->CreateUniformBuffer(nullptr, (int)sizeof(MatrixUniforms));
 
-	mContext->SetVertexArray(batch->VertexArray);
-	mContext->SetIndexBuffer(batch->IndexBuffer);
-	mContext->SetProgram(mOpaqueProgram);
-	mContext->SetUniforms(0, mMatrixUniforms);
-	//mContext->SetUniforms(1, batch->FaceUniforms);
+	context->SetVertexArray(batch->VertexArray);
+	context->SetIndexBuffer(batch->IndexBuffer);
+	context->SetProgram(mOpaqueProgram);
+	context->SetUniforms(0, mMatrixUniforms);
+	//context->SetUniforms(1, batch->FaceUniforms);
 
-	mContext->SetUniform1i(mRectProgram->GetUniformLocation("FaceUniformsTexture"), 0);
-	mContext->SetUniform1i(mRectProgram->GetUniformLocation("DiffuseTexture"), 1);
-	mContext->SetUniform1i(mRectProgram->GetUniformLocation("BasecolormapTexture"), 2);
-	mContext->SetUniform1i(mRectProgram->GetUniformLocation("TranslationTexture"), 3);
+	context->SetUniform1i(mRectProgram->GetUniformLocation("FaceUniformsTexture"), 0);
+	context->SetUniform1i(mRectProgram->GetUniformLocation("DiffuseTexture"), 1);
+	context->SetUniform1i(mRectProgram->GetUniformLocation("BasecolormapTexture"), 2);
+	context->SetUniform1i(mRectProgram->GetUniformLocation("TranslationTexture"), 3);
 
 	//glEnable(GL_STENCIL_TEST);
 	//glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 	//glStencilFunc(GL_ALWAYS, 1, 0xffffffff);
 
-	mContext->SetClipDistance(0, true);
-	mContext->SetClipDistance(1, true);
-	mContext->SetClipDistance(2, true);
+	context->SetClipDistance(0, true);
+	context->SetClipDistance(1, true);
+	context->SetClipDistance(2, true);
 
-	mContext->SetSampler(0, mSamplerNearest);
-	mContext->SetSampler(1, mSamplerNearest);
-	mContext->SetSampler(2, mSamplerNearest);
-	mContext->SetSampler(3, mSamplerNearest);
+	context->SetSampler(0, mSamplerNearest);
+	context->SetSampler(1, mSamplerNearest);
+	context->SetSampler(2, mSamplerNearest);
+	context->SetSampler(3, mSamplerNearest);
 
-	mContext->SetTexture(0, batch->FaceUniformsTexture);
+	context->SetTexture(0, batch->FaceUniformsTexture);
 
 	DrawRunKey last;
 
@@ -428,48 +431,49 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 			}
 
 			if (run.Texture && last.Texture != current.Texture)
-				mContext->SetTexture(1, GetTexture(run.Texture, run.Translation != nullptr));
+				context->SetTexture(1, GetTexture(run.Texture, run.Translation != nullptr));
 			else if (run.Pixels && last.Pixels != current.Pixels)
-				mContext->SetTexture(1, GetEngineTexturePal(run.Pixels, run.PixelsWidth, run.PixelsHeight));
+				context->SetTexture(1, GetEngineTexturePal(run.Pixels, run.PixelsWidth, run.PixelsHeight));
 
 			if (last.BaseColormap != current.BaseColormap)
-				mContext->SetTexture(2, GetColormapTexturePal(run.BaseColormap));
+				context->SetTexture(2, GetColormapTexturePal(run.BaseColormap));
 
 			if (run.Translation && last.Translation != current.Translation)
-				mContext->SetTexture(3, GetTranslationTexture(run.Translation));
+				context->SetTexture(3, GetTranslationTexture(run.Translation));
 
 			last = current;
 		}
 
-		mContext->DrawIndexed(GPUDrawMode::Triangles, run.Start, run.NumVertices);
+		context->DrawIndexed(GPUDrawMode::Triangles, run.Start, run.NumVertices);
 
 		PolyTotalTriangles += run.NumVertices / 3;
 		PolyTotalDrawCalls++;
 	}
-	mContext->SetTexture(0, nullptr);
-	mContext->SetTexture(1, nullptr);
-	mContext->SetTexture(2, nullptr);
-	mContext->SetTexture(3, nullptr);
-	mContext->SetSampler(0, nullptr);
-	mContext->SetSampler(1, nullptr);
-	mContext->SetSampler(2, nullptr);
-	mContext->SetSampler(3, nullptr);
+	context->SetTexture(0, nullptr);
+	context->SetTexture(1, nullptr);
+	context->SetTexture(2, nullptr);
+	context->SetTexture(3, nullptr);
+	context->SetSampler(0, nullptr);
+	context->SetSampler(1, nullptr);
+	context->SetSampler(2, nullptr);
+	context->SetSampler(3, nullptr);
 
-	mContext->SetClipDistance(0, false);
-	mContext->SetClipDistance(1, false);
-	mContext->SetClipDistance(2, false);
+	context->SetClipDistance(0, false);
+	context->SetClipDistance(1, false);
+	context->SetClipDistance(2, false);
 
 	//glDisable(GL_STENCIL_TEST);
 
-	mContext->SetUniforms(0, nullptr);
-	//mContext->SetUniforms(1, nullptr);
-	mContext->SetIndexBuffer(nullptr);
-	mContext->SetVertexArray(nullptr);
-	mContext->SetProgram(nullptr);
+	context->SetUniforms(0, nullptr);
+	//context->SetUniforms(1, nullptr);
+	context->SetIndexBuffer(nullptr);
+	context->SetVertexArray(nullptr);
+	context->SetProgram(nullptr);
 }
 
 void HardpolyRenderer::SetupFramebuffer()
 {
+	auto context = screen->GetContext();
 	int width = screen->GetWidth();
 	int height = screen->GetHeight();
 	if (!mSceneFB || mAlbedoBuffer->Width() != width || mAlbedoBuffer->Height() != height)
@@ -480,27 +484,27 @@ void HardpolyRenderer::SetupFramebuffer()
 		mNormalBuffer.reset();
 		mSpriteDepthBuffer.reset();
 
-		mAlbedoBuffer = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
-		mNormalBuffer = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
-		mDepthStencilBuffer = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
-		mSpriteDepthBuffer = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R32f);
+		mAlbedoBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mNormalBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mDepthStencilBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
+		mSpriteDepthBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R32f);
 
 		std::vector<std::shared_ptr<GPUTexture2D>> colorbuffers = { mAlbedoBuffer, mNormalBuffer, mSpriteDepthBuffer };
-		mSceneFB = mContext->CreateFrameBuffer(colorbuffers, mDepthStencilBuffer);
+		mSceneFB = context->CreateFrameBuffer(colorbuffers, mDepthStencilBuffer);
 
 		std::vector<std::shared_ptr<GPUTexture2D>> translucentcolorbuffers = { mAlbedoBuffer, mNormalBuffer };
-		mTranslucentFB = mContext->CreateFrameBuffer(translucentcolorbuffers, mDepthStencilBuffer);
+		mTranslucentFB = context->CreateFrameBuffer(translucentcolorbuffers, mDepthStencilBuffer);
 	}
 
-	mContext->SetFrameBuffer(mSceneFB);
+	context->SetFrameBuffer(mSceneFB);
 }
 
 void HardpolyRenderer::CreateSamplers()
 {
 	if (!mSamplerNearest)
 	{
-		mSamplerLinear = mContext->CreateSampler(GPUSampleMode::Linear, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
-		mSamplerNearest = mContext->CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+		mSamplerLinear = screen->GetContext()->CreateSampler(GPUSampleMode::Linear, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+		mSamplerNearest = screen->GetContext()->CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
 	}
 }
 
@@ -529,7 +533,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTranslationTextureBgra(const 
 			dest[x] = red | (green << 8) | (blue << 16) | (alpha << 24);
 		}
 
-		texture = mContext->CreateTexture2D(256, 1, false, 0, GPUPixelFormat::RGBA8, dest);
+		texture = screen->GetContext()->CreateTexture2D(256, 1, false, 0, GPUPixelFormat::RGBA8, dest);
 	}
 	return texture;
 }
@@ -539,7 +543,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTranslationTexturePal(const u
 	auto &texture = mTranslationTexturesPal[translation];
 	if (!texture)
 	{
-		texture = mContext->CreateTexture2D(256, 1, false, 0, GPUPixelFormat::R8, translation);
+		texture = screen->GetContext()->CreateTexture2D(256, 1, false, 0, GPUPixelFormat::R8, translation);
 	}
 	return texture;
 }
@@ -569,7 +573,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetEngineTexturePal(const uint8_
 			pixels.push_back(0);
 		}
 
-		texture = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R8, pixels.data());
+		texture = screen->GetContext()->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R8, pixels.data());
 	}
 	return texture;
 }
@@ -589,7 +593,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetColormapTexturePal(const uint
 			uint32_t alpha = 255;
 			rgbacolormap[i] = red | (green << 8) | (blue << 16) | (alpha << 24);
 		}
-		texture = mContext->CreateTexture2D(256, NUMCOLORMAPS, false, 0, GPUPixelFormat::RGBA8, rgbacolormap);
+		texture = screen->GetContext()->CreateTexture2D(256, NUMCOLORMAPS, false, 0, GPUPixelFormat::RGBA8, rgbacolormap);
 	}
 	return texture;
 }
@@ -632,7 +636,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTextureBgra(FTexture *ztextur
 			pixels.push_back(0xff00ffff);
 		}
 
-		texture = mContext->CreateTexture2D(width, height, mipmap, 0, GPUPixelFormat::RGBA8, pixels.data());
+		texture = screen->GetContext()->CreateTexture2D(width, height, mipmap, 0, GPUPixelFormat::RGBA8, pixels.data());
 	}
 	return texture;
 }
@@ -675,7 +679,7 @@ std::shared_ptr<GPUTexture2D> HardpolyRenderer::GetTexturePal(FTexture *ztexture
 			pixels.push_back(0);
 		}
 
-		texture = mContext->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R8, pixels.data());
+		texture = screen->GetContext()->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R8, pixels.data());
 	}
 	return texture;
 }
@@ -684,7 +688,7 @@ void HardpolyRenderer::CompileShaders()
 {
 	if (!mOpaqueProgram)
 	{
-		mOpaqueProgram = mContext->CreateProgram();
+		mOpaqueProgram = screen->GetContext()->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mOpaqueProgram->SetDefine("TRUECOLOR");
 		mOpaqueProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/opaque.vp");
 		mOpaqueProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/opaque.fp");
@@ -697,7 +701,7 @@ void HardpolyRenderer::CompileShaders()
 
 	if (!mRectProgram)
 	{
-		mRectProgram = mContext->CreateProgram();
+		mRectProgram = screen->GetContext()->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mRectProgram->SetDefine("TRUECOLOR");
 		mRectProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/rect.vp");
 		mRectProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/rect.fp");
@@ -711,7 +715,7 @@ void HardpolyRenderer::CompileShaders()
 
 	if (!mStencilProgram)
 	{
-		mStencilProgram = mContext->CreateProgram();
+		mStencilProgram = screen->GetContext()->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mStencilProgram->SetDefine("TRUECOLOR");
 		mStencilProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/stencil.vp");
 		mStencilProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/stencil.fp");
@@ -789,47 +793,47 @@ HardpolyRenderer::BlendSetterFunc HardpolyRenderer::GetBlendSetter(TriBlendMode 
 
 void HardpolyRenderer::SetOpaqueBlend(int srcalpha, int destalpha)
 {
-	mContext->SetOpaqueBlend(srcalpha, destalpha);
+	screen->GetContext()->SetOpaqueBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetMaskedBlend(int srcalpha, int destalpha)
 {
-	mContext->SetMaskedBlend(srcalpha, destalpha);
+	screen->GetContext()->SetMaskedBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetAlphaBlendFunc(int srcalpha, int destalpha)
 {
-	mContext->SetAlphaBlendFunc(srcalpha, destalpha);
+	screen->GetContext()->SetAlphaBlendFunc(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetAddClampBlend(int srcalpha, int destalpha)
 {
-	mContext->SetAddClampBlend(srcalpha, destalpha);
+	screen->GetContext()->SetAddClampBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetSubClampBlend(int srcalpha, int destalpha)
 {
-	mContext->SetSubClampBlend(srcalpha, destalpha);
+	screen->GetContext()->SetSubClampBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetRevSubClampBlend(int srcalpha, int destalpha)
 {
-	mContext->SetRevSubClampBlend(srcalpha, destalpha);
+	screen->GetContext()->SetRevSubClampBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetAddSrcColorBlend(int srcalpha, int destalpha)
 {
-	mContext->SetAddSrcColorBlend(srcalpha, destalpha);
+	screen->GetContext()->SetAddSrcColorBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetShadedBlend(int srcalpha, int destalpha)
 {
-	mContext->SetShadedBlend(srcalpha, destalpha);
+	screen->GetContext()->SetShadedBlend(srcalpha, destalpha);
 }
 
 void HardpolyRenderer::SetAddClampShadedBlend(int srcalpha, int destalpha)
 {
-	mContext->SetAddClampShadedBlend(srcalpha, destalpha);
+	screen->GetContext()->SetAddClampShadedBlend(srcalpha, destalpha);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -840,6 +844,8 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 
 	PolyDrawerWaitCycles.Clock();
 
+	auto context = screen->GetContext();
+
 	for (size_t i = mDrawStart; i < mNextBatch; i++)
 	{
 		DrawBatch *current = mCurrentFrameBatches[i].get();
@@ -848,7 +854,7 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 
 		if (!current->Vertices)
 		{
-			current->Vertices = hardpoly->mContext->CreateVertexBuffer(nullptr, MaxVertices * (int)sizeof(TriVertex));
+			current->Vertices = context->CreateVertexBuffer(nullptr, MaxVertices * (int)sizeof(TriVertex));
 
 			std::vector<GPUVertexAttributeDesc> attributes =
 			{
@@ -856,10 +862,10 @@ void DrawBatcher::DrawBatches(HardpolyRenderer *hardpoly)
 				{ 1, 2, GPUVertexAttributeType::Float, false, sizeof(TriVertex), offsetof(TriVertex, u), current->Vertices }
 			};
 
-			current->VertexArray = hardpoly->mContext->CreateVertexArray(attributes);
-			current->IndexBuffer = hardpoly->mContext->CreateIndexBuffer(nullptr, (int)(MaxIndices * sizeof(int32_t)));
-			//current->FaceUniforms = hardpoly->mContext->CreateUniformBuffer(nullptr, (int)(DrawBatcher::MaxFaceUniforms * sizeof(FaceUniforms)));
-			current->FaceUniformsTexture = hardpoly->mContext->CreateTexture2D(256, 128, false, 0, GPUPixelFormat::RGBA32f);
+			current->VertexArray = context->CreateVertexArray(attributes);
+			current->IndexBuffer = context->CreateIndexBuffer(nullptr, (int)(MaxIndices * sizeof(int32_t)));
+			//current->FaceUniforms = context->CreateUniformBuffer(nullptr, (int)(DrawBatcher::MaxFaceUniforms * sizeof(FaceUniforms)));
+			current->FaceUniformsTexture = context->CreateTexture2D(256, 128, false, 0, GPUPixelFormat::RGBA32f);
 		}
 
 		TriVertex *gpuVertices = (TriVertex*)current->Vertices->MapWriteOnly();
