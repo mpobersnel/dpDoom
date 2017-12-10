@@ -18,7 +18,6 @@
 #include "f_wipe.h"
 #include "sbar.h"
 #include "win32iface.h"
-#include "win32swiface.h"
 #include "doomstat.h"
 #include "v_palette.h"
 #include "w_wad.h"

@@ -354,6 +354,15 @@ void GLContext::DrawIndexed(GPUDrawMode mode, int indexStart, int indexCount)
 	glDrawElements(FromDrawMode(mode), indexCount, type, (const void *)(ptrdiff_t)(indexStart * size));
 }
 
+/*
+void GLContext::DrawRangeIndexed(GPUDrawMode mode, int minIndexArrayValue, int maxIndexArrayValue, int indexStart, int indexCount)
+{
+	int type = (mIndexFormat == GPUIndexFormat::Uint16) ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+	int size = (mIndexFormat == GPUIndexFormat::Uint16) ? 2 : 4;
+	glDrawRangeElements(FromDrawMode(mode), minIndexArrayValue, maxIndexArrayValue, indexCount, type, (const void *)(ptrdiff_t)(indexStart * size));
+}
+*/
+
 void GLContext::DrawInstanced(GPUDrawMode mode, int vertexStart, int vertexCount, int instanceCount)
 {
 	glDrawArraysInstanced(FromDrawMode(mode), vertexStart, vertexCount, instanceCount);
@@ -743,13 +752,29 @@ void GLStagingTexture::Upload(int x, int y, int width, int height, const void *p
 		glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &oldHandle);
 
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mHandle);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, GetBytesPerPixel(mFormat) * width * height, pixels, GL_STATIC_DRAW);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, GetBytesPerPixel(mFormat) * width * height, pixels, GL_DYNAMIC_COPY);
 
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldHandle);
 	}
 	else
 	{
-		I_FatalError("GLStagingTexture::Upload currently only supports full texture uploads");
+		int bytesperpixel = GetBytesPerPixel(mFormat);
+		int destpitch = mWidth * bytesperpixel;
+		int srcpitch = width * bytesperpixel;
+		uint8_t *src = (uint8_t*)pixels;
+		uint8_t *dest = (uint8_t*)Map();
+		if (dest)
+		{
+			dest += x * bytesperpixel + y * destpitch;
+			int count = width * bytesperpixel;
+			for (int i = 0; i < height; i++)
+			{
+				memcpy(dest, src, count);
+				dest += destpitch;
+				src += srcpitch;
+			}
+			Unmap();
+		}
 	}
 }
 

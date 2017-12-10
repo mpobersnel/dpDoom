@@ -105,32 +105,32 @@ DFrameBuffer *CreateGLSWFrameBuffer(int width, int height, bool bgra, bool fulls
 }
 #endif
 
-const char *const OpenGLSWFrameBuffer::ShaderDefines[OpenGLSWFrameBuffer::NUM_SHADERS] =
+const std::vector<const char *> OpenGLSWFrameBuffer::ShaderDefines[OpenGLSWFrameBuffer::NUM_SHADERS] =
 {
-	"#define ENORMALCOLOR", // NormalColor
-	"#define ENORMALCOLOR\n#define PALTEX", // NormalColorPal
-	"#define ENORMALCOLOR\n#define INVERT", // NormalColorInv
-	"#define ENORMALCOLOR\n#define PALTEX\n#define INVERT", // NormalColorPalInv
+	{ "ENORMALCOLOR" }, // NormalColor
+	{ "ENORMALCOLOR", "PALTEX" }, // NormalColorPal
+	{ "ENORMALCOLOR", "INVERT" }, // NormalColorInv
+	{ "ENORMALCOLOR", "PALTEX", "INVERT" }, // NormalColorPalInv
 
-	"#define EREDTOALPHA", // RedToAlpha
-	"#define EREDTOALPHA\n#define INVERT", // RedToAlphaInv
+	{ "EREDTOALPHA" }, // RedToAlpha
+	{ "EREDTOALPHA" , "INVERT" }, // RedToAlphaInv
 
-	"#define EVERTEXCOLOR", // VertexColor
+	{ "EVERTEXCOLOR" }, // VertexColor
 
-	"#define ESPECIALCOLORMAP\n", // SpecialColormap
-	"#define ESPECIALCOLORMAP\n#define PALTEX", // SpecialColorMapPal
+	{ "ESPECIALCOLORMAP" }, // SpecialColormap
+	{ "ESPECIALCOLORMAP", "PALTEX" }, // SpecialColorMapPal
 
-	"#define EINGAMECOLORMAP", // InGameColormap
-	"#define EINGAMECOLORMAP\n#define DESAT", // InGameColormapDesat
-	"#define EINGAMECOLORMAP\n#define INVERT", // InGameColormapInv
-	"#define EINGAMECOLORMAP\n#define INVERT\n#define DESAT", // InGameColormapInvDesat
-	"#define EINGAMECOLORMAP\n#define PALTEX\n", // InGameColormapPal
-	"#define EINGAMECOLORMAP\n#define PALTEX\n#define DESAT", // InGameColormapPalDesat
-	"#define EINGAMECOLORMAP\n#define PALTEX\n#define INVERT", // InGameColormapPalInv
-	"#define EINGAMECOLORMAP\n#define PALTEX\n#define INVERT\n#define DESAT", // InGameColormapPalInvDesat
+	{ "EINGAMECOLORMAP" }, // InGameColormap
+	{ "EINGAMECOLORMAP", "DESAT" }, // InGameColormapDesat
+	{ "EINGAMECOLORMAP", "INVERT" }, // InGameColormapInv
+	{ "EINGAMECOLORMAP", "INVERT", "DESAT" }, // InGameColormapInvDesat
+	{ "EINGAMECOLORMAP", "PALTEX" }, // InGameColormapPal
+	{ "EINGAMECOLORMAP", "PALTEX", "DESAT" }, // InGameColormapPalDesat
+	{ "EINGAMECOLORMAP", "PALTEX", "INVERT" }, // InGameColormapPalInv
+	{ "EINGAMECOLORMAP", "PALTEX", "INVERT", "DESAT" }, // InGameColormapPalInvDesat
 
-	"#define EBURNWIPE", // BurnWipe
-	"#define EGAMMACORRECTION", // GammaCorrection
+	{ "EBURNWIPE" }, // BurnWipe
+	{ "EGAMMACORRECTION" } // GammaCorrection
 };
 
 OpenGLSWFrameBuffer::OpenGLSWFrameBuffer(void *hMonitor, int width, int height, int bits, int refreshHz, bool fullscreen, bool bgra) :
@@ -237,6 +237,7 @@ OpenGLSWFrameBuffer::~OpenGLSWFrameBuffer()
 	delete[] QuadExtra;
 }
 
+/*
 void *OpenGLSWFrameBuffer::MapBuffer(int target, int size)
 {
 	if (glMapBufferRange)
@@ -249,180 +250,41 @@ void *OpenGLSWFrameBuffer::MapBuffer(int target, int size)
 		return glMapBuffer(target, GL_WRITE_ONLY);
 	}
 }
-
-OpenGLSWFrameBuffer::HWFrameBuffer::~HWFrameBuffer()
-{
-	if (Framebuffer != 0) glDeleteFramebuffers(1, (GLuint*)&Framebuffer);
-	Texture.reset();
-}
-
-OpenGLSWFrameBuffer::HWTexture::~HWTexture()
-{
-	if (Texture != 0) glDeleteTextures(1, (GLuint*)&Texture);
-	if (Buffers[0] != 0) glDeleteBuffers(2, (GLuint*)Buffers);
-}
-
-OpenGLSWFrameBuffer::HWVertexBuffer::~HWVertexBuffer()
-{
-	if (VertexArray != 0) glDeleteVertexArrays(1, (GLuint*)&VertexArray);
-	if (Buffer != 0) glDeleteBuffers(1, (GLuint*)&Buffer);
-}
-
-OpenGLSWFrameBuffer::FBVERTEX *OpenGLSWFrameBuffer::HWVertexBuffer::Lock()
-{
-	glBindBuffer(GL_ARRAY_BUFFER, Buffer);
-	return (FBVERTEX*)MapBuffer(GL_ARRAY_BUFFER, Size);
-}
-
-void OpenGLSWFrameBuffer::HWVertexBuffer::Unlock()
-{
-	glUnmapBuffer(GL_ARRAY_BUFFER);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-}
-
-OpenGLSWFrameBuffer::HWIndexBuffer::~HWIndexBuffer()
-{
-	if (Buffer != 0) glDeleteBuffers(1, (GLuint*)&Buffer);
-}
-
-uint16_t *OpenGLSWFrameBuffer::HWIndexBuffer::Lock()
-{
-	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &LockedOldBinding);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Buffer);
-	return (uint16_t*)MapBuffer(GL_ELEMENT_ARRAY_BUFFER, Size);
-}
-
-void OpenGLSWFrameBuffer::HWIndexBuffer::Unlock()
-{
-	glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, LockedOldBinding);
-}
-
-OpenGLSWFrameBuffer::HWPixelShader::~HWPixelShader()
-{
-	if (Program != 0) glDeleteProgram(Program);
-	if (VertexShader != 0) glDeleteShader(VertexShader);
-	if (FragmentShader != 0) glDeleteShader(FragmentShader);
-}
+*/
 
 std::unique_ptr<OpenGLSWFrameBuffer::HWFrameBuffer> OpenGLSWFrameBuffer::CreateFrameBuffer(const FString &name, int width, int height)
 {
 	std::unique_ptr<HWFrameBuffer> fb(new HWFrameBuffer());
-	
-	GLint format = GL_RGBA16F;
-	if (gl.es) format = GL_RGB;
-
-	fb->Texture = CreateTexture(name, width, height, 1, format);
-	if (!fb->Texture)
-	{
-		return nullptr;
-	}
-
-	glGenFramebuffers(1, (GLuint*)&fb->Framebuffer);
-
-	GLint oldFramebufferBinding = 0, oldTextureBinding = 0;
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFramebufferBinding);
-	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTextureBinding);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, fb->Framebuffer);
-	FGLDebug::LabelObject(GL_FRAMEBUFFER, fb->Framebuffer, name);
-
-	glBindTexture(GL_TEXTURE_2D, fb->Texture->Texture);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb->Texture->Texture, 0);
-
-	GLenum result = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, oldFramebufferBinding);
-	glBindTexture(GL_TEXTURE_2D, oldTextureBinding);
-
-	if (result != GL_FRAMEBUFFER_COMPLETE)
-	{
-		Printf("Framebuffer is not complete\n");
-		return nullptr;
-	}
-
+	fb->Texture = CreateTexture(name, width, height, 1, GPUPixelFormat::RGBA16f);
+	fb->Framebuffer = mContext.CreateFrameBuffer({ fb->Texture->Texture }, nullptr);
 	return fb;
 }
 
-std::unique_ptr<OpenGLSWFrameBuffer::HWPixelShader> OpenGLSWFrameBuffer::CreatePixelShader(FString vertexsrc, FString fragmentsrc, const FString &defines)
+std::unique_ptr<OpenGLSWFrameBuffer::HWPixelShader> OpenGLSWFrameBuffer::CreatePixelShader(FString vertexsrc, FString fragmentsrc, const std::vector<const char *> &defines)
 {
 	std::unique_ptr<HWPixelShader> shader(new HWPixelShader());
 
-	shader->Program = glCreateProgram();
-	if (shader->Program == 0) { Printf("glCreateProgram failed. Disabling OpenGL hardware acceleration.\n"); return nullptr; }
-	shader->VertexShader = glCreateShader(GL_VERTEX_SHADER);
-	if (shader->VertexShader == 0) { Printf("glCreateShader(GL_VERTEX_SHADER) failed. Disabling OpenGL hardware acceleration.\n"); return nullptr; }
-	shader->FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	if (shader->FragmentShader == 0) { Printf("glCreateShader(GL_FRAGMENT_SHADER) failed. Disabling OpenGL hardware acceleration.\n"); return nullptr; }
-	
-	int maxGlslVersion = 330;
-	int shaderVersion = MIN((int)round(gl.glslversion * 10) * 10, maxGlslVersion);
-	
-	FString prefix;
-	prefix.AppendFormat("#version %d\n%s\n#line 0\n", shaderVersion, defines.GetChars());
-	//Printf("Shader prefix: %s", prefix.GetChars());
-	
-	vertexsrc = prefix + vertexsrc;
-	fragmentsrc = prefix + fragmentsrc;
+	shader->Program = mContext.CreateProgram();
+	for (const auto &define : defines)
+		shader->Program->SetDefine(define);
+	shader->Program->Compile(GPUShaderType::Vertex, "noname vertex", vertexsrc.GetChars());
+	shader->Program->Compile(GPUShaderType::Fragment, "noname fragment", fragmentsrc.GetChars());
+	shader->Program->SetAttribLocation("AttrPosition", 0);
+	shader->Program->SetAttribLocation("AttrColor0", 1);
+	shader->Program->SetAttribLocation("AttrColor1", 2);
+	shader->Program->SetAttribLocation("AttrTexCoord0", 3);
+	shader->Program->SetFragOutput("FragColor", 0);
+	shader->Program->Link("noname");
 
-	{
-		int lengths[1] = { (int)vertexsrc.Len() };
-		const char *sources[1] = { vertexsrc.GetChars() };
-		glShaderSource(shader->VertexShader, 1, sources, lengths);
-		glCompileShader(shader->VertexShader);
-	}
-
-	{
-		int lengths[1] = { (int)fragmentsrc.Len() };
-		const char *sources[1] = { fragmentsrc.GetChars() };
-		glShaderSource(shader->FragmentShader, 1, sources, lengths);
-		glCompileShader(shader->FragmentShader);
-	}
-
-	GLint status = 0;
-	int errorShader = shader->VertexShader;
-	glGetShaderiv(shader->VertexShader, GL_COMPILE_STATUS, &status);
-	if (status != GL_FALSE) { errorShader = shader->FragmentShader; glGetShaderiv(shader->FragmentShader, GL_COMPILE_STATUS, &status); }
-	if (status == GL_FALSE)
-	{
-		static char buffer[10000];
-		GLsizei length = 0;
-		buffer[0] = 0;
-		glGetShaderInfoLog(errorShader, 10000, &length, buffer);
-		//Printf("Shader compile failed: %s", buffer);
-
-		return nullptr;
-	}
-
-	glAttachShader(shader->Program, shader->VertexShader);
-	glAttachShader(shader->Program, shader->FragmentShader);
-	glBindFragDataLocation(shader->Program, 0, "FragColor");
-	glBindAttribLocation(shader->Program, 0, "AttrPosition");
-	glBindAttribLocation(shader->Program, 1, "AttrColor0");
-	glBindAttribLocation(shader->Program, 2, "AttrColor1");
-	glBindAttribLocation(shader->Program, 3, "AttrTexCoord0");
-	glLinkProgram(shader->Program);
-	glGetProgramiv(shader->Program, GL_LINK_STATUS, &status);
-	if (status == GL_FALSE)
-	{
-		static char buffer[10000];
-		GLsizei length = 0;
-		buffer[0] = 0;
-		glGetProgramInfoLog(shader->Program, 10000, &length, buffer);
-		//Printf("Shader link failed: %s", buffer);
-	
-		return nullptr;
-	}
-
-	shader->ConstantLocations[PSCONST_Desaturation] = glGetUniformLocation(shader->Program, "Desaturation");
-	shader->ConstantLocations[PSCONST_PaletteMod] = glGetUniformLocation(shader->Program, "PaletteMod");
-	shader->ConstantLocations[PSCONST_Weights] = glGetUniformLocation(shader->Program, "Weights");
-	shader->ConstantLocations[PSCONST_Gamma] = glGetUniformLocation(shader->Program, "Gamma");
-	shader->ConstantLocations[PSCONST_ScreenSize] = glGetUniformLocation(shader->Program, "ScreenSize");
-	shader->ImageLocation = glGetUniformLocation(shader->Program, "Image");
-	shader->PaletteLocation = glGetUniformLocation(shader->Program, "Palette");
-	shader->NewScreenLocation = glGetUniformLocation(shader->Program, "NewScreen");
-	shader->BurnLocation = glGetUniformLocation(shader->Program, "Burn");
+	shader->ConstantLocations[PSCONST_Desaturation] = shader->Program->GetUniformLocation("Desaturation");
+	shader->ConstantLocations[PSCONST_PaletteMod] = shader->Program->GetUniformLocation("PaletteMod");
+	shader->ConstantLocations[PSCONST_Weights] = shader->Program->GetUniformLocation("Weights");
+	shader->ConstantLocations[PSCONST_Gamma] = shader->Program->GetUniformLocation("Gamma");
+	shader->ConstantLocations[PSCONST_ScreenSize] = shader->Program->GetUniformLocation("ScreenSize");
+	shader->ImageLocation = shader->Program->GetUniformLocation("Image");
+	shader->PaletteLocation = shader->Program->GetUniformLocation("Palette");
+	shader->NewScreenLocation = shader->Program->GetUniformLocation("NewScreen");
+	shader->BurnLocation = shader->Program->GetUniformLocation("Burn");
 
 	return shader;
 }
@@ -430,108 +292,41 @@ std::unique_ptr<OpenGLSWFrameBuffer::HWPixelShader> OpenGLSWFrameBuffer::CreateP
 std::unique_ptr<OpenGLSWFrameBuffer::HWVertexBuffer> OpenGLSWFrameBuffer::CreateVertexBuffer(int size)
 {
 	std::unique_ptr<HWVertexBuffer> obj(new HWVertexBuffer());
-
 	obj->Size = size;
-
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &oldBinding);
-
-	glGenVertexArrays(1, (GLuint*)&obj->VertexArray);
-	glGenBuffers(1, (GLuint*)&obj->Buffer);
-	glBindVertexArray(obj->VertexArray);
-	glBindBuffer(GL_ARRAY_BUFFER, obj->Buffer);
-	FGLDebug::LabelObject(GL_BUFFER, obj->Buffer, "VertexBuffer");
-	glBufferData(GL_ARRAY_BUFFER, size, nullptr, GL_STREAM_DRAW);
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-	glEnableVertexAttribArray(2);
-	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, x));
-	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, color0));
-	glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, color1));
-	glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, tu));
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(oldBinding);
-
+	obj->Buffer = mContext.CreateVertexBuffer(nullptr, size);
+	obj->VertexArray = mContext.CreateVertexArray(
+	{
+		{ 0, 4, GPUVertexAttributeType::Float, false, sizeof(FBVERTEX), offsetof(FBVERTEX, x), obj->Buffer },
+		{ 1, 4, GPUVertexAttributeType::Uint8, true, sizeof(FBVERTEX), offsetof(FBVERTEX, color0), obj->Buffer },
+		{ 2, 4, GPUVertexAttributeType::Uint8, true, sizeof(FBVERTEX), offsetof(FBVERTEX, color1), obj->Buffer },
+		{ 3, 2, GPUVertexAttributeType::Float, false, sizeof(FBVERTEX), offsetof(FBVERTEX, tu), obj->Buffer },
+	});
 	return obj;
 }
 
 std::unique_ptr<OpenGLSWFrameBuffer::HWIndexBuffer> OpenGLSWFrameBuffer::CreateIndexBuffer(int size)
 {
 	std::unique_ptr<HWIndexBuffer> obj(new HWIndexBuffer());
-
 	obj->Size = size;
-
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &oldBinding);
-
-	glGenBuffers(1, (GLuint*)&obj->Buffer);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->Buffer);
-	FGLDebug::LabelObject(GL_BUFFER, obj->Buffer, "IndexBuffer");
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, nullptr, GL_STREAM_DRAW);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, oldBinding);
-
+	obj->Buffer = mContext.CreateIndexBuffer(nullptr, size);
 	return obj;
 }
 
-std::unique_ptr<OpenGLSWFrameBuffer::HWTexture> OpenGLSWFrameBuffer::CreateTexture(const FString &name, int width, int height, int levels, int format)
+std::unique_ptr<OpenGLSWFrameBuffer::HWTexture> OpenGLSWFrameBuffer::CreateTexture(const FString &name, int width, int height, int levels, GPUPixelFormat format)
 {
 	std::unique_ptr<HWTexture> obj(new HWTexture());
-
 	obj->Format = format;
-
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
-
-	glGenTextures(1, (GLuint*)&obj->Texture);
-	glBindTexture(GL_TEXTURE_2D, obj->Texture);
-	GLenum srcformat;
-	switch (format)
-	{
-	case GL_RGB: srcformat = GL_RGB; break;
-	case GL_R8: srcformat = GL_RED; break;
-	case GL_RGBA8: srcformat = gl.es ? GL_RGBA : GL_BGRA; break;
-	case GL_RGBA16F: srcformat = GL_RGBA; break;
-	case GL_COMPRESSED_RGB_S3TC_DXT1_EXT: srcformat = GL_RGB; break;
-	case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT: srcformat = GL_RGBA; break;
-	case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT: srcformat = GL_RGBA; break;
-	case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT: srcformat = GL_RGBA; break;
-	default:
-		I_FatalError("Unknown format passed to CreateTexture");
-		return nullptr;
-	}
-	glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, srcformat, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	FGLDebug::LabelObject(GL_TEXTURE, obj->Texture, name);
-
-	glBindTexture(GL_TEXTURE_2D, oldBinding);
-
+	obj->Texture = mContext.CreateTexture2D(width, height, levels > 1, 1, format);
 	return obj;
 }
 
 std::unique_ptr<OpenGLSWFrameBuffer::HWTexture> OpenGLSWFrameBuffer::CopyCurrentScreen()
 {
 	std::unique_ptr<HWTexture> obj(new HWTexture());
-	obj->Format = GL_RGBA16F;
-
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
-
-	glGenTextures(1, (GLuint*)&obj->Texture);
-	glBindTexture(GL_TEXTURE_2D, obj->Texture);
-
-	glCopyTexImage2D(GL_TEXTURE_2D, 0, obj->Format, 0, 0, Width, Height, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	FGLDebug::LabelObject(GL_TEXTURE, obj->Texture, "CopyCurrentScreen");
-
-	glBindTexture(GL_TEXTURE_2D, oldBinding);
-
+	obj->Format = GPUPixelFormat::RGBA16f;
+	obj->Texture = mContext.CreateTexture2D(Width, Height, false, 1, obj->Format, nullptr);
+	//mContext.CopyTexture(obj->Texture, FBTexture->Texture);
+	//glCopyTexImage2D(GL_TEXTURE_2D, 0, obj->Format, 0, 0, Width, Height, 0);
 	return obj;
 }
 
@@ -554,7 +349,7 @@ void OpenGLSWFrameBuffer::SetHWPixelShader(HWPixelShader *shader)
 	{
 		if (shader)
 		{
-			glUseProgram(shader->Program);
+			mContext.SetProgram(shader->Program);
 			for (int i = 0; i < NumPSCONST; i++)
 			{
 				if (shader->ConstantLocations[i] != -1)
@@ -563,7 +358,7 @@ void OpenGLSWFrameBuffer::SetHWPixelShader(HWPixelShader *shader)
 		}
 		else
 		{
-			glUseProgram(0);
+			mContext.SetProgram(nullptr);
 		}
 	}
 	CurrentShader = shader;
@@ -572,132 +367,102 @@ void OpenGLSWFrameBuffer::SetHWPixelShader(HWPixelShader *shader)
 void OpenGLSWFrameBuffer::SetStreamSource(HWVertexBuffer *vertexBuffer)
 {
 	if (vertexBuffer)
-		glBindVertexArray(vertexBuffer->VertexArray);
+		mContext.SetVertexArray(vertexBuffer->VertexArray);
 	else
-		glBindVertexArray(0);
+		mContext.SetVertexArray(nullptr);
 }
 
 void OpenGLSWFrameBuffer::SetIndices(HWIndexBuffer *indexBuffer)
 {
 	if (indexBuffer)
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer->Buffer);
+		mContext.SetIndexBuffer(indexBuffer->Buffer);
 	else
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		mContext.SetIndexBuffer(nullptr);
 }
 
 void OpenGLSWFrameBuffer::DrawTriangleFans(int count, const FBVERTEX *vertices)
 {
 	count = 2 + count;
 
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &oldBinding);
-
 	if (!StreamVertexBuffer)
 	{
 		StreamVertexBuffer.reset(new HWVertexBuffer());
-		glGenVertexArrays(1, (GLuint*)&StreamVertexBuffer->VertexArray);
-		glGenBuffers(1, (GLuint*)&StreamVertexBuffer->Buffer);
-		glBindVertexArray(StreamVertexBuffer->VertexArray);
-		glBindBuffer(GL_ARRAY_BUFFER, StreamVertexBuffer->Buffer);
-		glBufferData(GL_ARRAY_BUFFER, count * sizeof(FBVERTEX), vertices, GL_STREAM_DRAW);
-		glEnableVertexAttribArray(0);
-		glEnableVertexAttribArray(1);
-		glEnableVertexAttribArray(2);
-		glEnableVertexAttribArray(3);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, x));
-		glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, color0));
-		glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, color1));
-		glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, tu));
+		StreamVertexBuffer->Buffer = mContext.CreateVertexBuffer(vertices, count * sizeof(FBVERTEX));
+		StreamVertexBuffer->VertexArray = mContext.CreateVertexArray(
+		{
+			{ 0, 4, GPUVertexAttributeType::Float, false, sizeof(FBVERTEX), offsetof(FBVERTEX, x), StreamVertexBuffer->Buffer },
+			{ 1, 4, GPUVertexAttributeType::Uint8, true, sizeof(FBVERTEX), offsetof(FBVERTEX, color0), StreamVertexBuffer->Buffer },
+			{ 2, 4, GPUVertexAttributeType::Uint8, true, sizeof(FBVERTEX), offsetof(FBVERTEX, color1), StreamVertexBuffer->Buffer },
+			{ 3, 2, GPUVertexAttributeType::Float, false, sizeof(FBVERTEX), offsetof(FBVERTEX, tu), StreamVertexBuffer->Buffer }
+		});
 	}
 	else
 	{
-		glBindVertexArray(StreamVertexBuffer->VertexArray);
-		glBindBuffer(GL_ARRAY_BUFFER, StreamVertexBuffer->Buffer);
-		glBufferData(GL_ARRAY_BUFFER, count * sizeof(FBVERTEX), vertices, GL_STREAM_DRAW);
+		StreamVertexBuffer->Buffer->Upload(vertices, count * sizeof(FBVERTEX));
 	}
 
-	glDrawArrays(GL_TRIANGLE_FAN, 0, count);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(oldBinding);
+	mContext.SetVertexArray(StreamVertexBuffer->VertexArray);
+	mContext.Draw(GPUDrawMode::TriangleFan, 0, count);
+	mContext.SetVertexArray(nullptr);
 }
 
 void OpenGLSWFrameBuffer::DrawTriangleFans(int count, const BURNVERTEX *vertices)
 {
 	count = 2 + count;
 
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &oldBinding);
-
 	if (!StreamVertexBufferBurn)
 	{
 		StreamVertexBufferBurn.reset(new HWVertexBuffer());
-		glGenVertexArrays(1, (GLuint*)&StreamVertexBufferBurn->VertexArray);
-		glGenBuffers(1, (GLuint*)&StreamVertexBufferBurn->Buffer);
-		glBindVertexArray(StreamVertexBufferBurn->VertexArray);
-		glBindBuffer(GL_ARRAY_BUFFER, StreamVertexBufferBurn->Buffer);
-		glBufferData(GL_ARRAY_BUFFER, count * sizeof(BURNVERTEX), vertices, GL_STREAM_DRAW);
-		glEnableVertexAttribArray(0);
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(BURNVERTEX), (const GLvoid*)offsetof(BURNVERTEX, x));
-		glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(BURNVERTEX), (const GLvoid*)offsetof(BURNVERTEX, tu0));
+		StreamVertexBufferBurn->Buffer = mContext.CreateVertexBuffer(vertices, count * sizeof(BURNVERTEX));
+		StreamVertexBufferBurn->VertexArray = mContext.CreateVertexArray(
+		{
+			{ 0, 4, GPUVertexAttributeType::Float, false, sizeof(BURNVERTEX), offsetof(BURNVERTEX, x), StreamVertexBufferBurn->Buffer },
+			{ 1, 4, GPUVertexAttributeType::Float, false, sizeof(BURNVERTEX), offsetof(BURNVERTEX, tu0), StreamVertexBufferBurn->Buffer }
+		});
 	}
 	else
 	{
-		glBindVertexArray(StreamVertexBufferBurn->VertexArray);
-		glBindBuffer(GL_ARRAY_BUFFER, StreamVertexBufferBurn->Buffer);
-		glBufferData(GL_ARRAY_BUFFER, count * sizeof(BURNVERTEX), vertices, GL_STREAM_DRAW);
+		StreamVertexBufferBurn->Buffer->Upload(vertices, count * sizeof(BURNVERTEX));
 	}
 
-	glDrawArrays(GL_TRIANGLE_FAN, 0, count);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(oldBinding);
+	mContext.SetVertexArray(StreamVertexBufferBurn->VertexArray);
+	mContext.Draw(GPUDrawMode::TriangleFan, 0, count);
+	mContext.SetVertexArray(nullptr);
 }
 
 void OpenGLSWFrameBuffer::DrawPoints(int count, const FBVERTEX *vertices)
 {
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &oldBinding);
-
 	if (!StreamVertexBuffer)
 	{
 		StreamVertexBuffer.reset(new HWVertexBuffer());
-		glGenVertexArrays(1, (GLuint*)&StreamVertexBuffer->VertexArray);
-		glGenBuffers(1, (GLuint*)&StreamVertexBuffer->Buffer);
-		glBindVertexArray(StreamVertexBuffer->VertexArray);
-		glBindBuffer(GL_ARRAY_BUFFER, StreamVertexBuffer->Buffer);
-		glBufferData(GL_ARRAY_BUFFER, count * sizeof(FBVERTEX), vertices, GL_STREAM_DRAW);
-		glEnableVertexAttribArray(0);
-		glEnableVertexAttribArray(1);
-		glEnableVertexAttribArray(2);
-		glEnableVertexAttribArray(3);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, x));
-		glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, color0));
-		glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, color1));
-		glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(FBVERTEX), (const GLvoid*)offsetof(FBVERTEX, tu));
+		StreamVertexBuffer->Buffer = mContext.CreateVertexBuffer(vertices, count * sizeof(FBVERTEX));
+		StreamVertexBuffer->VertexArray = mContext.CreateVertexArray(
+		{
+			{ 0, 4, GPUVertexAttributeType::Float, false, sizeof(FBVERTEX), offsetof(FBVERTEX, x), StreamVertexBuffer->Buffer },
+			{ 1, 4, GPUVertexAttributeType::Uint8, true, sizeof(FBVERTEX), offsetof(FBVERTEX, color0), StreamVertexBuffer->Buffer },
+			{ 2, 4, GPUVertexAttributeType::Uint8, true, sizeof(FBVERTEX), offsetof(FBVERTEX, color1), StreamVertexBuffer->Buffer },
+			{ 3, 2, GPUVertexAttributeType::Float, false, sizeof(FBVERTEX), offsetof(FBVERTEX, tu), StreamVertexBuffer->Buffer }
+		});
 	}
 	else
 	{
-		glBindVertexArray(StreamVertexBuffer->VertexArray);
-		glBindBuffer(GL_ARRAY_BUFFER, StreamVertexBuffer->Buffer);
-		glBufferData(GL_ARRAY_BUFFER, count * sizeof(FBVERTEX), vertices, GL_STREAM_DRAW);
+		StreamVertexBuffer->Buffer->Upload(vertices, count * sizeof(FBVERTEX));
 	}
 
-	glDrawArrays(GL_POINTS, 0, count);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(oldBinding);
+	mContext.SetVertexArray(StreamVertexBufferBurn->VertexArray);
+	mContext.Draw(GPUDrawMode::Points, 0, count);
+	mContext.SetVertexArray(nullptr);
 }
 
 void OpenGLSWFrameBuffer::DrawLineList(int count)
 {
-	glDrawArrays(GL_LINES, 0, count * 2);
+	mContext.Draw(GPUDrawMode::Lines, 0, count * 2);
 }
 
 void OpenGLSWFrameBuffer::DrawTriangleList(int minIndex, int numVertices, int startIndex, int primitiveCount)
 {
-	glDrawRangeElements(GL_TRIANGLES, minIndex, minIndex + numVertices - 1, primitiveCount * 3, GL_UNSIGNED_SHORT, (const void*)(startIndex * sizeof(uint16_t)));
+	mContext.DrawIndexed(GPUDrawMode::Triangles, startIndex, primitiveCount * 3);
+	//mContext.DrawRangeIndexed(GPUDrawMode::Triangles, minIndex, minIndex + numVertices - 1, startIndex, primitiveCount * 3);
 }
 
 void OpenGLSWFrameBuffer::GetLetterboxFrame(int &letterboxX, int &letterboxY, int &letterboxWidth, int &letterboxHeight)
@@ -729,13 +494,13 @@ void OpenGLSWFrameBuffer::Present()
 	int clientHeight = GetClientHeight();
 	if (clientWidth > 0 && clientHeight > 0)
 	{
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, clientWidth, clientHeight);
+		mContext.SetFrameBuffer(nullptr);
+		mContext.SetViewport(0, 0, clientWidth, clientHeight);
 
 		int letterboxX, letterboxY, letterboxWidth, letterboxHeight;
 		GetLetterboxFrame(letterboxX, letterboxY, letterboxWidth, letterboxHeight);
 		DrawLetterbox(letterboxX, letterboxY, letterboxWidth, letterboxHeight);
-		glViewport(letterboxX, letterboxY, letterboxWidth, letterboxHeight);
+		mContext.SetViewport(letterboxX, letterboxY, letterboxWidth, letterboxHeight);
 
 		FBVERTEX verts[4];
 		CalcFullscreenCoords(verts, false, 0, 0xFFFFFFFF);
@@ -743,19 +508,20 @@ void OpenGLSWFrameBuffer::Present()
 
 		if (ViewportLinearScale())
 		{
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			mContext.SetSampler(0, SamplerClampToEdgeLinear);
 		}
 		else
 		{
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			mContext.SetSampler(0, SamplerClampToEdge);
 		}
 
 		SetPixelShader(Shaders[SHADER_GammaCorrection].get());
 		SetAlphaBlend(0);
 		EnableAlphaTest(false);
 		DrawTriangleFans(2, verts);
+
+		if (ViewportLinearScale())
+			mContext.SetSampler(0, SamplerClampToEdge);
 	}
 
 	SwapBuffers();
@@ -764,8 +530,8 @@ void OpenGLSWFrameBuffer::Present()
 	float screensize[4] = { (float)Width, (float)Height, 1.0f, 1.0f };
 	SetPixelShaderConstantF(PSCONST_ScreenSize, screensize, 1);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, OutputFB->Framebuffer);
-	glViewport(0, 0, Width, Height);
+	mContext.SetFrameBuffer(OutputFB->Framebuffer);
+	mContext.SetViewport(0, 0, Width, Height);
 }
 
 //==========================================================================
@@ -790,11 +556,14 @@ void OpenGLSWFrameBuffer::SetInitialState()
 	CurPixelShader = nullptr;
 	memset(Constant, 0, sizeof(Constant));
 
+	SamplerRepeat = mContext.CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+	SamplerClampToEdge = mContext.CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::ClampToEdge, GPUWrapMode::ClampToEdge);
+	SamplerClampToEdgeLinear = mContext.CreateSampler(GPUSampleMode::Linear, GPUSampleMode::Linear, GPUMipmapMode::None, GPUWrapMode::ClampToEdge, GPUWrapMode::ClampToEdge);
+
 	for (unsigned i = 0; i < countof(Texture); ++i)
 	{
 		Texture[i] = nullptr;
-		SamplerWrapS[i] = GL_CLAMP_TO_EDGE;
-		SamplerWrapT[i] = GL_CLAMP_TO_EDGE;
+		mContext.SetSampler(i, SamplerClampToEdge);
 	}
 
 	NeedGammaUpdate = true;
@@ -832,7 +601,7 @@ bool OpenGLSWFrameBuffer::CreateResources()
 	if (!OutputFB)
 		return false;
 		
-	glBindFramebuffer(GL_FRAMEBUFFER, OutputFB->Framebuffer);
+	mContext.SetFrameBuffer(OutputFB->Framebuffer);
 
 	if (!CreateFBTexture() ||
 		!CreatePaletteTexture())
@@ -877,12 +646,12 @@ bool OpenGLSWFrameBuffer::LoadShaders()
 			break;
 		}
 
-		glUseProgram(Shaders[i]->Program);
-		if (Shaders[i]->ImageLocation != -1) glUniform1i(Shaders[i]->ImageLocation, 0);
-		if (Shaders[i]->PaletteLocation != -1) glUniform1i(Shaders[i]->PaletteLocation, 1);
-		if (Shaders[i]->NewScreenLocation != -1) glUniform1i(Shaders[i]->NewScreenLocation, 0);
-		if (Shaders[i]->BurnLocation != -1) glUniform1i(Shaders[i]->BurnLocation, 1);
-		glUseProgram(0);
+		mContext.SetProgram(Shaders[i]->Program);
+		if (Shaders[i]->ImageLocation != -1) mContext.SetUniform1i(Shaders[i]->ImageLocation, 0);
+		if (Shaders[i]->PaletteLocation != -1) mContext.SetUniform1i(Shaders[i]->PaletteLocation, 1);
+		if (Shaders[i]->NewScreenLocation != -1) mContext.SetUniform1i(Shaders[i]->NewScreenLocation, 0);
+		if (Shaders[i]->BurnLocation != -1) mContext.SetUniform1i(Shaders[i]->BurnLocation, 1);
+		mContext.SetProgram(nullptr);
 	}
 	if (i == NUM_SHADERS)
 	{ // Success!
@@ -950,8 +719,8 @@ bool OpenGLSWFrameBuffer::Reset()
 		return false;
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, OutputFB->Framebuffer);
-	glViewport(0, 0, Width, Height);
+	mContext.SetFrameBuffer(OutputFB->Framebuffer);
+	mContext.SetViewport(0, 0, Width, Height);
 
 	SetInitialState();
 	return true;
@@ -991,7 +760,7 @@ void OpenGLSWFrameBuffer::KillNativeTexs()
 
 bool OpenGLSWFrameBuffer::CreateFBTexture()
 {
-	FBTexture = CreateTexture("FBTexture", Width, Height, 1, IsBgra() ? GL_RGBA8 : GL_R8);
+	FBTexture = CreateTexture("FBTexture", Width, Height, 1, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
 	return FBTexture != nullptr;
 }
 
@@ -1003,7 +772,7 @@ bool OpenGLSWFrameBuffer::CreateFBTexture()
 
 bool OpenGLSWFrameBuffer::CreatePaletteTexture()
 {
-	PaletteTexture = CreateTexture("PaletteTexture", 256, 1, 1, GL_RGBA8);
+	PaletteTexture = CreateTexture("PaletteTexture", 256, 1, 1, GPUPixelFormat::BGRA8);
 	return PaletteTexture != nullptr;
 }
 
@@ -1149,11 +918,10 @@ bool OpenGLSWFrameBuffer::Lock(bool buffered)
 		{
 			BindFBBuffer();
 
-			MappedMemBuffer = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_READ_WRITE);
+			MappedMemBuffer = FBTexture->Buffers[FBTexture->CurrentBuffer]->Map();
 			Pitch = Width;
 			if (MappedMemBuffer == nullptr)
 				return true;
-			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 		}
 		Buffer = (uint8_t*)MappedMemBuffer;
 	}
@@ -1188,8 +956,7 @@ void OpenGLSWFrameBuffer::Unlock()
 		if (MappedMemBuffer)
 		{
 			BindFBBuffer();
-			glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+			FBTexture->Buffers[FBTexture->CurrentBuffer]->Unmap();
 			MappedMemBuffer = nullptr;
 		}
 	}
@@ -1326,22 +1093,10 @@ void OpenGLSWFrameBuffer::Flip()
 
 void OpenGLSWFrameBuffer::BindFBBuffer()
 {
-	int usage = UseMappedMemBuffer ? GL_DYNAMIC_DRAW : GL_STREAM_DRAW;
-
-	int pixelsize = IsBgra() ? 4 : 1;
-	int size = Width * Height * pixelsize;
-
-	if (FBTexture->Buffers[0] == 0)
+	if (!FBTexture->Buffers[0])
 	{
-		glGenBuffers(2, (GLuint*)FBTexture->Buffers);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, FBTexture->Buffers[1]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, size, nullptr, usage);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, FBTexture->Buffers[0]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, size, nullptr, usage);
-	}
-	else
-	{
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, FBTexture->Buffers[FBTexture->CurrentBuffer]);
+		FBTexture->Buffers[0] = mContext.CreateStagingTexture(Width, Height, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
+		FBTexture->Buffers[1] = mContext.CreateStagingTexture(Width, Height, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
 	}
 }
 
@@ -1367,14 +1122,12 @@ void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 	if (copy3d && ViewFBHandle == 0)
 	{
 		BindFBBuffer();
-		FBTexture->CurrentBuffer = (FBTexture->CurrentBuffer + 1) & 1;
 
 		if (!UseMappedMemBuffer)
 		{
 			int pixelsize = IsBgra() ? 4 : 1;
-			int size = Width * Height * pixelsize;
 
-			uint8_t *dest = (uint8_t*)MapBuffer(GL_PIXEL_UNPACK_BUFFER, size);
+			uint8_t *dest = (uint8_t*)FBTexture->Buffers[FBTexture->CurrentBuffer]->Map();
 			if (dest)
 			{
 				if (gl.es && pixelsize == 4)
@@ -1395,25 +1148,18 @@ void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 						src += Pitch * pixelsize;
 					}
 				}
-				glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+				FBTexture->Buffers[FBTexture->CurrentBuffer]->Unmap();
 			}
 		}
 		else if (MappedMemBuffer)
 		{
-			glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+			FBTexture->Buffers[FBTexture->CurrentBuffer]->Unmap();
 			MappedMemBuffer = nullptr;
 		}
 
-		GLint oldBinding = 0;
-		glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
-		glBindTexture(GL_TEXTURE_2D, FBTexture->Texture);
-		if (IsBgra())
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, Width, Height, gl.es ? GL_RGBA : GL_BGRA, GL_UNSIGNED_BYTE, 0);
-		else
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, Width, Height, GL_RED, GL_UNSIGNED_BYTE, 0);
-		glBindTexture(GL_TEXTURE_2D, oldBinding);
+		mContext.CopyTexture(FBTexture->Texture, FBTexture->Buffers[FBTexture->CurrentBuffer]);
 
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+		FBTexture->CurrentBuffer = (FBTexture->CurrentBuffer + 1) & 1;
 	}
 	InScene = true;
 	if (vid_hwaalines)
@@ -1421,7 +1167,7 @@ void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 	else
 		glDisable(GL_LINE_SMOOTH);
 
-	if (ViewFBHandle != 0)
+	/*if (ViewFBHandle != 0)
 	{
 		SetPaletteTexture(PaletteTexture.get(), 256, BorderColor);
 		memset(Constant, 0, sizeof(Constant));
@@ -1444,7 +1190,7 @@ void OpenGLSWFrameBuffer::Draw3DPart(bool copy3d)
 			SetPixelShader(Shaders[SHADER_NormalColorPal].get());
 		
 		return;
-	}
+	}*/
 
 	SetTexture(0, FBTexture.get());
 	SetPaletteTexture(PaletteTexture.get(), 256, BorderColor);
@@ -1539,23 +1285,16 @@ void OpenGLSWFrameBuffer::DrawLetterbox(int x, int y, int width, int height)
 
 void OpenGLSWFrameBuffer::UploadPalette()
 {
-	if (PaletteTexture->Buffers[0] == 0)
+	if (!PaletteTexture->Buffers[0])
 	{
-		glGenBuffers(2, (GLuint*)PaletteTexture->Buffers);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, PaletteTexture->Buffers[0]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, 256 * 4, nullptr, GL_STREAM_DRAW);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, PaletteTexture->Buffers[1]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, 256 * 4, nullptr, GL_STREAM_DRAW);
-		
-		if (gl.es) PaletteTexture->MapBuffer.resize(256 * 4);
-	}
-	else
-	{
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, PaletteTexture->Buffers[PaletteTexture->CurrentBuffer]);
-		PaletteTexture->CurrentBuffer = (PaletteTexture->CurrentBuffer + 1) & 1;
+		PaletteTexture->Buffers[0] = mContext.CreateStagingTexture(256, 1, GPUPixelFormat::BGRA8);
+		PaletteTexture->Buffers[1] = mContext.CreateStagingTexture(256, 1, GPUPixelFormat::BGRA8);
 	}
 
-	uint8_t *pix = gl.es ? PaletteTexture->MapBuffer.data() : (uint8_t*)MapBuffer(GL_PIXEL_UNPACK_BUFFER, 256 * 4);
+	auto current = PaletteTexture->Buffers[PaletteTexture->CurrentBuffer];
+	PaletteTexture->CurrentBuffer = (PaletteTexture->CurrentBuffer + 1) & 1;
+
+	uint8_t *pix = (uint8_t*)current->Map();
 	if (pix)
 	{
 		int i;
@@ -1576,26 +1315,11 @@ void OpenGLSWFrameBuffer::UploadPalette()
 			pix[2] = SourcePalette[i].r;
 			pix[3] = 255;
 		}
-		if (gl.es)
-		{
-			uint8_t *tempbuffer = PaletteTexture->MapBuffer.data();
-			BgraToRgba((uint32_t*)tempbuffer, (const uint32_t *)tempbuffer, 256, 1, 256);
-			glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, 256 * 4, tempbuffer);
-		}
-		else
-		{
-			glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-		}
-		
-		GLint oldBinding = 0;
-		glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
-		glBindTexture(GL_TEXTURE_2D, PaletteTexture->Texture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, gl.es ? GL_RGBA : GL_BGRA, GL_UNSIGNED_BYTE, 0);
-		glBindTexture(GL_TEXTURE_2D, oldBinding);
+
+		current->Unmap();
+		mContext.CopyTexture(PaletteTexture->Texture, current);
 		BorderColor = ColorXRGB(SourcePalette[255].r, SourcePalette[255].g, SourcePalette[255].b);
 	}
-
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
 PalEntry *OpenGLSWFrameBuffer::GetPalette()
@@ -1802,7 +1526,7 @@ void OpenGLSWFrameBuffer::DrawPackedTextures(int packnum)
 		FBVERTEX *vert = &VertexData[VertexPos];
 
 		quad->ClearSetup();
-		if (pack->Format == GL_R8/* && !tex->IsGray*/)
+		if (pack->Format == GPUPixelFormat::R8/* && !tex->IsGray*/)
 		{
 			quad->Flags = BQF_WrapUV | BQF_GamePalette/* | BQF_DisableAlphaTest*/;
 			quad->ShaderNum = BQS_PalTex;
@@ -1892,7 +1616,7 @@ void OpenGLSWFrameBuffer::DrawPackedTextures(int packnum)
 //
 //==========================================================================
 
-OpenGLSWFrameBuffer::PackedTexture *OpenGLSWFrameBuffer::AllocPackedTexture(int w, int h, bool wrapping, int format)
+OpenGLSWFrameBuffer::PackedTexture *OpenGLSWFrameBuffer::AllocPackedTexture(int w, int h, bool wrapping, GPUPixelFormat format)
 {
 	Atlas *pack;
 	Rect box;
@@ -1939,7 +1663,7 @@ OpenGLSWFrameBuffer::PackedTexture *OpenGLSWFrameBuffer::AllocPackedTexture(int 
 //
 //==========================================================================
 
-OpenGLSWFrameBuffer::Atlas::Atlas(OpenGLSWFrameBuffer *fb, int w, int h, int format)
+OpenGLSWFrameBuffer::Atlas::Atlas(OpenGLSWFrameBuffer *fb, int w, int h, GPUPixelFormat format)
 	: Packer(w, h, true)
 {
 	Format = format;
@@ -2171,32 +1895,25 @@ bool OpenGLSWFrameBuffer::OpenGLTex::Update()
 	assert(Box->Owner->Tex != nullptr);
 	assert(GameTex != nullptr);
 
-	int format = Box->Owner->Tex->Format;
+	GPUPixelFormat format = Box->Owner->Tex->Format;
 
 	rect = Box->Area;
 
-	if (Box->Owner->Tex->Buffers[0] == 0)
-		glGenBuffers(2, (GLuint*)Box->Owner->Tex->Buffers);
+	int bytesPerPixel = (format == GPUPixelFormat::R8) ? 1 : 4;
 
-	int bytesPerPixel = 4;
-	switch (format)
-	{
-	case GL_R8: bytesPerPixel = 1; break;
-	case GL_RGBA8: bytesPerPixel = 4; break;
-	default: return false;
-	}
+	int uploadX = rect.left;
+	int uploadY = rect.top;
+	int uploadWidth = rect.right - rect.left;
+	int uploadHeight = rect.bottom - rect.top;
+	int pitch = uploadWidth * bytesPerPixel;
+	int buffersize = pitch * uploadHeight;
 
-	int buffersize = (rect.right - rect.left) * (rect.bottom - rect.top) * bytesPerPixel;
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, Box->Owner->Tex->Buffers[Box->Owner->Tex->CurrentBuffer]);
-	glBufferData(GL_PIXEL_UNPACK_BUFFER, buffersize, nullptr, GL_STREAM_DRAW);
 	Box->Owner->Tex->CurrentBuffer = (Box->Owner->Tex->CurrentBuffer + 1) & 1;
 	
 	static std::vector<uint8_t> tempbuffer;
-	if (gl.es)
-		tempbuffer.resize(buffersize);
+	tempbuffer.resize(buffersize);
 
-	int pitch = (rect.right - rect.left) * bytesPerPixel;
-	uint8_t *bits = gl.es ? tempbuffer.data() : (uint8_t *)MapBuffer(GL_PIXEL_UNPACK_BUFFER, buffersize);
+	uint8_t *bits = tempbuffer.data();
 	dest = bits;
 	if (!dest)
 	{
@@ -2204,22 +1921,18 @@ bool OpenGLSWFrameBuffer::OpenGLTex::Update()
 	}
 	if (Box->Padded)
 	{
-		dest += pitch + (format == GL_R8 ? 1 : 4);
+		dest += pitch + bytesPerPixel;
 	}
 	GameTex->FillBuffer(dest, pitch, GameTex->GetHeight(), ToTexFmt(format));
 	if (Box->Padded)
 	{
 		// Clear top padding row.
 		dest = bits;
-		int numbytes = GameTex->GetWidth() + 2;
-		if (format != GL_R8)
-		{
-			numbytes <<= 2;
-		}
+		int numbytes = (GameTex->GetWidth() + 2) * bytesPerPixel;
 		memset(dest, 0, numbytes);
 		dest += pitch;
 		// Clear left and right padding columns.
-		if (format == GL_R8)
+		if (bytesPerPixel == 1)
 		{
 			for (int y = Box->Area.bottom - Box->Area.top - 2; y > 0; --y)
 			{
@@ -2241,24 +1954,7 @@ bool OpenGLSWFrameBuffer::OpenGLTex::Update()
 		memset(dest, 0, numbytes);
 	}
 	
-	if (gl.es && format == GL_RGBA8)
-	{
-		BgraToRgba((uint32_t*)bits, (const uint32_t *)bits, rect.right - rect.left, rect.bottom - rect.top, rect.right - rect.left);
-	}
-
-	if (gl.es)
-		glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, buffersize, bits);
-	else
-		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
-	glBindTexture(GL_TEXTURE_2D, Box->Owner->Tex->Texture);
-	if (format == GL_RGBA8)
-		glTexSubImage2D(GL_TEXTURE_2D, 0, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, gl.es ? GL_RGBA : GL_BGRA, GL_UNSIGNED_BYTE, 0);
-	else
-		glTexSubImage2D(GL_TEXTURE_2D, 0, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, GL_RED, GL_UNSIGNED_BYTE, 0);
-	glBindTexture(GL_TEXTURE_2D, oldBinding);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	Box->Owner->Tex->Texture->Upload(uploadX, uploadY, uploadWidth, uploadHeight, 0, bits);
 	return true;
 }
 
@@ -2270,7 +1966,7 @@ bool OpenGLSWFrameBuffer::OpenGLTex::Update()
 //
 //==========================================================================
 
-int OpenGLSWFrameBuffer::OpenGLTex::GetTexFormat()
+GPUPixelFormat OpenGLSWFrameBuffer::OpenGLTex::GetTexFormat()
 {
 	FTextureFormat fmt = GameTex->GetFormat();
 
@@ -2278,17 +1974,17 @@ int OpenGLSWFrameBuffer::OpenGLTex::GetTexFormat()
 
 	switch (fmt)
 	{
-	case TEX_Pal:	return GL_R8;
-	case TEX_Gray:	IsGray = true; return GL_R8;
-	case TEX_RGB:	return GL_RGBA8;
-	case TEX_DXT1:	return GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
-	case TEX_DXT2:	return GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
-	case TEX_DXT3:	return GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
-	case TEX_DXT4:	return GL_COMPRESSED_RGBA_S3TC_DXT5_EXT; // Doesn't exist in OpenGL. Closest match is DXT5.
-	case TEX_DXT5:	return GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+	case TEX_Pal:	return GPUPixelFormat::R8;
+	case TEX_Gray:	IsGray = true; return GPUPixelFormat::R8;
+	case TEX_RGB:	return GPUPixelFormat::BGRA8;
+	case TEX_DXT1:	I_FatalError("TEX_DXT1 is currently not supported.");
+	case TEX_DXT2:	I_FatalError("TEX_DXT2 is currently not supported.");
+	case TEX_DXT3:	I_FatalError("TEX_DXT3 is currently not supported.");
+	case TEX_DXT4:	I_FatalError("TEX_DXT4 is currently not supported.");
+	case TEX_DXT5:	I_FatalError("TEX_DXT5 is currently not supported.");
 	default:		I_FatalError("GameTex->GetFormat() returned invalid format.");
 	}
-	return GL_R8;
+	return GPUPixelFormat::R8;
 }
 
 //==========================================================================
@@ -2300,19 +1996,14 @@ int OpenGLSWFrameBuffer::OpenGLTex::GetTexFormat()
 //
 //==========================================================================
 
-FTextureFormat OpenGLSWFrameBuffer::OpenGLTex::ToTexFmt(int fmt)
+FTextureFormat OpenGLSWFrameBuffer::OpenGLTex::ToTexFmt(GPUPixelFormat fmt)
 {
 	switch (fmt)
 	{
-	case GL_R8:									return IsGray ? TEX_Gray : TEX_Pal;
-	case GL_RGBA8:								return TEX_RGB;
-	case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:		return TEX_DXT1;
-	case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:		return TEX_DXT2;
-	case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:		return TEX_DXT3;
-	case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:		return TEX_DXT5;
-	default:
-		assert(0);	// LOL WUT?
-		return TEX_Pal;
+	case GPUPixelFormat::R8: return IsGray ? TEX_Gray : TEX_Pal;
+	case GPUPixelFormat::RGBA8: return TEX_RGB;
+	case GPUPixelFormat::BGRA8: return TEX_RGB;
+	default: return TEX_Pal;
 	}
 }
 
@@ -2323,7 +2014,7 @@ FTextureFormat OpenGLSWFrameBuffer::OpenGLTex::ToTexFmt(int fmt)
 //==========================================================================
 
 OpenGLSWFrameBuffer::OpenGLPal::OpenGLPal(FRemapTable *remap, OpenGLSWFrameBuffer *fb)
-	: Remap(remap)
+	: Remap(remap), fb(fb)
 {
 	int count;
 
@@ -2347,7 +2038,7 @@ OpenGLSWFrameBuffer::OpenGLPal::OpenGLPal(FRemapTable *remap, OpenGLSWFrameBuffe
 
 	BorderColor = 0;
 	RoundedPaletteSize = count;
-	Tex = fb->CreateTexture("Pal", count, 1, 1, GL_RGBA8);
+	Tex = fb->CreateTexture("Pal", count, 1, 1, GPUPixelFormat::BGRA8);
 	if (Tex)
 	{
 		if (!Update())
@@ -2395,27 +2086,21 @@ bool OpenGLSWFrameBuffer::OpenGLPal::Update()
 
 	assert(Tex != nullptr);
 
-	if (Tex->Buffers[0] == 0)
+	if (!Tex->Buffers[0])
 	{
-		glGenBuffers(2, (GLuint*)Tex->Buffers);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, Tex->Buffers[0]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, RoundedPaletteSize * 4, nullptr, GL_STREAM_DRAW);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, Tex->Buffers[1]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, RoundedPaletteSize * 4, nullptr, GL_STREAM_DRAW);
+		Tex->Buffers[0] = fb->mContext.CreateStagingTexture(RoundedPaletteSize, 1, GPUPixelFormat::BGRA8);
+		Tex->Buffers[1] = fb->mContext.CreateStagingTexture(RoundedPaletteSize, 1, GPUPixelFormat::BGRA8);
 	}
-	else
-	{
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, Tex->Buffers[Tex->CurrentBuffer]);
-		Tex->CurrentBuffer = (Tex->CurrentBuffer + 1) & 1;
-	}
+
+	auto current = Tex->Buffers[Tex->CurrentBuffer];
+	Tex->CurrentBuffer = (Tex->CurrentBuffer + 1) & 1;
 
 	int numEntries = MIN(Remap->NumEntries, RoundedPaletteSize);
 	
 	std::vector<uint8_t> &tempbuffer = Tex->MapBuffer;
-	if (gl.es)
-		tempbuffer.resize(numEntries * 4);
+	tempbuffer.resize(numEntries * 4);
 
-	buff = gl.es ? (uint32_t*)tempbuffer.data() : (uint32_t *)MapBuffer(GL_PIXEL_UNPACK_BUFFER, numEntries * 4);
+	buff = (uint32_t*)tempbuffer.data();
 	if (buff == nullptr)
 	{
 		return false;
@@ -2475,22 +2160,8 @@ bool OpenGLSWFrameBuffer::OpenGLPal::Update()
 		BorderColor = ColorARGB(pal[i].a, pal[i - 1].r, pal[i - 1].g, pal[i - 1].b);
 	}
 	
-	if (gl.es)
-	{
-		BgraToRgba((uint32_t*)buff, (const uint32_t *)buff, numEntries, 1, numEntries);
-		glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, numEntries * 4, buff);
-	}
-	else
-	{
-		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-	}
-	
-	GLint oldBinding = 0;
-	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
-	glBindTexture(GL_TEXTURE_2D, Tex->Texture);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, numEntries, 1, gl.es ? GL_RGBA : GL_BGRA, GL_UNSIGNED_BYTE, 0);
-	glBindTexture(GL_TEXTURE_2D, oldBinding);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	current->Upload(0, 0, numEntries * 4, 1, buff);
+	fb->mContext.CopyTexture(Tex->Texture, current);
 
 	return true;
 }
@@ -2975,7 +2646,7 @@ void OpenGLSWFrameBuffer::FlatFill(int left, int top, int right, int bottom, FTe
 	FBVERTEX *vert = &VertexData[VertexPos];
 
 	quad->ClearSetup();
-	if (tex->GetTexFormat() == GL_R8 && !tex->IsGray)
+	if (tex->GetTexFormat() == GPUPixelFormat::R8 && !tex->IsGray)
 	{
 		quad->Flags = BQF_WrapUV | BQF_GamePalette; // | BQF_DisableAlphaTest;
 		quad->ShaderNum = BQS_PalTex;
@@ -3093,7 +2764,7 @@ void OpenGLSWFrameBuffer::FillSimplePoly(FTexture *texture, FVector2 *points, in
 	color1 = 0xFFFFFFFF;
 
 	quad->ClearSetup();
-	if (tex->GetTexFormat() == GL_R8 && !tex->IsGray)
+	if (tex->GetTexFormat() == GPUPixelFormat::R8 && !tex->IsGray)
 	{
 		quad->Flags = BQF_WrapUV | BQF_GamePalette | BQF_DisableAlphaTest;
 		quad->ShaderNum = BQS_PalTex;
@@ -3421,10 +3092,8 @@ void OpenGLSWFrameBuffer::EndQuadBatch()
 		uv_should_wrap = !!(quad->Flags & BQF_WrapUV);
 		if (uv_wrapped != uv_should_wrap)
 		{
-			uint32_t mode = uv_should_wrap ? GL_REPEAT : GL_CLAMP_TO_EDGE;
 			uv_wrapped = uv_should_wrap;
-			SetSamplerWrapS(0, mode);
-			SetSamplerWrapT(0, mode);
+			mContext.SetSampler(0, uv_should_wrap ? SamplerRepeat : SamplerClampToEdge);
 		}
 
 		// Set the texture
@@ -3444,8 +3113,7 @@ void OpenGLSWFrameBuffer::EndQuadBatch()
 	}
 	if (uv_wrapped)
 	{
-		SetSamplerWrapS(0, GL_CLAMP_TO_EDGE);
-		SetSamplerWrapT(0, GL_CLAMP_TO_EDGE);
+		mContext.SetSampler(0, SamplerClampToEdge);
 	}
 	QuadBatchPos = -1;
 	VertexPos = -1;
@@ -3482,7 +3150,7 @@ void OpenGLSWFrameBuffer::EndBatch()
 
 bool OpenGLSWFrameBuffer::SetStyle(OpenGLTex *tex, DrawParms &parms, uint32_t &color0, uint32_t &color1, BufferedTris &quad)
 {
-	int fmt = tex->GetTexFormat();
+	GPUPixelFormat fmt = tex->GetTexFormat();
 	FRenderStyle style = parms.style;
 	float alpha;
 	bool stencilling;
@@ -3566,7 +3234,7 @@ bool OpenGLSWFrameBuffer::SetStyle(OpenGLTex *tex, DrawParms &parms, uint32_t &c
 			quad.Flags = 0;
 			quad.ShaderNum = BQS_RedToAlpha;
 		}
-		else if (fmt == GL_R8)
+		else if (fmt == GPUPixelFormat::R8)
 		{
 			quad.Flags = BQF_GamePalette;
 			quad.ShaderNum = BQS_PalTex;
@@ -3584,7 +3252,7 @@ bool OpenGLSWFrameBuffer::SetStyle(OpenGLTex *tex, DrawParms &parms, uint32_t &c
 			quad.Flags = 0;
 			quad.ShaderNum = BQS_RedToAlpha;
 		}
-		else if (fmt == GL_R8)
+		else if (fmt == GPUPixelFormat::R8)
 		{
 			if (parms.remap != nullptr)
 			{
@@ -3770,52 +3438,16 @@ void OpenGLSWFrameBuffer::SetTexture(int tnum, HWTexture *texture)
 	assert(unsigned(tnum) < countof(Texture));
 	if (texture)
 	{
-		if (Texture[tnum] != texture || SamplerWrapS[tnum] != texture->WrapS || SamplerWrapT[tnum] != texture->WrapT)
+		if (Texture[tnum] != texture)
 		{
 			Texture[tnum] = texture;
-			glActiveTexture(GL_TEXTURE0 + tnum);
-			glBindTexture(GL_TEXTURE_2D, texture->Texture);
-			if (Texture[tnum]->WrapS != SamplerWrapS[tnum])
-			{
-				Texture[tnum]->WrapS = SamplerWrapS[tnum];
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, SamplerWrapS[tnum]);
-			}
-			if (Texture[tnum]->WrapT != SamplerWrapT[tnum])
-			{
-				Texture[tnum]->WrapT = SamplerWrapT[tnum];
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, SamplerWrapT[tnum]);
-			}
+			mContext.SetTexture(tnum, texture->Texture);
 		}
 	}
 	else if (Texture[tnum] != texture)
 	{
 		Texture[tnum] = texture;
-		glActiveTexture(GL_TEXTURE0 + tnum);
-		glBindTexture(GL_TEXTURE_2D, 0);
-	}
-}
-
-void OpenGLSWFrameBuffer::SetSamplerWrapS(int tnum, int mode)
-{
-	assert(unsigned(tnum) < countof(Texture));
-	if (Texture[tnum] && SamplerWrapS[tnum] != mode)
-	{
-		SamplerWrapS[tnum] = mode;
-		Texture[tnum]->WrapS = mode;
-		glActiveTexture(GL_TEXTURE0 + tnum);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, SamplerWrapS[tnum]);
-	}
-}
-
-void OpenGLSWFrameBuffer::SetSamplerWrapT(int tnum, int mode)
-{
-	assert(unsigned(tnum) < countof(Texture));
-	if (Texture[tnum] && SamplerWrapT[tnum] != mode)
-	{
-		SamplerWrapT[tnum] = mode;
-		Texture[tnum]->WrapT = mode;
-		glActiveTexture(GL_TEXTURE0 + tnum);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, SamplerWrapT[tnum]);
+		mContext.SetTexture(tnum, nullptr);
 	}
 }
 

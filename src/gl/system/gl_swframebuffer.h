@@ -113,15 +113,10 @@ private:
 	class HWTexture
 	{
 	public:
-		HWTexture() { Buffers[0] = 0; Buffers[1] = 0; }
-		~HWTexture();
-
-		int Texture = 0;
-		int Buffers[2];
+		std::shared_ptr<GPUTexture2D> Texture;
+		std::shared_ptr<GPUStagingTexture> Buffers[2];
 		int CurrentBuffer = 0;
-		int WrapS = 0;
-		int WrapT = 0;
-		int Format = 0;
+		GPUPixelFormat Format = GPUPixelFormat();
 		
 		std::vector<uint8_t> MapBuffer;
 	};
@@ -129,49 +124,35 @@ private:
 	class HWFrameBuffer
 	{
 	public:
-		~HWFrameBuffer();
-
-		int Framebuffer = 0;
+		std::shared_ptr<GPUFrameBuffer> Framebuffer;
 		std::unique_ptr<HWTexture> Texture;
 	};
-
 
 	class HWVertexBuffer
 	{
 	public:
-		~HWVertexBuffer();
+		FBVERTEX *Lock() { return (FBVERTEX*)Buffer->MapWriteOnly(); }
+		void Unlock() { Buffer->Unmap(); }
 
-		FBVERTEX *Lock();
-		void Unlock();
-
-		int VertexArray = 0;
-		int Buffer = 0;
+		std::shared_ptr<GPUVertexArray> VertexArray;
+		std::shared_ptr<GPUVertexBuffer> Buffer;
 		int Size = 0;
 	};
 
 	class HWIndexBuffer
 	{
 	public:
-		~HWIndexBuffer();
+		uint16_t *Lock() { return (uint16_t*)Buffer->MapWriteOnly(); }
+		void Unlock() { Buffer->Unmap(); }
 
-		uint16_t *Lock();
-		void Unlock();
-
-		int Buffer = 0;
+		std::shared_ptr<GPUIndexBuffer> Buffer;
 		int Size = 0;
-
-	private:
-		int LockedOldBinding = 0;
 	};
 
 	class HWPixelShader
 	{
 	public:
-		~HWPixelShader();
-
-		int Program = 0;
-		int VertexShader = 0;
-		int FragmentShader = 0;
+		std::shared_ptr<GPUProgram> Program;
 
 		int ConstantLocations[NumPSCONST];
 		int ImageLocation = -1;
@@ -183,10 +164,10 @@ private:
 	GLContext mContext;
 
 	std::unique_ptr<HWFrameBuffer> CreateFrameBuffer(const FString &name, int width, int height);
-	std::unique_ptr<HWPixelShader> CreatePixelShader(FString vertexsrc, FString fragmentsrc, const FString &defines);
+	std::unique_ptr<HWPixelShader> CreatePixelShader(FString vertexsrc, FString fragmentsrc, const std::vector<const char *> &defines);
 	std::unique_ptr<HWVertexBuffer> CreateVertexBuffer(int size);
 	std::unique_ptr<HWIndexBuffer> CreateIndexBuffer(int size);
-	std::unique_ptr<HWTexture> CreateTexture(const FString &name, int width, int height, int levels, int format);
+	std::unique_ptr<HWTexture> CreateTexture(const FString &name, int width, int height, int levels, GPUPixelFormat format);
 
 	void SetGammaRamp(const GammaRamp *ramp);
 	void SetPixelShaderConstantF(int uniformIndex, const float *data, int vec4fcount);
@@ -213,8 +194,6 @@ private:
 	static uint32_t ColorXRGB(uint32_t r, uint32_t g, uint32_t b) { return ColorARGB(0xff, r, g, b); }
 	static uint32_t ColorValue(float r, float g, float b, float a) { return ColorRGBA((uint32_t)(r * 255.0f), (uint32_t)(g * 255.0f), (uint32_t)(b * 255.0f), (uint32_t)(a * 255.0f)); }
 	
-	static void *MapBuffer(int target, int size);
-
 	// The number of points for the vertex buffer.
 	enum { NUM_VERTS = 10240 };
 
@@ -250,7 +229,7 @@ private:
 
 	struct Atlas
 	{
-		Atlas(OpenGLSWFrameBuffer *fb, int width, int height, int format);
+		Atlas(OpenGLSWFrameBuffer *fb, int width, int height, GPUPixelFormat format);
 		~Atlas();
 
 		PackedTexture *AllocateImage(const Rect &rect, bool padded);
@@ -259,7 +238,7 @@ private:
 		SkylineBinPack Packer;
 		Atlas *Next;
 		std::unique_ptr<HWTexture> Tex;
-		int Format;
+		GPUPixelFormat Format;
 		PackedTexture *UsedList;	// Boxes that contain images
 		int Width, Height;
 		bool OneUse;
@@ -282,8 +261,8 @@ private:
 		bool Create(OpenGLSWFrameBuffer *fb, bool wrapping);
 		bool Update();
 		bool CheckWrapping(bool wrapping);
-		int GetTexFormat();
-		FTextureFormat ToTexFmt(int fmt);
+		GPUPixelFormat GetTexFormat();
+		FTextureFormat ToTexFmt(GPUPixelFormat fmt);
 	};
 
 	class OpenGLPal : public FNativePalette
@@ -299,9 +278,10 @@ private:
 		uint32_t BorderColor;
 		bool DoColorSkip;
 
-		bool Update();
+		bool Update() override;
 
 		FRemapTable *Remap;
+		OpenGLSWFrameBuffer *fb;
 		int RoundedPaletteSize;
 	};
 
@@ -387,7 +367,7 @@ private:
 
 		NUM_SHADERS
 	};
-	static const char *const ShaderDefines[NUM_SHADERS];
+	static const std::vector<const char *> ShaderDefines[NUM_SHADERS];
 
 	void Flip();
 	void SetInitialState();
@@ -404,7 +384,7 @@ private:
 	void ReleaseDefaultPoolItems();
 	void KillNativePals();
 	void KillNativeTexs();
-	PackedTexture *AllocPackedTexture(int width, int height, bool wrapping, int format);
+	PackedTexture *AllocPackedTexture(int width, int height, bool wrapping, GPUPixelFormat format);
 	void DrawPackedTextures(int packnum);
 	void DrawLetterbox(int x, int y, int width, int height);
 	void Draw3DPart(bool copy3d);
@@ -426,8 +406,6 @@ private:
 	void SetConstant(int cnum, float r, float g, float b, float a);
 	void SetPixelShader(HWPixelShader *shader);
 	void SetTexture(int tnum, HWTexture *texture);
-	void SetSamplerWrapS(int tnum, int mode);
-	void SetSamplerWrapT(int tnum, int mode);
 	void SetPaletteTexture(HWTexture *texture, int count, uint32_t border_color);
 
 	bool Valid = false;
@@ -448,7 +426,6 @@ private:
 	uint32_t CurBorderColor;
 	HWPixelShader *CurPixelShader;
 	HWTexture *Texture[5];
-	int SamplerWrapS[5], SamplerWrapT[5];
 
 	PalEntry SourcePalette[256];
 	uint32_t BorderColor;
@@ -472,6 +449,10 @@ private:
 	OpenGLPal *Palettes = nullptr;
 	OpenGLTex *Textures = nullptr;
 	Atlas *Atlases = nullptr;
+
+	std::shared_ptr<GPUSampler> SamplerRepeat;
+	std::shared_ptr<GPUSampler> SamplerClampToEdge;
+	std::shared_ptr<GPUSampler> SamplerClampToEdgeLinear;
 
 	std::unique_ptr<HWTexture> FBTexture;
 	std::unique_ptr<HWTexture> PaletteTexture;

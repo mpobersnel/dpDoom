@@ -68,7 +68,6 @@
 #include "version.h"
 
 #include "win32iface.h"
-#include "win32swiface.h"
 
 #include "optwin32.h"
 #include "fb_d3d11.h"

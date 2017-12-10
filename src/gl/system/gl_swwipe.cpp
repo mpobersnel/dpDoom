@@ -490,7 +490,7 @@ OpenGLSWFrameBuffer::Wiper_Burn::Wiper_Burn(OpenGLSWFrameBuffer *fb)
 		BurnTexture = nullptr;
 	}
 
-	BurnTexture = fb->CreateTexture("BurnWipe", WIDTH, HEIGHT, 1, GL_R8);
+	BurnTexture = fb->CreateTexture("BurnWipe", WIDTH, HEIGHT, 1, GPUPixelFormat::R8);
 }
 
 //==========================================================================
@@ -527,33 +527,21 @@ bool OpenGLSWFrameBuffer::Wiper_Burn::Run(int ticks, OpenGLSWFrameBuffer *fb)
 
 	// Update the burn texture with the new burn data
 
-	if (BurnTexture->Buffers[0] == 0)
+	if (!BurnTexture->Buffers[0])
 	{
-		glGenBuffers(2, (GLuint*)BurnTexture->Buffers);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, BurnTexture->Buffers[0]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, WIDTH * HEIGHT, nullptr, GL_STREAM_DRAW);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, BurnTexture->Buffers[1]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, WIDTH * HEIGHT, nullptr, GL_STREAM_DRAW);
-	}
-	else
-	{
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, BurnTexture->Buffers[BurnTexture->CurrentBuffer]);
-		BurnTexture->CurrentBuffer = (BurnTexture->CurrentBuffer + 1) & 1;
+		BurnTexture->Buffers[0] = fb->mContext.CreateStagingTexture(WIDTH, HEIGHT, GPUPixelFormat::R8);
+		BurnTexture->Buffers[1] = fb->mContext.CreateStagingTexture(WIDTH, HEIGHT, GPUPixelFormat::R8);
 	}
 
-	uint8_t *dest = (uint8_t*)glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, WIDTH * HEIGHT, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_RANGE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+	auto current = BurnTexture->Buffers[BurnTexture->CurrentBuffer];
+	BurnTexture->CurrentBuffer = (BurnTexture->CurrentBuffer + 1) & 1;
+
+	uint8_t *dest = (uint8_t*)current->Map();
 	if (dest)
 	{
 		memcpy(dest, BurnArray, WIDTH * HEIGHT);
-		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-
-		GLint oldBinding = 0;
-		glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
-		glBindTexture(GL_TEXTURE_2D, BurnTexture->Texture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WIDTH, HEIGHT, GL_RED, GL_UNSIGNED_BYTE, 0);
-		glBindTexture(GL_TEXTURE_2D, oldBinding);
-
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+		current->Unmap();
+		fb->mContext.CopyTexture(BurnTexture->Texture, current);
 	}
 
 	// Put the initial screen back to the buffer.

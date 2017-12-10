@@ -45,7 +45,7 @@ EXTERN_CVAR(Bool, r_shadercolormaps)
 EXTERN_CVAR(Int, screenblocks)
 EXTERN_CVAR(Float, r_visibility)
 
-CVAR(Bool, r_hardpoly, true, 0)
+CVAR(Bool, r_hardpoly, false, 0)
 
 void InitGLRMapinfoData();
 
