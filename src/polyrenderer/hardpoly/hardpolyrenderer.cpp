@@ -71,8 +71,8 @@ void HardpolyRenderer::End()
 	screen->GetContext()->SetViewport(0, 0, screen->GetWidth(), screen->GetHeight());
 	screen->GetContext()->End();
 
-	auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
-	swframebuffer->SetViewFB(std::static_pointer_cast<GLFrameBuffer>(mSceneFB)->Handle());
+	//auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
+	//swframebuffer->SetViewFB(std::static_pointer_cast<GLFrameBuffer>(mSceneFB)->Handle());
 }
 
 void HardpolyRenderer::ClearBuffers(DCanvas *canvas)

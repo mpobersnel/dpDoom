@@ -85,8 +85,8 @@ void PolyRenderer::RenderView(player_t *player)
 		}
 		else
 		{
-			auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
-			swframebuffer->SetViewFB(0);
+			//auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
+			//swframebuffer->SetViewFB(0);
 		}
 	}
 

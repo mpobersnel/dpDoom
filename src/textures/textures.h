@@ -352,8 +352,7 @@ public:
 	static void FlipNonSquareBlockBgra (uint32_t *blockto, const uint32_t *blockfrom, int x, int y, int srcpitch);
 	static void FlipNonSquareBlockRemap (uint8_t *blockto, const uint8_t *blockfrom, int x, int y, int srcpitch, const uint8_t *remap);
 
-	friend class D3DTex;
-	friend class OpenGLSWFrameBuffer;
+	friend class ZDFrameBuffer;
 
 public:
 

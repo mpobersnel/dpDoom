@@ -926,7 +926,6 @@ Win32GLFrameBuffer::Win32GLFrameBuffer(void *hMonitor, int width, int height, in
 	m_RefreshHz = refreshHz;
 	m_Fullscreen = fullscreen;
 	m_Bgra = bgra;
-	m_Lock=0;
 
 	RECT r;
 	LONG style, exStyle;
@@ -1091,34 +1090,6 @@ void Win32GLFrameBuffer::SetGammaTable(uint16_t *tbl)
 		SetDeviceGammaRamp(hDC, (void *)tbl);
 		ReleaseDC(Window, hDC);
 	}
-}
-
-//==========================================================================
-//
-// 
-//
-//==========================================================================
-
-bool Win32GLFrameBuffer::Lock(bool buffered)
-{
-	m_Lock++;
-	Buffer = MemBuffer;
-	return true;
-}
-
-bool Win32GLFrameBuffer::Lock () 
-{ 	
-	return Lock(false); 
-}
-
-void Win32GLFrameBuffer::Unlock () 	
-{ 
-	m_Lock--;
-}
-
-bool Win32GLFrameBuffer::IsLocked () 
-{ 
-	return m_Lock > 0;
 }
 
 //==========================================================================

@@ -30,7 +30,6 @@ class Win32GLFrameBuffer : public BaseWinFB
 	typedef BaseWinFB Super;
 
 public:
-	Win32GLFrameBuffer() {}
 	// Actually, hMonitor is a HMONITOR, but it's passed as a void * as there
     // look to be some cross-platform bits in the way.
 	Win32GLFrameBuffer(void *hMonitor, int width, int height, int bits, int refreshHz, bool fullscreen, bool bgra);
@@ -45,12 +44,6 @@ public:
 	int GetClientHeight();
 
 	int GetTrueHeight();
-
-	bool Lock(bool buffered);
-	bool Lock ();
-	void Unlock();
-	bool IsLocked ();
-
 
 	bool IsFullscreen();
 
@@ -67,7 +60,6 @@ protected:
 	bool m_supportsGamma;
 	bool m_Fullscreen, m_Bgra;
 	int m_Width, m_Height, m_Bits, m_RefreshHz;
-	int m_Lock;
 	char m_displayDeviceNameBuffer[32/*CCHDEVICENAME*/];	// do not use windows.h constants here!
 	char *m_displayDeviceName;
 	int SwapInterval;

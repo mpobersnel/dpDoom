@@ -34,7 +34,6 @@
 
 // HEADER FILES ------------------------------------------------------------
 
-#include "gl/system/gl_system.h"
 #include "m_swap.h"
 #include "v_video.h"
 #include "doomstat.h"
@@ -57,30 +56,25 @@
 #include "w_wad.h"
 #include "r_data/colormaps.h"
 
-#include "gl/system/gl_interface.h"
-#include "gl/system/gl_swframebuffer.h"
-#include "gl/data/gl_data.h"
-#include "gl/utility/gl_clock.h"
-#include "gl/utility/gl_templates.h"
-#include "gl/gl_functions.h"
-#include "gl_debug.h"
+#include "polyrenderer/hardpoly/zdframebuffer.h"
+#include "polyrenderer/hardpoly/gpu_context.h"
 #include "m_random.h"
 
-class OpenGLSWFrameBuffer::Wiper_Crossfade : public OpenGLSWFrameBuffer::Wiper
+class ZDFrameBuffer::Wiper_Crossfade : public ZDFrameBuffer::Wiper
 {
 public:
 	Wiper_Crossfade();
-	bool Run(int ticks, OpenGLSWFrameBuffer *fb);
+	bool Run(int ticks, ZDFrameBuffer *fb);
 
 private:
 	int Clock;
 };
 
-class OpenGLSWFrameBuffer::Wiper_Melt : public OpenGLSWFrameBuffer::Wiper
+class ZDFrameBuffer::Wiper_Melt : public ZDFrameBuffer::Wiper
 {
 public:
 	Wiper_Melt();
-	bool Run(int ticks, OpenGLSWFrameBuffer *fb);
+	bool Run(int ticks, ZDFrameBuffer *fb);
 
 private:
 	// Match the strip sizes that oldschool Doom used.
@@ -88,12 +82,12 @@ private:
 	int y[WIDTH];
 };
 
-class OpenGLSWFrameBuffer::Wiper_Burn : public OpenGLSWFrameBuffer::Wiper
+class ZDFrameBuffer::Wiper_Burn : public ZDFrameBuffer::Wiper
 {
 public:
-	Wiper_Burn(OpenGLSWFrameBuffer *fb);
+	Wiper_Burn(ZDFrameBuffer *fb);
 	~Wiper_Burn();
-	bool Run(int ticks, OpenGLSWFrameBuffer *fb);
+	bool Run(int ticks, ZDFrameBuffer *fb);
 
 private:
 	static const int WIDTH = 64, HEIGHT = 64;
@@ -105,7 +99,7 @@ private:
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: WipeStartScreen
+// ZDFrameBuffer :: WipeStartScreen
 //
 // Called before the current screen has started rendering. This needs to
 // save what was drawn the previous frame so that it can be animated into
@@ -120,7 +114,7 @@ private:
 //
 //==========================================================================
 
-bool OpenGLSWFrameBuffer::WipeStartScreen(int type)
+bool ZDFrameBuffer::WipeStartScreen(int type)
 {
 	if (!Accel2D)
 	{
@@ -155,14 +149,14 @@ bool OpenGLSWFrameBuffer::WipeStartScreen(int type)
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: WipeEndScreen
+// ZDFrameBuffer :: WipeEndScreen
 //
 // The screen we want to animate to has just been drawn. This function is
 // called in place of Update(), so it has not been Presented yet.
 //
 //==========================================================================
 
-void OpenGLSWFrameBuffer::WipeEndScreen()
+void ZDFrameBuffer::WipeEndScreen()
 {
 	if (!Accel2D)
 	{
@@ -194,7 +188,7 @@ void OpenGLSWFrameBuffer::WipeEndScreen()
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: WipeDo
+// ZDFrameBuffer :: WipeDo
 //
 // Perform the actual wipe animation. The number of tics since the last
 // time this function was called is passed in. Returns true when the wipe
@@ -204,7 +198,7 @@ void OpenGLSWFrameBuffer::WipeEndScreen()
 //
 //==========================================================================
 
-bool OpenGLSWFrameBuffer::WipeDo(int ticks)
+bool ZDFrameBuffer::WipeDo(int ticks)
 {
 	if (!Accel2D)
 	{
@@ -234,13 +228,13 @@ bool OpenGLSWFrameBuffer::WipeDo(int ticks)
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: WipeCleanup
+// ZDFrameBuffer :: WipeCleanup
 //
 // Release any resources that were specifically created for the wipe.
 //
 //==========================================================================
 
-void OpenGLSWFrameBuffer::WipeCleanup()
+void ZDFrameBuffer::WipeCleanup()
 {
 	if (ScreenWipe != NULL)
 	{
@@ -259,23 +253,23 @@ void OpenGLSWFrameBuffer::WipeCleanup()
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper Constructor
+// ZDFrameBuffer :: Wiper Constructor
 //
 //==========================================================================
 
-OpenGLSWFrameBuffer::Wiper::~Wiper()
+ZDFrameBuffer::Wiper::~Wiper()
 {
 }
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper :: DrawScreen
+// ZDFrameBuffer :: Wiper :: DrawScreen
 //
 // Draw either the initial or target screen completely to the screen.
 //
 //==========================================================================
 
-void OpenGLSWFrameBuffer::Wiper::DrawScreen(OpenGLSWFrameBuffer *fb, HWTexture *tex,
+void ZDFrameBuffer::Wiper::DrawScreen(ZDFrameBuffer *fb, HWTexture *tex,
 	int blendop, uint32_t color0, uint32_t color1)
 {
 	FBVERTEX verts[4];
@@ -291,24 +285,24 @@ void OpenGLSWFrameBuffer::Wiper::DrawScreen(OpenGLSWFrameBuffer *fb, HWTexture *
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper_Crossfade Constructor
+// ZDFrameBuffer :: Wiper_Crossfade Constructor
 //
 //==========================================================================
 
-OpenGLSWFrameBuffer::Wiper_Crossfade::Wiper_Crossfade()
+ZDFrameBuffer::Wiper_Crossfade::Wiper_Crossfade()
 : Clock(0)
 {
 }
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper_Crossfade :: Run
+// ZDFrameBuffer :: Wiper_Crossfade :: Run
 //
 // Fades the old screen into the new one over 32 ticks.
 //
 //==========================================================================
 
-bool OpenGLSWFrameBuffer::Wiper_Crossfade::Run(int ticks, OpenGLSWFrameBuffer *fb)
+bool ZDFrameBuffer::Wiper_Crossfade::Run(int ticks, ZDFrameBuffer *fb)
 {
 	Clock += ticks;
 
@@ -325,11 +319,11 @@ bool OpenGLSWFrameBuffer::Wiper_Crossfade::Run(int ticks, OpenGLSWFrameBuffer *f
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper_Melt Constructor
+// ZDFrameBuffer :: Wiper_Melt Constructor
 //
 //==========================================================================
 
-OpenGLSWFrameBuffer::Wiper_Melt::Wiper_Melt()
+ZDFrameBuffer::Wiper_Melt::Wiper_Melt()
 {
 	int i, r;
 
@@ -345,13 +339,13 @@ OpenGLSWFrameBuffer::Wiper_Melt::Wiper_Melt()
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper_Melt :: Run
+// ZDFrameBuffer :: Wiper_Melt :: Run
 //
 // Fades the old screen into the new one over 32 ticks.
 //
 //==========================================================================
 
-bool OpenGLSWFrameBuffer::Wiper_Melt::Run(int ticks, OpenGLSWFrameBuffer *fb)
+bool ZDFrameBuffer::Wiper_Melt::Run(int ticks, ZDFrameBuffer *fb)
 {
 	// Draw the new screen on the bottom.
 	DrawScreen(fb, fb->FinalWipeScreen.get());
@@ -476,11 +470,11 @@ bool OpenGLSWFrameBuffer::Wiper_Melt::Run(int ticks, OpenGLSWFrameBuffer *fb)
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper_Burn Constructor
+// ZDFrameBuffer :: Wiper_Burn Constructor
 //
 //==========================================================================
 
-OpenGLSWFrameBuffer::Wiper_Burn::Wiper_Burn(OpenGLSWFrameBuffer *fb)
+ZDFrameBuffer::Wiper_Burn::Wiper_Burn(ZDFrameBuffer *fb)
 {
 	Density = 4;
 	BurnTime = 0;
@@ -495,22 +489,22 @@ OpenGLSWFrameBuffer::Wiper_Burn::Wiper_Burn(OpenGLSWFrameBuffer *fb)
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper_Burn Destructor
+// ZDFrameBuffer :: Wiper_Burn Destructor
 //
 //==========================================================================
 
-OpenGLSWFrameBuffer::Wiper_Burn::~Wiper_Burn()
+ZDFrameBuffer::Wiper_Burn::~Wiper_Burn()
 {
 	BurnTexture.reset();
 }
 
 //==========================================================================
 //
-// OpenGLSWFrameBuffer :: Wiper_Burn :: Run
+// ZDFrameBuffer :: Wiper_Burn :: Run
 //
 //==========================================================================
 
-bool OpenGLSWFrameBuffer::Wiper_Burn::Run(int ticks, OpenGLSWFrameBuffer *fb)
+bool ZDFrameBuffer::Wiper_Burn::Run(int ticks, ZDFrameBuffer *fb)
 {
 	bool done;
 
@@ -529,8 +523,8 @@ bool OpenGLSWFrameBuffer::Wiper_Burn::Run(int ticks, OpenGLSWFrameBuffer *fb)
 
 	if (!BurnTexture->Buffers[0])
 	{
-		BurnTexture->Buffers[0] = fb->mContext.CreateStagingTexture(WIDTH, HEIGHT, GPUPixelFormat::R8);
-		BurnTexture->Buffers[1] = fb->mContext.CreateStagingTexture(WIDTH, HEIGHT, GPUPixelFormat::R8);
+		BurnTexture->Buffers[0] = fb->GetContext()->CreateStagingTexture(WIDTH, HEIGHT, GPUPixelFormat::R8);
+		BurnTexture->Buffers[1] = fb->GetContext()->CreateStagingTexture(WIDTH, HEIGHT, GPUPixelFormat::R8);
 	}
 
 	auto current = BurnTexture->Buffers[BurnTexture->CurrentBuffer];
@@ -541,7 +535,7 @@ bool OpenGLSWFrameBuffer::Wiper_Burn::Run(int ticks, OpenGLSWFrameBuffer *fb)
 	{
 		memcpy(dest, BurnArray, WIDTH * HEIGHT);
 		current->Unmap();
-		fb->mContext.CopyTexture(BurnTexture->Texture, current);
+		fb->GetContext()->CopyTexture(BurnTexture->Texture, current);
 	}
 
 	// Put the initial screen back to the buffer.

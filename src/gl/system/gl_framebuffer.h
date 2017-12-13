@@ -26,7 +26,6 @@ class OpenGLFrameBuffer : public SDLGLFB
 
 public:
 
-	explicit OpenGLFrameBuffer() {}
 	OpenGLFrameBuffer(void *hMonitor, int width, int height, int bits, int refreshHz, bool fullscreen) ;
 	~OpenGLFrameBuffer();
 
@@ -47,6 +46,11 @@ public:
 	int GetPageCount();
 	bool Begin2D(bool copy3d);
 	void GameRestart();
+
+	int m_2dLock = 0;
+	bool Lock(bool buffered) override { Buffer = MemBuffer; m_2dLock++; return true; }
+	void Unlock() override { Buffer = nullptr; m_2dLock--; }
+	bool IsLocked() { return m_2dLock != 0; }
 
 	// Retrieves a buffer containing image data for a screenshot.
 	// Hint: Pitch can be negative for upside-down images, in which case buffer

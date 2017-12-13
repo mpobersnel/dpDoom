@@ -9,51 +9,17 @@ public:
 	D3D11FB(int width, int height, bool bgra, bool fullscreen);
 	~D3D11FB();
 
-	// BaseWinFB interface (legacy junk we don't need to support):
-	bool IsValid() override { return true; }
-
-	// DFrameBuffer interface:
 	bool IsOpenGL() const override { return false; }
-	bool Lock(bool buffered) override;
-	void Unlock() override;
-	bool Begin2D(bool copy3d) override;
-	void Update() override;
-	PalEntry *GetPalette() override;
-	void GetFlashedPalette(PalEntry palette[256]) override;
-	void UpdatePalette() override;
-	bool SetGamma(float gamma) override;
-	bool SetFlash(PalEntry rgb, int amount) override;
-	void GetFlash(PalEntry &rgb, int &amount) override;
-	int GetPageCount() override { return 2; }
-	// void SetVSync(bool vsync) override;
-	// void NewRefreshRate() override;
-	// void SetBlendingRect(int x1, int y1, int x2, int y2) override;
-	// void DrawBlendingRect() override;
-	// FNativeTexture *CreateTexture(FTexture *gametex, bool wrapping) override;
-	// FNativePalette *CreatePalette(FRemapTable *remap) override;
-	// void GameRestart() override;
-	// bool WipeStartScreen(int type) override;
-	// void WipeEndScreen() override;
-	// bool WipeDo(int ticks) override;
-	// void WipeCleanup() override;
-
 	GPUContext *GetContext() override { return &mContext; }
+	void SwapBuffers() override;
+
+	int GetClientWidth() override;
+	int GetClientHeight() override;
 
 private:
 	void SetInitialWindowLocation();
-	void CreateFBTexture();
-	void CreateFBStagingTexture();
-
-	PalEntry mPalette[256];
-	PalEntry mFlashColor = 0;
-	int mFlashAmount = 0;
-
-	float mGamma = 1.0f;
-	float mLastGamma = 0.0f;
 
 	D3D11Context mContext;
-	std::shared_ptr<GPUTexture2D> mFBTexture;
-	std::shared_ptr<GPUStagingTexture> mFBStaging;
 };
 
 typedef HRESULT(WINAPI *FuncD3D11CreateDeviceAndSwapChain)(

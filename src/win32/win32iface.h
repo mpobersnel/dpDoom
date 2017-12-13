@@ -34,6 +34,7 @@
 #pragma once
 
 #include "hardware.h"
+#include "polyrenderer/hardpoly/zdframebuffer.h"
 
 EXTERN_CVAR (Bool, vid_vsync)
 
@@ -73,21 +74,17 @@ class Win32Video : public IVideo
 	bool m_IsFullscreen = false;
 };
 
-class BaseWinFB : public DFrameBuffer
+class BaseWinFB : public ZDFrameBuffer
 {
-	typedef DFrameBuffer Super;
+	typedef ZDFrameBuffer Super;
 public:
-	BaseWinFB(int width, int height, bool bgra) : DFrameBuffer(width, height, bgra), Windowed(true) {}
+	BaseWinFB(int width, int height, bool bgra) : ZDFrameBuffer(width, height, bgra), Windowed(true) {}
 
 	bool IsFullscreen () { return !Windowed; }
-	virtual void ScaleCoordsFromWindow(int16_t &x, int16_t &y);
+	int GetTrueHeight() override { return GetHeight(); }
 
 protected:
-    virtual int GetTrueHeight() { return GetHeight(); }
-
 	bool Windowed;
 
 	friend class Win32Video;
-
-	BaseWinFB() {}
 };

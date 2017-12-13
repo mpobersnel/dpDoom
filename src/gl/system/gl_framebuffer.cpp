@@ -260,7 +260,7 @@ void OpenGLFrameBuffer::DoSetGamma()
 		uint16_t gammaTable[768];
 
 		// This formula is taken from Doomsday
-		float gamma = clamp<float>(Gamma, 0.1f, 4.f);
+		float gamma = clamp<float>(::Gamma, 0.1f, 4.f);
 		float contrast = clamp<float>(vid_contrast, 0.1f, 3.f);
 		float bright = clamp<float>(vid_brightness, -0.8f, 0.8f);
 
@@ -530,7 +530,7 @@ void OpenGLFrameBuffer::GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, 
 
 	// Screenshot should not use gamma correction if it was already applied to rendered image
 	EXTERN_CVAR(Bool, fullscreen);
-	gamma = 1 == vid_hwgamma || (2 == vid_hwgamma && !fullscreen) ? 1.0f : Gamma;
+	gamma = 1 == vid_hwgamma || (2 == vid_hwgamma && !fullscreen) ? 1.0f : ::Gamma;
 }
 
 //===========================================================================

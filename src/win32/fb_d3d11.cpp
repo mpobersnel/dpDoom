@@ -75,8 +75,6 @@ FuncCreateDXGIFactory D3D11_createdxgifactory;
 
 D3D11FB::D3D11FB(int width, int height, bool bgra, bool fullscreen) : BaseWinFB(width, height, bgra)
 {
-	memcpy(mPalette, GPalette.BaseColors, sizeof(PalEntry) * 256);
-
 	std::vector<D3D_FEATURE_LEVEL> requestLevels =
 	{
 		D3D_FEATURE_LEVEL_11_1,
@@ -109,8 +107,7 @@ D3D11FB::D3D11FB(int width, int height, bool bgra, bool fullscreen) : BaseWinFB(
 	if (FAILED(result))
 		I_FatalError("D3D11CreateDeviceAndSwapChain failed");
 
-	CreateFBTexture();
-	CreateFBStagingTexture();
+	Init();
 	SetInitialWindowLocation();
 
 	if (!Windowed)
@@ -121,6 +118,27 @@ D3D11FB::~D3D11FB()
 {
 }
 
+void D3D11FB::SwapBuffers()
+{
+	I_FPSLimit();
+	mContext.SwapChain->Present(1, 0);
+}
+
+int D3D11FB::GetClientWidth()
+{
+	RECT rect = { 0 };
+	GetClientRect(Window, &rect);
+	return rect.right - rect.left;
+}
+
+int D3D11FB::GetClientHeight()
+{
+	RECT rect = { 0 };
+	GetClientRect(Window, &rect);
+	return rect.bottom - rect.top;
+}
+
+#if 0
 bool D3D11FB::Lock(bool buffered)
 {
 	if (LockCount++ > 0) return false;
@@ -198,50 +216,6 @@ void D3D11FB::Update()
 	}
 }
 
-PalEntry *D3D11FB::GetPalette()
-{
-	return mPalette;
-}
-
-void D3D11FB::GetFlashedPalette(PalEntry palette[256])
-{
-	memcpy(palette, mPalette, 256 * sizeof(PalEntry));
-	if (mFlashAmount)
-	{
-		DoBlending(palette, palette, 256, mFlashColor.r, mFlashColor.g, mFlashColor.b, mFlashAmount);
-	}
-}
-
-void D3D11FB::UpdatePalette()
-{
-	// NeedPalUpdate = true;
-}
-
-bool D3D11FB::SetGamma(float gamma)
-{
-	mGamma = gamma;
-	return true;
-}
-
-bool D3D11FB::SetFlash(PalEntry rgb, int amount)
-{
-	mFlashColor = rgb;
-	mFlashAmount = amount;
-
-	// Fill in the constants for the pixel shader to do linear interpolation between the palette and the flash:
-	//float r = rgb.r / 255.f, g = rgb.g / 255.f, b = rgb.b / 255.f, a = amount / 256.f;
-	//FlashColor0 = D3DCOLOR_COLORVALUE(r * a, g * a, b * a, 0);
-	//a = 1 - a;
-	//FlashColor1 = D3DCOLOR_COLORVALUE(a, a, a, 1);
-	return true;
-}
-
-void D3D11FB::GetFlash(PalEntry &rgb, int &amount)
-{
-	rgb = mFlashColor;
-	amount = mFlashAmount;
-}
-
 void D3D11FB::CreateFBTexture()
 {
 	mFBTexture = mContext.CreateTexture2D(Width, Height, false, 1, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
@@ -251,6 +225,7 @@ void D3D11FB::CreateFBStagingTexture()
 {
 	mFBStaging = mContext.CreateStagingTexture(Width, Height, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
 }
+#endif
 
 void D3D11FB::SetInitialWindowLocation()
 {

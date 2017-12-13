@@ -768,6 +768,8 @@ set( POLYRENDER_SOURCES
 	polyrenderer/hardpoly/gl_context.cpp
 	polyrenderer/hardpoly/d3d11_context.cpp
 	polyrenderer/hardpoly/hardpolyrenderer.cpp
+	polyrenderer/hardpoly/zdframebuffer.cpp
+	polyrenderer/hardpoly/zdwipe.cpp
 )
 
 # These files will be flagged as "headers" so that they appear in project files
@@ -1036,7 +1038,6 @@ set (PCH_SOURCES
 	gl/system/gl_interface.cpp
 	gl/system/gl_framebuffer.cpp
 	gl/system/gl_swframebuffer.cpp
-	gl/system/gl_swwipe.cpp
 	gl/system/gl_debug.cpp
 	gl/system/gl_menu.cpp
 	gl/system/gl_wipe.cpp
