@@ -36,6 +36,9 @@ public:
 	Vec2(float x, float y) : X(x), Y(y) { }
 
 	float X, Y;
+
+	bool operator==(const Vec2 &other) const { return X == other.X && Y == other.Y; }
+	bool operator!=(const Vec2 &other) const { return X != other.X || Y != other.Y; }
 };
 
 template<typename Type>
@@ -48,6 +51,9 @@ public:
 	Vec3(const Vec2<Type> &v, float z) : X(v.X), Y(v.Y), Z(z) { }
 
 	float X, Y, Z;
+
+	bool operator==(const Vec3 &other) const { return X == other.X && Y == other.Y && Z == other.Z; }
+	bool operator!=(const Vec3 &other) const { return X != other.X || Y != other.Y || Z != other.Z; }
 };
 
 template<typename Type>
@@ -62,6 +68,9 @@ public:
 	Vec4(const Vec3<Type> &v, Type w) : X(v.X), Y(v.Y), Z(v.Z), W(w) { }
 
 	Type X, Y, Z, W;
+
+	bool operator==(const Vec4 &other) const { return X == other.X && Y == other.Y && Z == other.Z && W == other.W; }
+	bool operator!=(const Vec4 &other) const { return X != other.X || Y != other.Y || Z != other.Z || W != other.W; }
 };
 
 typedef Vec4<double> Vec4d;

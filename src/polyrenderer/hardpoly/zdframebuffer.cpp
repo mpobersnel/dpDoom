@@ -273,7 +273,6 @@ void ZDFrameBuffer::Update()
 
 	if (NeedGammaUpdate)
 	{
-		float psgamma[4];
 		float igamma;
 
 		NeedGammaUpdate = false;
@@ -288,9 +287,8 @@ void ZDFrameBuffer::Update()
 			}
 			SetGammaRamp(&ramp);
 		}
-		psgamma[2] = psgamma[1] = psgamma[0] = igamma;
-		psgamma[3] = 0.5;		// For SM14 version
-		SetPixelShaderConstantF(PSCONST_Gamma, psgamma, 1);
+		ShaderConstants.Gamma = { igamma, igamma, igamma, 0.5f /* For SM14 version */ };
+		ShaderConstantsModified = true;
 	}
 
 	if (NeedPalUpdate)
@@ -392,10 +390,8 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 		FBTexture->CurrentBuffer = (FBTexture->CurrentBuffer + 1) & 1;
 	}
 	InScene = true;
-	if (vid_hwaalines)
-		glEnable(GL_LINE_SMOOTH);
-	else
-		glDisable(GL_LINE_SMOOTH);
+
+	GetContext()->SetLineSmooth(vid_hwaalines);
 
 	/*if (ViewFBHandle != 0)
 	{
@@ -475,29 +471,27 @@ void ZDFrameBuffer::DrawLetterbox(int x, int y, int width, int height)
 	if (clientWidth == 0 || clientHeight == 0)
 		return;
 
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glEnable(GL_SCISSOR_TEST);
 	if (y > 0)
 	{
-		glScissor(0, 0, clientWidth, y);
-		glClear(GL_COLOR_BUFFER_BIT);
+		GetContext()->SetScissor(0, 0, clientWidth, y);
+		GetContext()->ClearScissorBox(0.0f, 0.0f, 0.0f, 1.0f);
 	}
 	if (clientHeight - y - height > 0)
 	{
-		glScissor(0, y + height, clientWidth, clientHeight - y - height);
-		glClear(GL_COLOR_BUFFER_BIT);
+		GetContext()->SetScissor(0, y + height, clientWidth, clientHeight - y - height);
+		GetContext()->ClearScissorBox(0.0f, 0.0f, 0.0f, 1.0f);
 	}
 	if (x > 0)
 	{
-		glScissor(0, y, x, height);
-		glClear(GL_COLOR_BUFFER_BIT);
+		GetContext()->SetScissor(0, y, x, height);
+		GetContext()->ClearScissorBox(0.0f, 0.0f, 0.0f, 1.0f);
 	}
 	if (clientWidth - x - width > 0)
 	{
-		glScissor(x + width, y, clientWidth - x - width, height);
-		glClear(GL_COLOR_BUFFER_BIT);
+		GetContext()->SetScissor(x + width, y, clientWidth - x - width, height);
+		GetContext()->ClearScissorBox(0.0f, 0.0f, 0.0f, 1.0f);
 	}
-	glDisable(GL_SCISSOR_TEST);
+	GetContext()->ResetScissor();
 }
 
 void ZDFrameBuffer::DrawBlendingRect()
@@ -705,8 +699,7 @@ void ZDFrameBuffer::DrawTextureParms(FTexture *img, DrawParms &parms)
 			EndQuadBatch();
 			BeginQuadBatch();
 		}
-		glEnable(GL_SCISSOR_TEST);
-		glScissor(parms.lclip, parms.uclip, parms.rclip - parms.lclip, parms.dclip - parms.uclip);
+		GetContext()->SetScissor(parms.lclip, parms.uclip, parms.rclip - parms.lclip, parms.dclip - parms.uclip);
 	}
 #endif
 	parms.bilinear = false;
@@ -788,7 +781,7 @@ done:
 	if (scissoring)
 	{
 		EndQuadBatch();
-		glDisable(GL_SCISSOR_TEST);
+		GetContext()->ResetScissor();
 	}
 }
 
@@ -1088,11 +1081,6 @@ std::unique_ptr<ZDFrameBuffer::HWPixelShader> ZDFrameBuffer::CreatePixelShader(F
 	shader->Program->SetFragOutput("FragColor", 0);
 	shader->Program->Link("noname");
 
-	shader->ConstantLocations[PSCONST_Desaturation] = shader->Program->GetUniformLocation("Desaturation");
-	shader->ConstantLocations[PSCONST_PaletteMod] = shader->Program->GetUniformLocation("PaletteMod");
-	shader->ConstantLocations[PSCONST_Weights] = shader->Program->GetUniformLocation("Weights");
-	shader->ConstantLocations[PSCONST_Gamma] = shader->Program->GetUniformLocation("Gamma");
-	shader->ConstantLocations[PSCONST_ScreenSize] = shader->Program->GetUniformLocation("ScreenSize");
 	shader->ImageLocation = shader->Program->GetUniformLocation("Image");
 	shader->PaletteLocation = shader->Program->GetUniformLocation("Palette");
 	shader->NewScreenLocation = shader->Program->GetUniformLocation("NewScreen");
@@ -1142,15 +1130,6 @@ std::unique_ptr<ZDFrameBuffer::HWTexture> ZDFrameBuffer::CopyCurrentScreen()
 	return obj;
 }
 
-void ZDFrameBuffer::SetPixelShaderConstantF(int uniformIndex, const float *data, int vec4fcount)
-{
-	assert(uniformIndex < NumPSCONST && vec4fcount == 1); // This emulation of d3d9 only works for very simple stuff
-	for (int i = 0; i < 4; i++)
-		ShaderConstants[uniformIndex * 4 + i] = data[i];
-	if (CurrentShader && CurrentShader->ConstantLocations[uniformIndex] != -1)
-		glUniform4fv(CurrentShader->ConstantLocations[uniformIndex], vec4fcount, data);
-}
-
 void ZDFrameBuffer::SetHWPixelShader(HWPixelShader *shader)
 {
 	if (shader != CurrentShader)
@@ -1158,11 +1137,6 @@ void ZDFrameBuffer::SetHWPixelShader(HWPixelShader *shader)
 		if (shader)
 		{
 			GetContext()->SetProgram(shader->Program);
-			for (int i = 0; i < NumPSCONST; i++)
-			{
-				if (shader->ConstantLocations[i] != -1)
-					glUniform4fv(shader->ConstantLocations[i], 1, &ShaderConstants[i * 4]);
-			}
 		}
 		else
 		{
@@ -1170,6 +1144,20 @@ void ZDFrameBuffer::SetHWPixelShader(HWPixelShader *shader)
 		}
 	}
 	CurrentShader = shader;
+
+	if (ShaderConstantsModified)
+	{
+		if (!GpuShaderUniforms)
+		{
+			GpuShaderUniforms = GetContext()->CreateUniformBuffer(&ShaderConstants, sizeof(ShaderConstants));
+		}
+		else
+		{
+			GpuShaderUniforms->Upload(&ShaderConstants, sizeof(ShaderConstants));
+		}
+		ShaderConstantsModified = false;
+	}
+	GetContext()->SetUniforms(0, GpuShaderUniforms);
 }
 
 void ZDFrameBuffer::SetStreamSource(HWVertexBuffer *vertexBuffer)
@@ -1312,8 +1300,8 @@ void ZDFrameBuffer::Present()
 	SwapBuffers();
 	//Debug->Update();
 
-	float screensize[4] = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
-	SetPixelShaderConstantF(PSCONST_ScreenSize, screensize, 1);
+	ShaderConstants.ScreenSize = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
+	ShaderConstantsModified = true;
 
 	GetContext()->SetFrameBuffer(OutputFB->Framebuffer);
 	GetContext()->SetViewport(0, 0, GetWidth(), GetHeight());
@@ -1321,11 +1309,6 @@ void ZDFrameBuffer::Present()
 
 void ZDFrameBuffer::SetInitialState()
 {
-	AlphaBlendEnabled = false;
-	AlphaBlendOp = GL_FUNC_ADD;
-	AlphaSrcBlend = 0;
-	AlphaDestBlend = 0;
-
 	CurPixelShader = nullptr;
 	memset(Constant, 0, sizeof(Constant));
 
@@ -1342,20 +1325,17 @@ void ZDFrameBuffer::SetInitialState()
 	NeedGammaUpdate = true;
 	NeedPalUpdate = true;
 
-	// This constant is used for grayscaling weights (.xyz) and color inversion (.w)
-	float weights[4] = { 77 / 256.f, 143 / 256.f, 37 / 256.f, 1 };
-	SetPixelShaderConstantF(PSCONST_Weights, weights, 1);
-
-	float screensize[4] = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
-	SetPixelShaderConstantF(PSCONST_ScreenSize, screensize, 1);
-
-	AlphaTestEnabled = false;
+	ShaderConstants.Desaturation = { 0.0f, 0.0f, 0.0f, 0.0f };
+	ShaderConstants.PaletteMod = { 0.0f, 0.0f, 0.0f, 0.0f };
+	ShaderConstants.Weights = { 77 / 256.f, 143 / 256.f, 37 / 256.f, 1 }; // This constant is used for grayscaling weights (.xyz) and color inversion (.w)
+	ShaderConstants.Gamma = { 0.0f, 0.0f, 0.0f, 0.0f };
+	ShaderConstants.ScreenSize = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
+	ShaderConstantsModified = true;
 
 	CurBorderColor = 0;
 
 	// Clear to black, just in case it wasn't done already.
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
+	GetContext()->ClearColorBuffer(0, 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 bool ZDFrameBuffer::CreateResources()
@@ -2640,7 +2620,12 @@ void ZDFrameBuffer::EndQuadBatch()
 			select |= !!(quad->Flags & BQF_Paletted) << 2;
 			if (quad->Flags & BQF_Desaturated)
 			{
-				SetConstant(PSCONST_Desaturation, quad->Desat / 255.f, (255 - quad->Desat) / 255.f, 0, 0);
+				Vec4f desaturation = { quad->Desat / 255.f, (255 - quad->Desat) / 255.f, 0, 0 };
+				if (desaturation != ShaderConstants.Desaturation)
+				{
+					ShaderConstants.Desaturation = desaturation;
+					ShaderConstantsModified = true;
+				}
 			}
 			SetPixelShader(Shaders[SHADER_InGameColormap + select].get());
 		}
@@ -2910,59 +2895,18 @@ void ZDFrameBuffer::SetColorOverlay(uint32_t color, float alpha, uint32_t &color
 
 void ZDFrameBuffer::EnableAlphaTest(bool enabled)
 {
-	if (enabled != AlphaTestEnabled)
-	{
-		AlphaTestEnabled = enabled;
-		//glEnable(GL_ALPHA_TEST); // To do: move to shader as this is only in the compatibility profile
-	}
+	//glEnable(GL_ALPHA_TEST); // To do: move to shader as this is only in the compatibility profile
 }
 
 void ZDFrameBuffer::SetAlphaBlend(int op, int srcblend, int destblend)
 {
 	if (op == 0)
-	{ // Disable alpha blend
-		if (AlphaBlendEnabled)
-		{
-			AlphaBlendEnabled = false;
-			glDisable(GL_BLEND);
-		}
+	{
+		GetContext()->ResetBlend();
 	}
 	else
-	{ // Enable alpha blend
-		assert(srcblend != 0);
-		assert(destblend != 0);
-
-		if (!AlphaBlendEnabled)
-		{
-			AlphaBlendEnabled = true;
-			glEnable(GL_BLEND);
-		}
-		if (AlphaBlendOp != op)
-		{
-			AlphaBlendOp = op;
-			glBlendEquation(op);
-		}
-		if (AlphaSrcBlend != srcblend || AlphaDestBlend != destblend)
-		{
-			AlphaSrcBlend = srcblend;
-			AlphaDestBlend = destblend;
-			glBlendFunc(srcblend, destblend);
-		}
-	}
-}
-
-void ZDFrameBuffer::SetConstant(int cnum, float r, float g, float b, float a)
-{
-	if (Constant[cnum][0] != r ||
-		Constant[cnum][1] != g ||
-		Constant[cnum][2] != b ||
-		Constant[cnum][3] != a)
 	{
-		Constant[cnum][0] = r;
-		Constant[cnum][1] = g;
-		Constant[cnum][2] = b;
-		Constant[cnum][3] = a;
-		SetPixelShaderConstantF(cnum, Constant[cnum], 1);
+		GetContext()->SetBlend(op, srcblend, destblend);
 	}
 }
 
@@ -3006,7 +2950,14 @@ void ZDFrameBuffer::SetPaletteTexture(HWTexture *texture, int count, uint32_t bo
 	//
 	// The constant register c2 is used to hold the multiplier in the
 	// x part and the adder in the y part.
+
 	float fcount = 1 / float(count);
-	SetConstant(PSCONST_PaletteMod, 255 * fcount, 0.5f * fcount, 0, 0);
+	Vec4f paletteMod = { 255 * fcount, 0.5f * fcount, 0, 0 };
+	if (paletteMod != ShaderConstants.PaletteMod)
+	{
+		ShaderConstants.PaletteMod = paletteMod;
+		ShaderConstantsModified = true;
+	}
+
 	SetTexture(1, texture);
 }

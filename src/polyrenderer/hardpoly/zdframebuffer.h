@@ -70,14 +70,13 @@ private:
 		float tu1, tv1;
 	};
 
-	enum
+	struct ShaderUniforms
 	{
-		PSCONST_Desaturation,
-		PSCONST_PaletteMod,
-		PSCONST_Weights,
-		PSCONST_Gamma,
-		PSCONST_ScreenSize,
-		NumPSCONST
+		Vec4f Desaturation;
+		Vec4f PaletteMod;
+		Vec4f Weights;
+		Vec4f Gamma;
+		Vec4f ScreenSize;
 	};
 
 	struct GammaRamp
@@ -134,7 +133,6 @@ private:
 	public:
 		std::shared_ptr<GPUProgram> Program;
 
-		int ConstantLocations[NumPSCONST];
 		int ImageLocation = -1;
 		int PaletteLocation = -1;
 		int NewScreenLocation = -1;
@@ -343,7 +341,6 @@ private:
 	std::unique_ptr<HWTexture> CreateTexture(const FString &name, int width, int height, int levels, GPUPixelFormat format);
 
 	void SetGammaRamp(const GammaRamp *ramp);
-	void SetPixelShaderConstantF(int uniformIndex, const float *data, int vec4fcount);
 	void SetHWPixelShader(HWPixelShader *shader);
 	void SetStreamSource(HWVertexBuffer *vertexBuffer);
 	void SetIndices(HWIndexBuffer *indexBuffer);
@@ -385,7 +382,6 @@ private:
 
 	void EnableAlphaTest(bool enabled);
 	void SetAlphaBlend(int op, int srcblend = 0, int destblend = 0);
-	void SetConstant(int cnum, float r, float g, float b, float a);
 	void SetPixelShader(HWPixelShader *shader);
 	void SetTexture(int tnum, HWTexture *texture);
 	void SetPaletteTexture(HWTexture *texture, int count, uint32_t border_color);
@@ -406,16 +402,13 @@ private:
 	int FlashAmount = 0;
 
 	std::unique_ptr<HWVertexBuffer> StreamVertexBuffer, StreamVertexBufferBurn;
-	float ShaderConstants[NumPSCONST * 4];
+	ShaderUniforms ShaderConstants;
+	bool ShaderConstantsModified = true;
+	std::shared_ptr<GPUUniformBuffer> GpuShaderUniforms;
 	HWPixelShader *CurrentShader = nullptr;
 
 	std::unique_ptr<HWFrameBuffer> OutputFB;
 
-	bool AlphaTestEnabled = false;
-	bool AlphaBlendEnabled = false;
-	int AlphaBlendOp = 0;
-	int AlphaSrcBlend = 0;
-	int AlphaDestBlend = 0;
 	float Constant[3][4];
 	uint32_t CurBorderColor;
 	HWPixelShader *CurPixelShader;

@@ -244,6 +244,43 @@ void GLContext::SetClipDistance(int index, bool enable)
 		glDisable(GL_CLIP_DISTANCE0 + index);
 }
 
+void GLContext::SetLineSmooth(bool enable)
+{
+	if (enable)
+		glEnable(GL_LINE_SMOOTH);
+	else
+		glDisable(GL_LINE_SMOOTH);
+}
+
+void GLContext::SetScissor(int x, int y, int width, int height)
+{
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(x, y, width, height);
+}
+
+void GLContext::ClearScissorBox(float r, float g, float b, float a)
+{
+	glClearColor(r, g, b, a);
+	glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void GLContext::ResetScissor()
+{
+	glDisable(GL_SCISSOR_TEST);
+}
+
+void GLContext::SetBlend(int op, int srcblend, int destblend)
+{
+	glEnable(GL_BLEND);
+	glBlendEquation(op);
+	glBlendFunc(srcblend, destblend);
+}
+
+void GLContext::ResetBlend()
+{
+	glDisable(GL_BLEND);
+}
+
 void GLContext::SetOpaqueBlend(int srcalpha, int destalpha)
 {
 	glDisable(GL_BLEND);

@@ -152,6 +152,30 @@ void D3D11Context::SetClipDistance(int index, bool enable)
 {
 }
 
+void D3D11Context::SetLineSmooth(bool enable)
+{
+}
+
+void D3D11Context::SetScissor(int x, int y, int width, int height)
+{
+}
+
+void D3D11Context::ClearScissorBox(float r, float g, float b, float a)
+{
+}
+
+void D3D11Context::ResetScissor()
+{
+}
+
+void D3D11Context::SetBlend(int op, int srcblend, int destblend)
+{
+}
+
+void D3D11Context::ResetBlend()
+{
+}
+
 void D3D11Context::SetOpaqueBlend(int srcalpha, int destalpha)
 {
 }

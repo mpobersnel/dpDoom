@@ -380,6 +380,14 @@ public:
 
 	void SetClipDistance(int index, bool enable) override;
 
+	void SetLineSmooth(bool enable) override;
+	void SetScissor(int x, int y, int width, int height) override;
+	void ClearScissorBox(float r, float g, float b, float a) override;
+	void ResetScissor() override;
+
+	void SetBlend(int op, int srcblend, int destblend) override;
+	void ResetBlend() override;
+
 	void SetOpaqueBlend(int srcalpha, int destalpha) override;
 	void SetMaskedBlend(int srcalpha, int destalpha) override;
 	void SetAlphaBlendFunc(int srcalpha, int destalpha) override;

@@ -263,6 +263,14 @@ public:
 
 	virtual void SetClipDistance(int index, bool enable) = 0;
 
+	virtual void SetLineSmooth(bool enable) = 0;
+	virtual void SetScissor(int x, int y, int width, int height) = 0;
+	virtual void ClearScissorBox(float r, float g, float b, float a) = 0;
+	virtual void ResetScissor() = 0;
+
+	virtual void SetBlend(int op, int srcblend, int destblend) = 0;
+	virtual void ResetBlend() = 0;
+
 	virtual void SetOpaqueBlend(int srcalpha, int destalpha) = 0;
 	virtual void SetMaskedBlend(int srcalpha, int destalpha) = 0;
 	virtual void SetAlphaBlendFunc(int srcalpha, int destalpha) = 0;

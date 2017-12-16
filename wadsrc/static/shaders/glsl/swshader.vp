@@ -7,8 +7,15 @@ in vec4 AttrTexCoord0;
 out vec4 PixelColor0;
 out vec4 PixelColor1;
 out vec4 PixelTexCoord0;
-
-uniform vec4 ScreenSize;
+                          
+layout(std140) uniform ShaderUniforms
+{
+	vec4 Desaturation; // { Desat, 1 - Desat }
+	vec4 PaletteMod;
+	vec4 Weights; // RGB->Gray weighting { 77/256.0, 143/256.0, 37/256.0, 1 }
+	vec4 Gamma;
+	vec4 ScreenSize;
+};
 
 void main()
 {

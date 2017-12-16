@@ -557,11 +557,9 @@ bool ZDFrameBuffer::Wiper_Burn::Run(int ticks, ZDFrameBuffer *fb)
 	fb->SetTexture(1, BurnTexture.get());
 	fb->SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	fb->SetPixelShader(fb->Shaders[SHADER_BurnWipe].get());
-	glActiveTexture(GL_TEXTURE1);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdgeLinear);
 	fb->DrawTriangleFans(2, verts);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glActiveTexture(GL_TEXTURE0);
+	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdge);
 
 	// The fire may not always stabilize, so the wipe is forced to end
 	// after an arbitrary maximum time.
