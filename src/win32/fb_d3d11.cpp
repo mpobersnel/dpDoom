@@ -77,7 +77,7 @@ D3D11FB::D3D11FB(int width, int height, bool bgra, bool fullscreen) : BaseWinFB(
 {
 	std::vector<D3D_FEATURE_LEVEL> requestLevels =
 	{
-		D3D_FEATURE_LEVEL_11_1,
+		//D3D_FEATURE_LEVEL_11_1,
 		D3D_FEATURE_LEVEL_11_0,
 		D3D_FEATURE_LEVEL_10_1,
 		D3D_FEATURE_LEVEL_10_0,

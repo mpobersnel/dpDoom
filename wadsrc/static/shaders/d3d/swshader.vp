@@ -1,0 +1,40 @@
+
+struct VertexIn
+{
+	float4 AttrPosition : AttrPosition;
+	float4 AttrColor0 : AttrColor0;
+	float4 AttrColor1 : AttrColor1;
+	float4 AttrTexCoord0 : AttrTexCoord0;
+};
+
+struct VertexOut
+{
+	float4 ClipPosition : SV_Position;
+	float4 PixelColor0 : PixelColor0;
+	float4 PixelColor1 : PixelColor1;
+	float4 PixelTexCoord0 : PixelTexCoord0;
+};
+                         
+cbuffer ShaderUniforms
+{
+	float4 Desaturation; // { Desat, 1 - Desat }
+	float4 PaletteMod;
+	float4 Weights; // RGB->Gray weighting { 77/256.0, 143/256.0, 37/256.0, 1 }
+	float4 Gamma;
+	float4 ScreenSize;
+};
+
+VertexOut main(VertexIn input)
+{
+	VertexOut output;
+
+	output.ClipPosition = float4(input.AttrPosition.xy / ScreenSize.xy * 2.0 - 1.0, 1.0, 1.0);
+#if defined(EGAMMACORRECTION)
+	output.ClipPosition.y = -output.ClipPosition.y;
+#endif
+	output.PixelColor0 = input.AttrColor0.bgra;
+	output.PixelColor1 = input.AttrColor1.bgra;
+	output.PixelTexCoord0 = input.AttrTexCoord0;
+
+	return output;
+}

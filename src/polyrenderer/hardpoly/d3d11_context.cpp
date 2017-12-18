@@ -301,7 +301,7 @@ D3D11FrameBuffer::~D3D11FrameBuffer()
 
 /////////////////////////////////////////////////////////////////////////////
 
-D3D11IndexBuffer::D3D11IndexBuffer(D3D11Context *context, const void *data, int size)
+D3D11IndexBuffer::D3D11IndexBuffer(D3D11Context *context, const void *data, int size) : mContext(context)
 {
 	mSize = size;
 
@@ -317,7 +317,7 @@ D3D11IndexBuffer::D3D11IndexBuffer(D3D11Context *context, const void *data, int 
 	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	desc.MiscFlags = 0;
 	desc.StructureByteStride = 0;
-	HRESULT result = context->Device->CreateBuffer(&desc, &resource_data, mHandle.OutputVariable());
+	HRESULT result = context->Device->CreateBuffer(&desc, data ? &resource_data : nullptr, mHandle.OutputVariable());
 	if (FAILED(result))
 		I_FatalError("ID3D11Device.CreateBuffer(index) failed");
 }
@@ -377,9 +377,9 @@ D3D11Shader::D3D11Shader(D3D11Context *context, GPUShaderType type, const char *
 	HRESULT result = D3DCompile(
 		source.data(),
 		source.length(),
-		0,
-		0,
-		0,
+		nullptr,
+		nullptr,
+		nullptr,
 		entryPoint.c_str(),
 		shaderModel.c_str(),
 		D3D10_SHADER_ENABLE_STRICTNESS | D3D10_SHADER_OPTIMIZATION_LEVEL3,
@@ -520,7 +520,7 @@ std::string D3D11Program::PrefixCode() const
 
 void D3D11Program::Compile(GPUShaderType type, const char *name, const std::string &code)
 {
-	ShaderHandle[type].reset(new D3D11Shader(mContext, type, name, code));
+	ShaderHandle[type].reset(new D3D11Shader(mContext, type, name, PrefixCode() + code));
 }
 
 void D3D11Program::SetAttribLocation(const std::string &name, int index)
@@ -655,7 +655,7 @@ D3D11StorageBuffer::~D3D11StorageBuffer()
 
 /////////////////////////////////////////////////////////////////////////////
 
-D3D11StagingTexture::D3D11StagingTexture(D3D11Context *context, int width, int height, GPUPixelFormat format, const void *pixels)
+D3D11StagingTexture::D3D11StagingTexture(D3D11Context *context, int width, int height, GPUPixelFormat format, const void *pixels) : mContext(context)
 {
 	mContext = context;
 	mWidth = width;
@@ -887,7 +887,7 @@ D3D11UniformBuffer::D3D11UniformBuffer(D3D11Context *context, const void *data, 
 	desc.CPUAccessFlags = 0;
 	desc.MiscFlags = 0;
 	desc.StructureByteStride = 0;
-	HRESULT result = context->Device->CreateBuffer(&desc, &resource_data, mHandle.OutputVariable());
+	HRESULT result = context->Device->CreateBuffer(&desc, data ? &resource_data : nullptr, mHandle.OutputVariable());
 	if (FAILED(result))
 		I_FatalError("ID3D11Device.CreateBuffer(uniform block) failed");
 }
@@ -1057,7 +1057,7 @@ D3D11VertexBuffer::D3D11VertexBuffer(D3D11Context *context, const void *data, in
 	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	desc.MiscFlags = 0;
 	desc.StructureByteStride = 0;
-	HRESULT result = context->Device->CreateBuffer(&desc, &resource_data, mHandle.OutputVariable());
+	HRESULT result = context->Device->CreateBuffer(&desc, data ? &resource_data : nullptr, mHandle.OutputVariable());
 	if (FAILED(result))
 		I_FatalError("ID3D11Device.CreateBuffer(vertex) failed");
 }

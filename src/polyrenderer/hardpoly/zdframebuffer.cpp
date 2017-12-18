@@ -1072,14 +1072,14 @@ std::unique_ptr<ZDFrameBuffer::HWPixelShader> ZDFrameBuffer::CreatePixelShader(F
 	shader->Program = GetContext()->CreateProgram();
 	for (const auto &define : defines)
 		shader->Program->SetDefine(define);
-	shader->Program->Compile(GPUShaderType::Vertex, "noname vertex", vertexsrc.GetChars());
-	shader->Program->Compile(GPUShaderType::Fragment, "noname fragment", fragmentsrc.GetChars());
+	shader->Program->Compile(GPUShaderType::Vertex, "swshader.vp", vertexsrc.GetChars());
+	shader->Program->Compile(GPUShaderType::Fragment, "swshader.fp", fragmentsrc.GetChars());
 	shader->Program->SetAttribLocation("AttrPosition", 0);
 	shader->Program->SetAttribLocation("AttrColor0", 1);
 	shader->Program->SetAttribLocation("AttrColor1", 2);
 	shader->Program->SetAttribLocation("AttrTexCoord0", 3);
 	shader->Program->SetFragOutput("FragColor", 0);
-	shader->Program->Link("noname");
+	shader->Program->Link("swshader");
 
 	shader->ImageLocation = shader->Program->GetUniformLocation("Image");
 	shader->PaletteLocation = shader->Program->GetUniformLocation("Palette");
@@ -1364,8 +1364,18 @@ bool ZDFrameBuffer::CreateResources()
 
 bool ZDFrameBuffer::LoadShaders()
 {
-	int lumpvert = Wads.CheckNumForFullName("shaders/glsl/swshader.vp");
-	int lumpfrag = Wads.CheckNumForFullName("shaders/glsl/swshader.fp");
+	int lumpvert, lumpfrag;
+
+	if (IsOpenGL())
+	{
+		lumpvert = Wads.CheckNumForFullName("shaders/glsl/swshader.vp");
+		lumpfrag = Wads.CheckNumForFullName("shaders/glsl/swshader.fp");
+	}
+	else
+	{
+		lumpvert = Wads.CheckNumForFullName("shaders/d3d/swshader.vp");
+		lumpfrag = Wads.CheckNumForFullName("shaders/d3d/swshader.fp");
+	}
 	if (lumpvert < 0 || lumpfrag < 0)
 		return false;
 
@@ -2336,7 +2346,7 @@ bool ZDFrameBuffer::OpenGLPal::Update()
 		BorderColor = ColorARGB(pal[i].a, pal[i - 1].r, pal[i - 1].g, pal[i - 1].b);
 	}
 
-	current->Upload(0, 0, numEntries * 4, 1, buff);
+	current->Upload(0, 0, numEntries, 1, buff);
 	fb->GetContext()->CopyTexture(Tex->Texture, current);
 
 	return true;
