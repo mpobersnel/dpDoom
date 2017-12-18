@@ -114,14 +114,54 @@ void D3D11Context::CheckError()
 
 void D3D11Context::SetFrameBuffer(const std::shared_ptr<GPUFrameBuffer> &fb)
 {
+	if (fb)
+	{
+		auto d3dfb = static_cast<D3D11FrameBuffer*>(fb.get());
+
+		std::vector<ID3D11RenderTargetView*> views(d3dfb->RenderTargetViews.size());
+		for (size_t i = 0; i < views.size(); i++)
+			views[i] = d3dfb->RenderTargetViews[i].Get();
+		ID3D11DepthStencilView *depthStencilView = d3dfb->DepthStencilView ? d3dfb->DepthStencilView.Get() : nullptr;
+		DeviceContext->OMSetRenderTargets((UINT)views.size(), views.data(), depthStencilView);
+	}
+	else
+	{
+		DeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+	}
 }
 
 void D3D11Context::SetViewport(int x, int y, int width, int height)
 {
+	D3D11_VIEWPORT viewport;
+	viewport.TopLeftX = x;
+	viewport.TopLeftY = y;
+	viewport.Width = width;
+	viewport.Height = height;
+	viewport.MinDepth = 0.0f;
+	viewport.MaxDepth = 1.0f;
+	DeviceContext->RSSetViewports(1, &viewport);
 }
 
 void D3D11Context::SetProgram(const std::shared_ptr<GPUProgram> &program)
 {
+	if (program)
+	{
+		mCurrentProgram = std::static_pointer_cast<D3D11Program>(program);
+
+		if (mCurrentProgram->ShaderHandle[GPUShaderType::Vertex])
+			DeviceContext->VSSetShader(mCurrentProgram->ShaderHandle[GPUShaderType::Vertex]->HandleVertex(), nullptr, 0);
+		if (mCurrentProgram->ShaderHandle[GPUShaderType::Fragment])
+			DeviceContext->PSSetShader(mCurrentProgram->ShaderHandle[GPUShaderType::Fragment]->HandlePixel(), nullptr, 0);
+
+		if (mCurrentVertexArray)
+			DeviceContext->IASetInputLayout(mCurrentVertexArray->GetInputLayout(mCurrentProgram.get()));
+	}
+	else
+	{
+		mCurrentProgram.reset();
+		DeviceContext->VSSetShader(nullptr, nullptr, 0);
+		DeviceContext->PSSetShader(nullptr, nullptr, 0);
+	}
 }
 
 void D3D11Context::SetUniform1i(int location, int value)
@@ -130,22 +170,63 @@ void D3D11Context::SetUniform1i(int location, int value)
 
 void D3D11Context::SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler)
 {
+	if (sampler)
+	{
+		D3D11Sampler * d3dsampler = static_cast<D3D11Sampler*>(sampler.get());
+		ID3D11SamplerState *samplers[] = { d3dsampler->Handle() };
+		DeviceContext->VSSetSamplers(index, 1, samplers);
+		DeviceContext->PSSetSamplers(index, 1, samplers);
+	}
+	else
+	{
+		DeviceContext->VSSetSamplers(index, 1, nullptr);
+		DeviceContext->PSSetSamplers(index, 1, nullptr);
+	}
 }
 
 void D3D11Context::SetTexture(int index, const std::shared_ptr<GPUTexture> &texture)
 {
+	if (texture)
+	{
+		D3D11Texture2D *d3dtex = static_cast<D3D11Texture2D*>(texture.get());
+		ID3D11ShaderResourceView *srvs[] = { d3dtex->SRVHandle() };
+		DeviceContext->VSSetShaderResources(index, 1, srvs);
+		DeviceContext->PSSetShaderResources(index, 1, srvs);
+	}
+	else
+	{
+		DeviceContext->VSSetShaderResources(index, 1, nullptr);
+		DeviceContext->PSSetShaderResources(index, 1, nullptr);
+	}
 }
 
 void D3D11Context::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer)
 {
+	if (buffer)
+	{
+		D3D11UniformBuffer *d3dbuffer = static_cast<D3D11UniformBuffer*>(buffer.get());
+		ID3D11Buffer *buffers[] = { d3dbuffer->Handle() };
+		DeviceContext->VSSetConstantBuffers(index, 1, buffers);
+		DeviceContext->PSSetConstantBuffers(index, 1, buffers);
+	}
+	else
+	{
+		DeviceContext->VSSetConstantBuffers(index, 1, nullptr);
+		DeviceContext->PSSetConstantBuffers(index, 1, nullptr);
+	}
 }
 
 void D3D11Context::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size)
 {
+	I_FatalError("D3D11Context::SetUniforms with an offset is not implemented");
 }
 
-void D3D11Context::SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage)
+void D3D11Context::SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &buffer)
 {
+	//DeviceContext->CSSetUnorderedAccessViews
+	//DeviceContext->OMSetRenderTargetsAndUnorderedAccessViews
+
+	I_FatalError("D3D11Context::SetStorage is not implemented");
 }
 
 void D3D11Context::SetClipDistance(int index, bool enable)
@@ -214,27 +295,90 @@ void D3D11Context::SetAddClampShadedBlend(int srcalpha, int destalpha)
 
 void D3D11Context::SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray)
 {
+	if (vertexarray)
+	{
+		mCurrentVertexArray = std::static_pointer_cast<D3D11VertexArray>(vertexarray);
+		if (mCurrentProgram)
+			DeviceContext->IASetInputLayout(mCurrentVertexArray->GetInputLayout(mCurrentProgram.get()));
+
+		for (const auto &attr : mCurrentVertexArray->Attributes())
+		{
+			ID3D11Buffer *buffers[] = { static_cast<D3D11VertexBuffer*>(attr.second.Buffer.get())->Handle() };
+			UINT strides[] = { (UINT)attr.second.Stride };
+			UINT offsets[] = { (UINT)attr.second.Offset };
+			DeviceContext->IASetVertexBuffers(attr.second.Index, 1, buffers, strides, offsets);
+		}
+	}
+	else
+	{
+		if (mCurrentVertexArray)
+		{
+			for (const auto &attr : mCurrentVertexArray->Attributes())
+			{
+				ID3D11Buffer *buffers[] = { nullptr };
+				UINT strides[] = { 0 };
+				UINT offsets[] = { 0 };
+				DeviceContext->IASetVertexBuffers(attr.second.Index, 1, buffers, strides, offsets);
+			}
+			mCurrentVertexArray.reset();
+		}
+		DeviceContext->IASetInputLayout(nullptr);
+	}
 }
 
 void D3D11Context::SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format)
 {
 	mIndexFormat = format;
+	DXGI_FORMAT d3dformat = (format == GPUIndexFormat::Uint16) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+	if (indexbuffer)
+	{
+		D3D11IndexBuffer *d3dindexbuffer = static_cast<D3D11IndexBuffer*>(indexbuffer.get());
+		DeviceContext->IASetIndexBuffer(d3dindexbuffer->Handle(), d3dformat, 0);
+	}
+	else
+	{
+		DeviceContext->IASetIndexBuffer(nullptr, d3dformat, 0);
+	}
+}
+
+void D3D11Context::SetDrawMode(GPUDrawMode mode)
+{
+	D3D11_PRIMITIVE_TOPOLOGY topology;
+	switch (mode)
+	{
+	default:
+	case GPUDrawMode::Points: topology = D3D_PRIMITIVE_TOPOLOGY_POINTLIST; break;
+	case GPUDrawMode::LineStrip: topology = D3D_PRIMITIVE_TOPOLOGY_LINESTRIP; break;
+	case GPUDrawMode::LineLoop: topology = D3D_PRIMITIVE_TOPOLOGY_POINTLIST; break;
+	case GPUDrawMode::Lines: topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST; break;
+	case GPUDrawMode::TriangleStrip: topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP; break;
+	case GPUDrawMode::Triangles: topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST; break;
+	}
+	DeviceContext->IASetPrimitiveTopology(topology);
 }
 
 void D3D11Context::Draw(GPUDrawMode mode, int vertexStart, int vertexCount)
 {
+	SetDrawMode(mode);
+	DeviceContext->Draw(vertexCount, vertexStart);
 }
 
 void D3D11Context::DrawIndexed(GPUDrawMode mode, int indexStart, int indexCount)
 {
+	SetDrawMode(mode);
+	DeviceContext->DrawIndexed(indexCount, indexStart, 0);
 }
 
 void D3D11Context::DrawInstanced(GPUDrawMode mode, int vertexStart, int vertexCount, int instanceCount)
 {
+	SetDrawMode(mode);
+	DeviceContext->DrawInstanced(vertexCount, instanceCount, vertexStart, 0);
 }
 
 void D3D11Context::DrawIndexedInstanced(GPUDrawMode mode, int indexStart, int indexCount, int instanceCount)
 {
+	SetDrawMode(mode);
+	DeviceContext->DrawIndexedInstanced(indexCount, instanceCount, indexStart, 0, 0);
 }
 
 void D3D11Context::ClearColorBuffer(int index, float r, float g, float b, float a)
@@ -781,6 +925,13 @@ D3D11Texture2D::D3D11Texture2D(D3D11Context *context, int width, int height, boo
 
 	if (FAILED(result))
 		I_FatalError("ID3D11Device.CreateTexture2D failed");
+
+	if (!!(desc.BindFlags & D3D11_BIND_SHADER_RESOURCE))
+	{
+		result = context->Device->CreateShaderResourceView(mHandle, nullptr, mSRVHandle.OutputVariable());
+		if (FAILED(result))
+			I_FatalError("ID3D11Device.CreateShaderResourceView(Texture2D) failed");
+	}
 }
 
 D3D11Texture2D::~D3D11Texture2D()

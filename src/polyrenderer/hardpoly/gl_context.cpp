@@ -422,7 +422,7 @@ int GLContext::FromDrawMode(GPUDrawMode mode)
 	case GPUDrawMode::LineLoop: return GL_LINE_LOOP;
 	case GPUDrawMode::Lines: return GL_LINES;
 	case GPUDrawMode::TriangleStrip: return GL_TRIANGLE_STRIP;
-	case GPUDrawMode::TriangleFan: return GL_TRIANGLE_FAN;
+	//case GPUDrawMode::TriangleFan: return GL_TRIANGLE_FAN;
 	case GPUDrawMode::Triangles: return GL_TRIANGLES;
 	}
 }

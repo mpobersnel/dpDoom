@@ -344,8 +344,8 @@ private:
 	void SetHWPixelShader(HWPixelShader *shader);
 	void SetStreamSource(HWVertexBuffer *vertexBuffer);
 	void SetIndices(HWIndexBuffer *indexBuffer);
-	void DrawTriangleFans(int count, const FBVERTEX *vertices);
-	void DrawTriangleFans(int count, const BURNVERTEX *vertices);
+	void DrawTriangles(int count, const FBVERTEX *vertices);
+	void DrawTriangles(int count, const BURNVERTEX *vertices);
 	void DrawPoints(int count, const FBVERTEX *vertices);
 	void DrawLineList(int count);
 	void DrawTriangleList(int minIndex, int numVertices, int startIndex, int primitiveCount);
@@ -360,7 +360,7 @@ private:
 	bool CreatePaletteTexture();
 	bool CreateVertexes();
 	void UploadPalette();
-	void CalcFullscreenCoords(FBVERTEX verts[4], bool viewarea_only, uint32_t color0, uint32_t color1) const;
+	void CalcFullscreenCoords(FBVERTEX verts[6], bool viewarea_only, uint32_t color0, uint32_t color1) const;
 	bool Reset();
 	std::unique_ptr<HWTexture> CopyCurrentScreen();
 	void ReleaseDefaultPoolItems();

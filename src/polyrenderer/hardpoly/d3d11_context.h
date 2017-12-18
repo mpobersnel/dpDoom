@@ -125,6 +125,7 @@ public:
 	GPUPixelFormat Format() const override { return mFormat; }
 
 	ID3D11Texture2D *Handle() const { return mHandle.Get(); }
+	ID3D11ShaderResourceView *SRVHandle() const { return mSRVHandle.Get(); }
 
 	static int NumLevels(int width, int height);
 	static DXGI_FORMAT ToD3DFormat(GPUPixelFormat format);
@@ -142,6 +143,7 @@ private:
 	int mSampleCount = 0;
 	GPUPixelFormat mFormat;
 	ComPtr<ID3D11Texture2D> mHandle;
+	ComPtr<ID3D11ShaderResourceView> mSRVHandle;
 };
 
 class D3D11FrameBuffer : public GPUFrameBuffer
@@ -168,6 +170,8 @@ public:
 
 	void *MapWriteOnly() override;
 	void Unmap() override;
+
+	ID3D11Buffer *Handle() const { return mHandle.Get(); }
 
 private:
 	D3D11IndexBuffer(const D3D11IndexBuffer &) = delete;
@@ -248,6 +252,8 @@ public:
 	D3D11Sampler(D3D11Context *context, GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap, GPUWrapMode wrapU, GPUWrapMode wrapV);
 	~D3D11Sampler();
 
+	ID3D11SamplerState *Handle() const { return mHandle.Get(); }
+
 private:
 	static D3D11_TEXTURE_ADDRESS_MODE ToD3DWrap(GPUWrapMode mode);
 	static D3D11_FILTER ToD3DFilter(GPUSampleMode minfilter, GPUSampleMode magfilter, GPUMipmapMode mipmap);
@@ -271,6 +277,8 @@ public:
 
 	void Upload(const void *data, int size) override;
 
+	ID3D11Buffer *Handle() const { return mHandle.Get(); }
+
 private:
 	D3D11StorageBuffer(const D3D11StorageBuffer &) = delete;
 	D3D11StorageBuffer &operator =(const D3D11StorageBuffer &) = delete;
@@ -287,6 +295,8 @@ public:
 	~D3D11UniformBuffer();
 
 	void Upload(const void *data, int size) override;
+
+	ID3D11Buffer *Handle() const { return mHandle.Get(); }
 
 	//void *MapWriteOnly() override;
 	//void Unmap() override;
@@ -307,6 +317,7 @@ public:
 	~D3D11VertexArray();
 
 	ID3D11InputLayout *GetInputLayout(D3D11Program *program);
+	const std::map<int, GPUVertexAttributeDesc> &Attributes() const { return mAttributes; };
 
 private:
 	D3D11VertexArray(const D3D11VertexArray &) = delete;
@@ -330,6 +341,8 @@ public:
 
 	void *MapWriteOnly() override;
 	void Unmap() override;
+
+	ID3D11Buffer *Handle() const { return mHandle.Get(); }
 
 private:
 	D3D11VertexBuffer(const D3D11VertexBuffer &) = delete;
@@ -420,5 +433,9 @@ private:
 	D3D11Context(const D3D11Context &) = delete;
 	D3D11Context &operator =(const D3D11Context &) = delete;
 
+	void SetDrawMode(GPUDrawMode mode);
+
 	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
+	std::shared_ptr<D3D11Program> mCurrentProgram;
+	std::shared_ptr<D3D11VertexArray> mCurrentVertexArray;
 };

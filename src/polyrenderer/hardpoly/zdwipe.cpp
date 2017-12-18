@@ -272,13 +272,13 @@ ZDFrameBuffer::Wiper::~Wiper()
 void ZDFrameBuffer::Wiper::DrawScreen(ZDFrameBuffer *fb, HWTexture *tex,
 	int blendop, uint32_t color0, uint32_t color1)
 {
-	FBVERTEX verts[4];
+	FBVERTEX verts[6];
 
 	fb->CalcFullscreenCoords(verts, false, color0, color1);
 	fb->SetTexture(0, tex);
 	fb->SetAlphaBlend(blendop, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	fb->SetPixelShader(fb->Shaders[SHADER_NormalColor].get());
-	fb->DrawTriangleFans(2, verts);
+	fb->DrawTriangles(2, verts);
 }
 
 // WIPE: CROSSFADE ---------------------------------------------------------
@@ -545,7 +545,7 @@ bool ZDFrameBuffer::Wiper_Burn::Run(int ticks, ZDFrameBuffer *fb)
 	float right = float(fb->Width);
 	float bot = float(fb->Height);
 
-	BURNVERTEX verts[4] =
+	BURNVERTEX verts[6] =
 	{
 		{ 0.f,   0.f, 0.f, 1.f, 0.f, 0.f, 0, 0 },
 		{ right, 0.f, 0.f, 1.f, 1.f, 0.f, 1, 0 },
@@ -553,12 +553,16 @@ bool ZDFrameBuffer::Wiper_Burn::Run(int ticks, ZDFrameBuffer *fb)
 		{ 0.f,   bot, 0.f, 1.f, 0.f, 1.f, 0, 1 }
 	};
 
+	verts[4] = verts[2];
+	verts[5] = verts[3];
+	verts[3] = verts[0];
+
 	fb->SetTexture(0, fb->FinalWipeScreen.get());
 	fb->SetTexture(1, BurnTexture.get());
 	fb->SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	fb->SetPixelShader(fb->Shaders[SHADER_BurnWipe].get());
 	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdgeLinear);
-	fb->DrawTriangleFans(2, verts);
+	fb->DrawTriangles(2, verts);
 	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdge);
 
 	// The fire may not always stabilize, so the wipe is forced to end

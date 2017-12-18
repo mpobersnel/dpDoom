@@ -429,7 +429,7 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 		SetPixelShader(Shaders[SHADER_NormalColorPal].get());
 	if (copy3d)
 	{
-		FBVERTEX verts[4];
+		FBVERTEX verts[6];
 		uint32_t color0, color1;
 		if (Accel2D)
 		{
@@ -455,7 +455,7 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 			color1 = FlashColor1;
 		}
 		CalcFullscreenCoords(verts, Accel2D, color0, color1);
-		DrawTriangleFans(2, verts);
+		DrawTriangles(2, verts);
 	}
 	if (IsBgra())
 		SetPixelShader(Shaders[SHADER_NormalColor].get());
@@ -1176,9 +1176,9 @@ void ZDFrameBuffer::SetIndices(HWIndexBuffer *indexBuffer)
 		GetContext()->SetIndexBuffer(nullptr);
 }
 
-void ZDFrameBuffer::DrawTriangleFans(int count, const FBVERTEX *vertices)
+void ZDFrameBuffer::DrawTriangles(int count, const FBVERTEX *vertices)
 {
-	count = 2 + count;
+	count *= 3;
 
 	if (!StreamVertexBuffer)
 	{
@@ -1198,13 +1198,13 @@ void ZDFrameBuffer::DrawTriangleFans(int count, const FBVERTEX *vertices)
 	}
 
 	GetContext()->SetVertexArray(StreamVertexBuffer->VertexArray);
-	GetContext()->Draw(GPUDrawMode::TriangleFan, 0, count);
+	GetContext()->Draw(GPUDrawMode::Triangles, 0, count);
 	GetContext()->SetVertexArray(nullptr);
 }
 
-void ZDFrameBuffer::DrawTriangleFans(int count, const BURNVERTEX *vertices)
+void ZDFrameBuffer::DrawTriangles(int count, const BURNVERTEX *vertices)
 {
-	count = 2 + count;
+	count *= 3;
 
 	if (!StreamVertexBufferBurn)
 	{
@@ -1222,7 +1222,7 @@ void ZDFrameBuffer::DrawTriangleFans(int count, const BURNVERTEX *vertices)
 	}
 
 	GetContext()->SetVertexArray(StreamVertexBufferBurn->VertexArray);
-	GetContext()->Draw(GPUDrawMode::TriangleFan, 0, count);
+	GetContext()->Draw(GPUDrawMode::Triangles, 0, count);
 	GetContext()->SetVertexArray(nullptr);
 }
 
@@ -1275,8 +1275,9 @@ void ZDFrameBuffer::Present()
 		DrawLetterbox(letterboxX, letterboxY, letterboxWidth, letterboxHeight);
 		GetContext()->SetViewport(letterboxX, letterboxY, letterboxWidth, letterboxHeight);
 
-		FBVERTEX verts[4];
+		FBVERTEX verts[6];
 		CalcFullscreenCoords(verts, false, 0, 0xFFFFFFFF);
+
 		SetTexture(0, OutputFB->Texture.get());
 
 		if (ViewportLinearScale())
@@ -1291,7 +1292,7 @@ void ZDFrameBuffer::Present()
 		SetPixelShader(Shaders[SHADER_GammaCorrection].get());
 		SetAlphaBlend(0);
 		EnableAlphaTest(false);
-		DrawTriangleFans(2, verts);
+		DrawTriangles(2, verts);
 
 		if (ViewportLinearScale())
 			GetContext()->SetSampler(0, SamplerClampToEdge);
@@ -1519,7 +1520,7 @@ bool ZDFrameBuffer::CreateVertexes()
 	return true;
 }
 
-void ZDFrameBuffer::CalcFullscreenCoords(FBVERTEX verts[4], bool viewarea_only, uint32_t color0, uint32_t color1) const
+void ZDFrameBuffer::CalcFullscreenCoords(FBVERTEX verts[6], bool viewarea_only, uint32_t color0, uint32_t color1) const
 {
 	float mxl, mxr, myt, myb, tmxl, tmxr, tmyt, tmyb;
 
@@ -1578,14 +1579,17 @@ void ZDFrameBuffer::CalcFullscreenCoords(FBVERTEX verts[4], bool viewarea_only, 
 	verts[2].tu = tmxr;
 	verts[2].tv = tmyb;
 
-	verts[3].x = mxl;
-	verts[3].y = myb;
-	verts[3].z = 0;
-	verts[3].rhw = 1;
-	verts[3].color0 = color0;
-	verts[3].color1 = color1;
-	verts[3].tu = tmxl;
-	verts[3].tv = tmyb;
+	verts[3] = verts[0];
+	verts[4] = verts[2];
+
+	verts[5].x = mxl;
+	verts[5].y = myb;
+	verts[5].z = 0;
+	verts[5].rhw = 1;
+	verts[5].color0 = color0;
+	verts[5].color1 = color1;
+	verts[5].tu = tmxl;
+	verts[5].tv = tmyb;
 }
 
 void ZDFrameBuffer::BgraToRgba(uint32_t *dest, const uint32_t *src, int width, int height, int srcpitch)

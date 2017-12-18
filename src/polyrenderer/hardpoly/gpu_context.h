@@ -221,7 +221,7 @@ enum class GPUDrawMode
 	LineLoop,
 	Lines,
 	TriangleStrip,
-	TriangleFan,
+	//TriangleFan,
 	Triangles
 };
 
