@@ -126,7 +126,26 @@ void D3D11Context::SetFrameBuffer(const std::shared_ptr<GPUFrameBuffer> &fb)
 	}
 	else
 	{
-		DeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+		ComPtr<ID3D11Texture2D> backbuffer;
+		HRESULT result = SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)backbuffer.OutputVariable());
+		if (SUCCEEDED(result))
+		{
+			D3D11_TEXTURE2D_DESC texturedesc;
+			backbuffer->GetDesc(&texturedesc);
+
+			D3D11_RENDER_TARGET_VIEW_DESC desc;
+			desc.Format = texturedesc.Format;
+			desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+			desc.Texture2D.MipSlice = 0;
+
+			ComPtr<ID3D11RenderTargetView> view;
+			result = Device->CreateRenderTargetView(backbuffer, &desc, view.OutputVariable());
+			if (SUCCEEDED(result))
+			{
+				ID3D11RenderTargetView *backbuffer_rtvs[] = { view };
+				DeviceContext->OMSetRenderTargets(1, backbuffer_rtvs, nullptr);
+			}
+		}
 	}
 }
 
@@ -298,16 +317,40 @@ void D3D11Context::SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexa
 	if (vertexarray)
 	{
 		mCurrentVertexArray = std::static_pointer_cast<D3D11VertexArray>(vertexarray);
-		if (mCurrentProgram)
-			DeviceContext->IASetInputLayout(mCurrentVertexArray->GetInputLayout(mCurrentProgram.get()));
 
 		for (const auto &attr : mCurrentVertexArray->Attributes())
 		{
 			ID3D11Buffer *buffers[] = { static_cast<D3D11VertexBuffer*>(attr.second.Buffer.get())->Handle() };
 			UINT strides[] = { (UINT)attr.second.Stride };
-			UINT offsets[] = { (UINT)attr.second.Offset };
+			UINT offsets[] = { 0 }; // attr.second.Offset is specified in the input layout
+
+			if (strides[0] == 0) // Stride is not optional in D3D
+			{
+				switch (attr.second.Type)
+				{
+				default:
+				case GPUVertexAttributeType::Int8:
+				case GPUVertexAttributeType::Uint8:
+					strides[0] = attr.second.Size;
+					break;
+				case GPUVertexAttributeType::Int16:
+				case GPUVertexAttributeType::Uint16:
+				case GPUVertexAttributeType::HalfFloat:
+					strides[0] = attr.second.Size * 2;
+					break;
+				case GPUVertexAttributeType::Int32:
+				case GPUVertexAttributeType::Uint32:
+				case GPUVertexAttributeType::Float:
+					strides[0] = attr.second.Size * 4;
+					break;
+				}
+			}
+
 			DeviceContext->IASetVertexBuffers(attr.second.Index, 1, buffers, strides, offsets);
 		}
+
+		if (mCurrentProgram)
+			DeviceContext->IASetInputLayout(mCurrentVertexArray->GetInputLayout(mCurrentProgram.get()));
 	}
 	else
 	{
@@ -329,15 +372,15 @@ void D3D11Context::SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexa
 void D3D11Context::SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format)
 {
 	mIndexFormat = format;
-	DXGI_FORMAT d3dformat = (format == GPUIndexFormat::Uint16) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 	if (indexbuffer)
 	{
+		DXGI_FORMAT d3dformat = (format == GPUIndexFormat::Uint16) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 		D3D11IndexBuffer *d3dindexbuffer = static_cast<D3D11IndexBuffer*>(indexbuffer.get());
 		DeviceContext->IASetIndexBuffer(d3dindexbuffer->Handle(), d3dformat, 0);
 	}
 	else
 	{
-		DeviceContext->IASetIndexBuffer(nullptr, d3dformat, 0);
+		DeviceContext->IASetIndexBuffer(nullptr, DXGI_FORMAT_UNKNOWN, 0);
 	}
 }
 
@@ -1219,10 +1262,18 @@ D3D11VertexBuffer::~D3D11VertexBuffer()
 
 void D3D11VertexBuffer::Upload(const void *data, int size)
 {
-	if (mSize != size)
-		I_FatalError("Upload data size does not match vertex buffer");
+	int offset = 0;
+	if ((offset < 0) || (size < 0) || ((size + offset) > mSize))
+		I_FatalError("Vertex buffer upload failed, invalid size");
 
-	mContext->DeviceContext->UpdateSubresource(mHandle, 0, 0, data, 0, 0);
+	D3D11_BOX box;
+	box.left = offset;
+	box.right = offset + size;
+	box.top = 0;
+	box.bottom = 1;
+	box.front = 0;
+	box.back = 1;
+	mContext->DeviceContext->UpdateSubresource(mHandle, 0, &box, data, 0, 0);
 }
 
 void *D3D11VertexBuffer::MapWriteOnly()

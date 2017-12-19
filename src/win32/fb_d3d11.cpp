@@ -112,6 +112,8 @@ D3D11FB::D3D11FB(int width, int height, bool bgra, bool fullscreen) : BaseWinFB(
 
 	if (!Windowed)
 		mContext.SwapChain->SetFullscreenState(TRUE, nullptr);
+
+	mContext.SetFrameBuffer(nullptr);
 }
 
 D3D11FB::~D3D11FB()
@@ -120,8 +122,47 @@ D3D11FB::~D3D11FB()
 
 void D3D11FB::SwapBuffers()
 {
+	mContext.DeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+
 	I_FPSLimit();
 	mContext.SwapChain->Present(1, 0);
+
+	DXGI_SWAP_CHAIN_DESC swapDesc;
+	HRESULT result = mContext.SwapChain->GetDesc(&swapDesc);
+	if (SUCCEEDED(result))
+	{
+		int clientWidth = GetClientWidth();
+		int clientHeight = GetClientHeight();
+		if (swapDesc.BufferDesc.Width != clientWidth || swapDesc.BufferDesc.Height != clientHeight)
+		{
+			result = mContext.SwapChain->ResizeBuffers(0, clientWidth, clientHeight, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH);
+			if (FAILED(result))
+				I_FatalError("ResizeBuffers failed");
+		}
+	}
+
+	ComPtr<ID3D11Texture2D> backbuffer;
+	result = mContext.SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)backbuffer.OutputVariable());
+	if (SUCCEEDED(result))
+	{
+		D3D11_TEXTURE2D_DESC texturedesc;
+		backbuffer->GetDesc(&texturedesc);
+
+		D3D11_RENDER_TARGET_VIEW_DESC desc;
+		desc.Format = texturedesc.Format;
+		desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MipSlice = 0;
+
+		ComPtr<ID3D11RenderTargetView> view;
+		result = mContext.Device->CreateRenderTargetView(backbuffer, &desc, view.OutputVariable());
+		if (SUCCEEDED(result))
+		{
+			ID3D11RenderTargetView *backbuffer_rtvs[] = { view };
+			//float color[4] = { 1.0f, 1.0f, 0.0f, 1.0f };
+			//mContext.DeviceContext->ClearRenderTargetView(view, color);
+			mContext.DeviceContext->OMSetRenderTargets(1, backbuffer_rtvs, nullptr);
+		}
+	}
 }
 
 int D3D11FB::GetClientWidth()
