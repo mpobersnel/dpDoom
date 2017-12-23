@@ -124,15 +124,15 @@ bool ZDFrameBuffer::WipeStartScreen(int type)
 	switch (type)
 	{
 	case wipe_Melt:
-		ScreenWipe = new Wiper_Melt;
+		ScreenWipe.reset(new Wiper_Melt);
 		break;
 
 	case wipe_Burn:
-		ScreenWipe = new Wiper_Burn(this);
+		ScreenWipe.reset(new Wiper_Burn(this));
 		break;
 
 	case wipe_Fade:
-		ScreenWipe = new Wiper_Crossfade;
+		ScreenWipe.reset(new Wiper_Crossfade);
 		break;
 
 	default:
@@ -236,11 +236,7 @@ bool ZDFrameBuffer::WipeDo(int ticks)
 
 void ZDFrameBuffer::WipeCleanup()
 {
-	if (ScreenWipe != NULL)
-	{
-		delete ScreenWipe;
-		ScreenWipe = NULL;
-	}
+	ScreenWipe.reset();
 	InitialWipeScreen.reset();
 	FinalWipeScreen.reset();
 	GatheringWipeScreen = false;
@@ -275,9 +271,9 @@ void ZDFrameBuffer::Wiper::DrawScreen(ZDFrameBuffer *fb, HWTexture *tex,
 	FBVERTEX verts[6];
 
 	fb->CalcFullscreenCoords(verts, false, color0, color1);
-	fb->SetTexture(0, tex);
+	fb->GetContext()->SetTexture(0, tex->Texture);
 	fb->SetAlphaBlend(blendop, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	fb->SetPixelShader(fb->Shaders[SHADER_NormalColor].get());
+	fb->SetPixelShader(fb->Shaders[SHADER_NormalColor]);
 	fb->DrawTriangles(2, verts);
 }
 
@@ -557,10 +553,10 @@ bool ZDFrameBuffer::Wiper_Burn::Run(int ticks, ZDFrameBuffer *fb)
 	verts[5] = verts[3];
 	verts[3] = verts[0];
 
-	fb->SetTexture(0, fb->FinalWipeScreen.get());
-	fb->SetTexture(1, BurnTexture.get());
+	fb->GetContext()->SetTexture(0, fb->FinalWipeScreen->Texture);
+	fb->GetContext()->SetTexture(1, BurnTexture->Texture);
 	fb->SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	fb->SetPixelShader(fb->Shaders[SHADER_BurnWipe].get());
+	fb->SetPixelShader(fb->Shaders[SHADER_BurnWipe]);
 	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdgeLinear);
 	fb->DrawTriangles(2, verts);
 	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdge);

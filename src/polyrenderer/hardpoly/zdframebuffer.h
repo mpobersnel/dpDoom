@@ -53,6 +53,9 @@ public:
 	virtual int GetClientHeight() = 0;
 	virtual void SwapBuffers() = 0;
 
+	std::shared_ptr<GPUFrameBuffer> OutputFB;
+	std::shared_ptr<GPUTexture2D> OutputTexture;
+
 private:
 	typedef DFrameBuffer Super;
 
@@ -95,48 +98,15 @@ private:
 		std::shared_ptr<GPUTexture2D> Texture;
 		std::shared_ptr<GPUStagingTexture> Buffers[2];
 		int CurrentBuffer = 0;
-		GPUPixelFormat Format = GPUPixelFormat();
 
 		std::vector<uint8_t> MapBuffer;
-	};
-
-	class HWFrameBuffer
-	{
-	public:
-		std::shared_ptr<GPUFrameBuffer> Framebuffer;
-		std::unique_ptr<HWTexture> Texture;
 	};
 
 	class HWVertexBuffer
 	{
 	public:
-		FBVERTEX *Lock() { return (FBVERTEX*)Buffer->MapWriteOnly(); }
-		void Unlock() { Buffer->Unmap(); }
-
 		std::shared_ptr<GPUVertexArray> VertexArray;
 		std::shared_ptr<GPUVertexBuffer> Buffer;
-		int Size = 0;
-	};
-
-	class HWIndexBuffer
-	{
-	public:
-		uint16_t *Lock() { return (uint16_t*)Buffer->MapWriteOnly(); }
-		void Unlock() { Buffer->Unmap(); }
-
-		std::shared_ptr<GPUIndexBuffer> Buffer;
-		int Size = 0;
-	};
-
-	class HWPixelShader
-	{
-	public:
-		std::shared_ptr<GPUProgram> Program;
-
-		int ImageLocation = 0;
-		int PaletteLocation = 1;
-		int NewScreenLocation = 2;
-		int BurnLocation = 3;
 	};
 
 	// The number of points for the vertex buffer.
@@ -334,16 +304,10 @@ private:
 	void DrawLetterbox(int x, int y, int width, int height);
 	void Draw3DPart(bool copy3d);
 
-	std::unique_ptr<HWFrameBuffer> CreateFrameBuffer(const FString &name, int width, int height);
-	std::unique_ptr<HWPixelShader> CreatePixelShader(FString vertexsrc, FString fragmentsrc, const std::vector<const char *> &defines);
 	std::unique_ptr<HWVertexBuffer> CreateVertexBuffer(int size);
-	std::unique_ptr<HWIndexBuffer> CreateIndexBuffer(int size);
 	std::unique_ptr<HWTexture> CreateTexture(const FString &name, int width, int height, int levels, GPUPixelFormat format);
 
 	void SetGammaRamp(const GammaRamp *ramp);
-	void SetHWPixelShader(HWPixelShader *shader);
-	void SetStreamSource(HWVertexBuffer *vertexBuffer);
-	void SetIndices(HWIndexBuffer *indexBuffer);
 	void DrawTriangles(int count, const FBVERTEX *vertices);
 	void DrawTriangles(int count, const BURNVERTEX *vertices);
 	void DrawPoints(int count, const FBVERTEX *vertices);
@@ -353,17 +317,13 @@ private:
 
 	void Flip();
 	void SetInitialState();
-	bool CreateResources();
-	void ReleaseResources();
-	bool LoadShaders();
-	bool CreateFBTexture();
-	bool CreatePaletteTexture();
-	bool CreateVertexes();
+	void LoadShaders();
+	void CreateFBTexture();
+	void CreatePaletteTexture();
+	void CreateVertexes();
 	void UploadPalette();
 	void CalcFullscreenCoords(FBVERTEX verts[6], bool viewarea_only, uint32_t color0, uint32_t color1) const;
-	bool Reset();
 	std::unique_ptr<HWTexture> CopyCurrentScreen();
-	void ReleaseDefaultPoolItems();
 	void KillNativePals();
 	void KillNativeTexs();
 	PackedTexture *AllocPackedTexture(int width, int height, bool wrapping, GPUPixelFormat format);
@@ -382,8 +342,7 @@ private:
 
 	void EnableAlphaTest(bool enabled);
 	void SetAlphaBlend(int op, int srcblend = 0, int destblend = 0);
-	void SetPixelShader(HWPixelShader *shader);
-	void SetTexture(int tnum, HWTexture *texture);
+	void SetPixelShader(const std::shared_ptr<GPUProgram> &shader);
 	void SetPaletteTexture(HWTexture *texture, int count, uint32_t border_color);
 
 	static void BgraToRgba(uint32_t *dest, const uint32_t *src, int width, int height, int srcpitch);
@@ -405,14 +364,9 @@ private:
 	ShaderUniforms ShaderConstants;
 	bool ShaderConstantsModified = true;
 	std::shared_ptr<GPUUniformBuffer> GpuShaderUniforms;
-	HWPixelShader *CurrentShader = nullptr;
+	std::shared_ptr<GPUProgram> CurrentShader;
 
-	std::unique_ptr<HWFrameBuffer> OutputFB;
-
-	float Constant[3][4];
 	uint32_t CurBorderColor;
-	HWPixelShader *CurPixelShader;
-	HWTexture *Texture[5];
 
 	PalEntry SourcePalette[256];
 	float Gamma = 1.0f;
@@ -437,7 +391,7 @@ private:
 
 	std::unique_ptr<HWVertexBuffer> VertexBuffer;
 	FBVERTEX *VertexData = nullptr;
-	std::unique_ptr<HWIndexBuffer> IndexBuffer;
+	std::shared_ptr<GPUIndexBuffer> IndexBuffer;
 	uint16_t *IndexData = nullptr;
 	std::vector<BufferedTris> QuadExtra = std::vector<BufferedTris>(MAX_QUAD_BATCH);
 	int VertexPos = -1;
@@ -445,10 +399,10 @@ private:
 	int QuadBatchPos = -1;
 	enum { BATCH_None, BATCH_Quads, BATCH_Lines } BatchType = BATCH_None;
 
-	std::unique_ptr<HWPixelShader> Shaders[NUM_SHADERS];
+	std::shared_ptr<GPUProgram> Shaders[NUM_SHADERS];
 
 	std::unique_ptr<HWTexture> InitialWipeScreen, FinalWipeScreen;
-	Wiper *ScreenWipe = nullptr;
+	std::unique_ptr<Wiper> ScreenWipe;
 
 	class Wiper_Melt;			friend class Wiper_Melt;
 	class Wiper_Burn;			friend class Wiper_Burn;

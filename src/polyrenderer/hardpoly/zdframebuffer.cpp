@@ -81,7 +81,19 @@ ZDFrameBuffer::ZDFrameBuffer(int width, int height, bool bgra) : DFrameBuffer(wi
 
 ZDFrameBuffer::~ZDFrameBuffer()
 {
-	ReleaseResources();
+#ifdef WIN32
+	I_SaveWindowedPos();
+#endif
+	KillNativeTexs();
+	KillNativePals();
+	ScreenWipe.reset();
+	Atlas *pack, *next;
+	for (pack = Atlases; pack != nullptr; pack = next)
+	{
+		next = pack->Next;
+		delete pack;
+	}
+	GatheringWipeScreen = false;
 }
 
 void ZDFrameBuffer::Init()
@@ -95,8 +107,40 @@ void ZDFrameBuffer::Init()
 
 	memcpy(SourcePalette, GPalette.BaseColors, sizeof(PalEntry) * 256);
 
-	CreateResources();
-	SetInitialState();
+	Atlases = nullptr;
+	
+	LoadShaders();
+
+	OutputTexture = GetContext()->CreateTexture2D(GetWidth(), GetHeight(), false, 1, GPUPixelFormat::RGBA16f);
+	OutputFB = GetContext()->CreateFrameBuffer({ OutputTexture }, nullptr);
+
+	GetContext()->SetFrameBuffer(OutputFB);
+
+	CreateFBTexture();
+	CreatePaletteTexture();
+	CreateVertexes();
+
+	SamplerRepeat = GetContext()->CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
+	SamplerClampToEdge = GetContext()->CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::ClampToEdge, GPUWrapMode::ClampToEdge);
+	SamplerClampToEdgeLinear = GetContext()->CreateSampler(GPUSampleMode::Linear, GPUSampleMode::Linear, GPUMipmapMode::None, GPUWrapMode::ClampToEdge, GPUWrapMode::ClampToEdge);
+
+	GetContext()->SetSampler(0, SamplerClampToEdge);
+	GetContext()->SetSampler(1, SamplerClampToEdge);
+
+	NeedGammaUpdate = true;
+	NeedPalUpdate = true;
+
+	ShaderConstants.Desaturation = { 0.0f, 0.0f, 0.0f, 0.0f };
+	ShaderConstants.PaletteMod = { 0.0f, 0.0f, 0.0f, 0.0f };
+	ShaderConstants.Weights = { 77 / 256.f, 143 / 256.f, 37 / 256.f, 1 }; // This constant is used for grayscaling weights (.xyz) and color inversion (.w)
+	ShaderConstants.Gamma = { 0.0f, 0.0f, 0.0f, 0.0f };
+	ShaderConstants.ScreenSize = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
+	ShaderConstantsModified = true;
+
+	CurBorderColor = 0;
+
+	// Clear to black, just in case it wasn't done already.
+	GetContext()->ClearColorBuffer(0, 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 void ZDFrameBuffer::GetLetterboxFrame(int &letterboxX, int &letterboxY, int &letterboxWidth, int &letterboxHeight)
@@ -333,7 +377,26 @@ void ZDFrameBuffer::Flip()
 		{
 			Resize(clientWidth, clientHeight);
 
-			Reset();
+			FBTexture.reset();
+			FinalWipeScreen.reset();
+			InitialWipeScreen.reset();
+			OutputFB.reset();
+			OutputTexture.reset();
+
+			OutputTexture = GetContext()->CreateTexture2D(GetWidth(), GetHeight(), false, 1, GPUPixelFormat::RGBA16f);
+			OutputFB = GetContext()->CreateFrameBuffer({ OutputTexture }, nullptr);
+
+			CreateFBTexture();
+
+			GetContext()->SetFrameBuffer(OutputFB);
+			GetContext()->SetViewport(0, 0, GetWidth(), GetHeight());
+			GetContext()->ClearColorBuffer(0, 0.0f, 0.0f, 0.0f, 1.0f);
+
+			NeedGammaUpdate = true;
+			NeedPalUpdate = true;
+
+			ShaderConstants.ScreenSize = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
+			ShaderConstantsModified = true;
 
 			V_OutputResized(Width, Height);
 		}
@@ -418,15 +481,14 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 		return;
 	}*/
 
-	SetTexture(0, FBTexture.get());
+	GetContext()->SetTexture(0, FBTexture->Texture);
 	SetPaletteTexture(PaletteTexture.get(), 256, BorderColor);
-	memset(Constant, 0, sizeof(Constant));
 	SetAlphaBlend(0);
 	EnableAlphaTest(false);
 	if (IsBgra())
-		SetPixelShader(Shaders[SHADER_NormalColor].get());
+		SetPixelShader(Shaders[SHADER_NormalColor]);
 	else
-		SetPixelShader(Shaders[SHADER_NormalColorPal].get());
+		SetPixelShader(Shaders[SHADER_NormalColorPal]);
 	if (copy3d)
 	{
 		FBVERTEX verts[6];
@@ -444,9 +506,9 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 				color0 = ColorValue(map->ColorizeStart[0] / 2, map->ColorizeStart[1] / 2, map->ColorizeStart[2] / 2, 0);
 				color1 = ColorValue(map->ColorizeEnd[0] / 2, map->ColorizeEnd[1] / 2, map->ColorizeEnd[2] / 2, 1);
 				if (IsBgra())
-					SetPixelShader(Shaders[SHADER_SpecialColormap].get());
+					SetPixelShader(Shaders[SHADER_SpecialColormap]);
 				else
-					SetPixelShader(Shaders[SHADER_SpecialColormapPal].get());
+					SetPixelShader(Shaders[SHADER_SpecialColormapPal]);
 			}
 		}
 		else
@@ -458,9 +520,9 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 		DrawTriangles(2, verts);
 	}
 	if (IsBgra())
-		SetPixelShader(Shaders[SHADER_NormalColor].get());
+		SetPixelShader(Shaders[SHADER_NormalColor]);
 	else
-		SetPixelShader(Shaders[SHADER_NormalColorPal].get());
+		SetPixelShader(Shaders[SHADER_NormalColorPal]);
 }
 
 // Draws the black bars at the top and bottom of the screen for letterboxed modes.
@@ -611,7 +673,7 @@ void ZDFrameBuffer::DrawPixel(int x, int y, int palcolor, uint32_t color)
 		float(x), float(y), 0, 1, color
 	};
 	EndBatch();		// Draw out any batched operations.
-	SetPixelShader(Shaders[SHADER_VertexColor].get());
+	SetPixelShader(Shaders[SHADER_VertexColor]);
 	SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	DrawPoints(1, &pt);
 }
@@ -1057,42 +1119,9 @@ void ZDFrameBuffer::GetFlash(PalEntry &rgb, int &amount)
 	amount = FlashAmount;
 }
 
-std::unique_ptr<ZDFrameBuffer::HWFrameBuffer> ZDFrameBuffer::CreateFrameBuffer(const FString &name, int width, int height)
-{
-	std::unique_ptr<HWFrameBuffer> fb(new HWFrameBuffer());
-	fb->Texture = CreateTexture(name, width, height, 1, GPUPixelFormat::RGBA16f);
-	fb->Framebuffer = GetContext()->CreateFrameBuffer({ fb->Texture->Texture }, nullptr);
-	return fb;
-}
-
-std::unique_ptr<ZDFrameBuffer::HWPixelShader> ZDFrameBuffer::CreatePixelShader(FString vertexsrc, FString fragmentsrc, const std::vector<const char *> &defines)
-{
-	std::unique_ptr<HWPixelShader> shader(new HWPixelShader());
-
-	shader->Program = GetContext()->CreateProgram();
-	for (const auto &define : defines)
-		shader->Program->SetDefine(define);
-	shader->Program->Compile(GPUShaderType::Vertex, "swshader.vp", vertexsrc.GetChars());
-	shader->Program->Compile(GPUShaderType::Fragment, "swshader.fp", fragmentsrc.GetChars());
-	shader->Program->SetAttribLocation("AttrPosition", 0);
-	shader->Program->SetAttribLocation("AttrColor0", 1);
-	shader->Program->SetAttribLocation("AttrColor1", 2);
-	shader->Program->SetAttribLocation("AttrTexCoord0", 3);
-	shader->Program->SetFragOutput("FragColor", 0);
-	shader->Program->SetUniformBlockLocation("ShaderUniforms", 0);
-	shader->Program->SetTextureLocation("Image", "ImageSampler", shader->ImageLocation);
-	shader->Program->SetTextureLocation("Palette", "PaletteSampler", shader->PaletteLocation);
-	shader->Program->SetTextureLocation("NewScreen", "NewScreenSampler", shader->NewScreenLocation);
-	shader->Program->SetTextureLocation("Burn", "BurnSampler", shader->BurnLocation);
-	shader->Program->Link("swshader");
-
-	return shader;
-}
-
 std::unique_ptr<ZDFrameBuffer::HWVertexBuffer> ZDFrameBuffer::CreateVertexBuffer(int size)
 {
 	std::unique_ptr<HWVertexBuffer> obj(new HWVertexBuffer());
-	obj->Size = size;
 	obj->Buffer = GetContext()->CreateVertexBuffer(nullptr, size);
 	obj->VertexArray = GetContext()->CreateVertexArray(
 	{
@@ -1104,18 +1133,9 @@ std::unique_ptr<ZDFrameBuffer::HWVertexBuffer> ZDFrameBuffer::CreateVertexBuffer
 	return obj;
 }
 
-std::unique_ptr<ZDFrameBuffer::HWIndexBuffer> ZDFrameBuffer::CreateIndexBuffer(int size)
-{
-	std::unique_ptr<HWIndexBuffer> obj(new HWIndexBuffer());
-	obj->Size = size;
-	obj->Buffer = GetContext()->CreateIndexBuffer(nullptr, size);
-	return obj;
-}
-
 std::unique_ptr<ZDFrameBuffer::HWTexture> ZDFrameBuffer::CreateTexture(const FString &name, int width, int height, int levels, GPUPixelFormat format)
 {
 	std::unique_ptr<HWTexture> obj(new HWTexture());
-	obj->Format = format;
 	obj->Texture = GetContext()->CreateTexture2D(width, height, levels > 1, 1, format);
 	return obj;
 }
@@ -1123,57 +1143,10 @@ std::unique_ptr<ZDFrameBuffer::HWTexture> ZDFrameBuffer::CreateTexture(const FSt
 std::unique_ptr<ZDFrameBuffer::HWTexture> ZDFrameBuffer::CopyCurrentScreen()
 {
 	std::unique_ptr<HWTexture> obj(new HWTexture());
-	obj->Format = GPUPixelFormat::RGBA16f;
-	obj->Texture = GetContext()->CreateTexture2D(Width, Height, false, 1, obj->Format, nullptr);
+	obj->Texture = GetContext()->CreateTexture2D(Width, Height, false, 1, GPUPixelFormat::RGBA16f, nullptr);
 	//GetContext()->CopyTexture(obj->Texture, FBTexture->Texture);
 	//glCopyTexImage2D(GL_TEXTURE_2D, 0, obj->Format, 0, 0, Width, Height, 0);
 	return obj;
-}
-
-void ZDFrameBuffer::SetHWPixelShader(HWPixelShader *shader)
-{
-	if (shader != CurrentShader)
-	{
-		if (shader)
-		{
-			GetContext()->SetProgram(shader->Program);
-		}
-		else
-		{
-			GetContext()->SetProgram(nullptr);
-		}
-	}
-	CurrentShader = shader;
-
-	if (ShaderConstantsModified)
-	{
-		if (!GpuShaderUniforms)
-		{
-			GpuShaderUniforms = GetContext()->CreateUniformBuffer(&ShaderConstants, sizeof(ShaderConstants));
-		}
-		else
-		{
-			GpuShaderUniforms->Upload(&ShaderConstants, sizeof(ShaderConstants));
-		}
-		ShaderConstantsModified = false;
-	}
-	GetContext()->SetUniforms(0, GpuShaderUniforms);
-}
-
-void ZDFrameBuffer::SetStreamSource(HWVertexBuffer *vertexBuffer)
-{
-	if (vertexBuffer)
-		GetContext()->SetVertexArray(vertexBuffer->VertexArray);
-	else
-		GetContext()->SetVertexArray(nullptr);
-}
-
-void ZDFrameBuffer::SetIndices(HWIndexBuffer *indexBuffer)
-{
-	if (indexBuffer)
-		GetContext()->SetIndexBuffer(indexBuffer->Buffer);
-	else
-		GetContext()->SetIndexBuffer(nullptr);
 }
 
 void ZDFrameBuffer::DrawTriangles(int count, const FBVERTEX *vertices)
@@ -1277,7 +1250,7 @@ void ZDFrameBuffer::Present()
 		FBVERTEX verts[6];
 		CalcFullscreenCoords(verts, false, 0, 0xFFFFFFFF);
 
-		SetTexture(0, OutputFB->Texture.get());
+		GetContext()->SetTexture(0, OutputTexture);
 
 		if (ViewportLinearScale())
 		{
@@ -1288,7 +1261,7 @@ void ZDFrameBuffer::Present()
 			GetContext()->SetSampler(0, SamplerClampToEdge);
 		}
 
-		SetPixelShader(Shaders[SHADER_GammaCorrection].get());
+		SetPixelShader(Shaders[SHADER_GammaCorrection]);
 		SetAlphaBlend(0);
 		EnableAlphaTest(false);
 		DrawTriangles(2, verts);
@@ -1303,162 +1276,35 @@ void ZDFrameBuffer::Present()
 	ShaderConstants.ScreenSize = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
 	ShaderConstantsModified = true;
 
-	GetContext()->SetFrameBuffer(OutputFB->Framebuffer);
+	GetContext()->SetFrameBuffer(OutputFB);
 	GetContext()->SetViewport(0, 0, GetWidth(), GetHeight());
 }
 
-void ZDFrameBuffer::SetInitialState()
+void ZDFrameBuffer::LoadShaders()
 {
-	CurPixelShader = nullptr;
-	memset(Constant, 0, sizeof(Constant));
+	const char *lumpvert = IsOpenGL() ? "shaders/glsl/swshader.vp" : "shaders/d3d/swshader.vp";
+	const char *lumpfrag = IsOpenGL() ? "shaders/glsl/swshader.fp" : "shaders/d3d/swshader.fp";
 
-	SamplerRepeat = GetContext()->CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::Repeat, GPUWrapMode::Repeat);
-	SamplerClampToEdge = GetContext()->CreateSampler(GPUSampleMode::Nearest, GPUSampleMode::Nearest, GPUMipmapMode::None, GPUWrapMode::ClampToEdge, GPUWrapMode::ClampToEdge);
-	SamplerClampToEdgeLinear = GetContext()->CreateSampler(GPUSampleMode::Linear, GPUSampleMode::Linear, GPUMipmapMode::None, GPUWrapMode::ClampToEdge, GPUWrapMode::ClampToEdge);
-
-	for (unsigned i = 0; i < countof(Texture); ++i)
-	{
-		Texture[i] = nullptr;
-		GetContext()->SetSampler(i, SamplerClampToEdge);
-	}
-
-	NeedGammaUpdate = true;
-	NeedPalUpdate = true;
-
-	ShaderConstants.Desaturation = { 0.0f, 0.0f, 0.0f, 0.0f };
-	ShaderConstants.PaletteMod = { 0.0f, 0.0f, 0.0f, 0.0f };
-	ShaderConstants.Weights = { 77 / 256.f, 143 / 256.f, 37 / 256.f, 1 }; // This constant is used for grayscaling weights (.xyz) and color inversion (.w)
-	ShaderConstants.Gamma = { 0.0f, 0.0f, 0.0f, 0.0f };
-	ShaderConstants.ScreenSize = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
-	ShaderConstantsModified = true;
-
-	CurBorderColor = 0;
-
-	// Clear to black, just in case it wasn't done already.
-	GetContext()->ClearColorBuffer(0, 0.0f, 0.0f, 0.0f, 1.0f);
-}
-
-bool ZDFrameBuffer::CreateResources()
-{
-	Atlases = nullptr;
-	if (!LoadShaders())
-		return false;
-
-	OutputFB = CreateFrameBuffer("OutputFB", GetWidth(), GetHeight());
-	if (!OutputFB)
-		return false;
-
-	GetContext()->SetFrameBuffer(OutputFB->Framebuffer);
-
-	if (!CreateFBTexture() ||
-		!CreatePaletteTexture())
-	{
-		return false;
-	}
-	if (!CreateVertexes())
-	{
-		return false;
-	}
-	return true;
-}
-
-bool ZDFrameBuffer::LoadShaders()
-{
-	int lumpvert, lumpfrag;
-
-	if (IsOpenGL())
-	{
-		lumpvert = Wads.CheckNumForFullName("shaders/glsl/swshader.vp");
-		lumpfrag = Wads.CheckNumForFullName("shaders/glsl/swshader.fp");
-	}
-	else
-	{
-		lumpvert = Wads.CheckNumForFullName("shaders/d3d/swshader.vp");
-		lumpfrag = Wads.CheckNumForFullName("shaders/d3d/swshader.fp");
-	}
-	if (lumpvert < 0 || lumpfrag < 0)
-		return false;
-
-	FString vertsource = Wads.ReadLump(lumpvert).GetString();
-	FString fragsource = Wads.ReadLump(lumpfrag).GetString();
-
-	FString shaderdir, shaderpath;
-	unsigned int i;
-
-	for (i = 0; i < NUM_SHADERS; ++i)
-	{
-		shaderpath = shaderdir;
-		Shaders[i] = CreatePixelShader(vertsource, fragsource, ShaderDefines[i]);
-		if (!Shaders[i] && i < SHADER_BurnWipe)
-		{
-			break;
-		}
-	}
-	if (i == NUM_SHADERS)
-	{ // Success!
-		return true;
-	}
-	// Failure. Release whatever managed to load (which is probably nothing.)
-	for (i = 0; i < NUM_SHADERS; ++i)
-	{
-		Shaders[i].reset();
-	}
-	return false;
-}
-
-void ZDFrameBuffer::ReleaseResources()
-{
-#ifdef WIN32
-	I_SaveWindowedPos();
-#endif
-	KillNativeTexs();
-	KillNativePals();
-	ReleaseDefaultPoolItems();
-	ScreenshotTexture.reset();
-	PaletteTexture.reset();
 	for (int i = 0; i < NUM_SHADERS; ++i)
 	{
-		Shaders[i].reset();
+		auto shader = GetContext()->CreateProgram();
+		for (const auto &define : ShaderDefines[i])
+			shader->SetDefine(define);
+		shader->Compile(GPUShaderType::Vertex, lumpvert);
+		shader->Compile(GPUShaderType::Fragment, lumpfrag);
+		shader->SetAttribLocation("AttrPosition", 0);
+		shader->SetAttribLocation("AttrColor0", 1);
+		shader->SetAttribLocation("AttrColor1", 2);
+		shader->SetAttribLocation("AttrTexCoord0", 3);
+		shader->SetFragOutput("FragColor", 0);
+		shader->SetUniformBlockLocation("ShaderUniforms", 0);
+		shader->SetTextureLocation("Image", "ImageSampler", 0);
+		shader->SetTextureLocation("Palette", "PaletteSampler", 1);
+		shader->SetTextureLocation("NewScreen", "NewScreenSampler", 2);
+		shader->SetTextureLocation("Burn", "BurnSampler", 3);
+		shader->Link("swshader");
+		Shaders[i] = shader;
 	}
-	if (ScreenWipe != nullptr)
-	{
-		delete ScreenWipe;
-		ScreenWipe = nullptr;
-	}
-	Atlas *pack, *next;
-	for (pack = Atlases; pack != nullptr; pack = next)
-	{
-		next = pack->Next;
-		delete pack;
-	}
-	GatheringWipeScreen = false;
-}
-
-void ZDFrameBuffer::ReleaseDefaultPoolItems()
-{
-	FBTexture.reset();
-	FinalWipeScreen.reset();
-	InitialWipeScreen.reset();
-	VertexBuffer.reset();
-	IndexBuffer.reset();
-	OutputFB.reset();
-}
-
-bool ZDFrameBuffer::Reset()
-{
-	ReleaseDefaultPoolItems();
-
-	OutputFB = CreateFrameBuffer("OutputFB", GetWidth(), GetHeight());
-	if (!OutputFB || !CreateFBTexture() || !CreateVertexes())
-	{
-		return false;
-	}
-
-	GetContext()->SetFrameBuffer(OutputFB->Framebuffer);
-	GetContext()->SetViewport(0, 0, GetWidth(), GetHeight());
-
-	SetInitialState();
-	return true;
 }
 
 void ZDFrameBuffer::SetGammaRamp(const GammaRamp *ramp)
@@ -1481,35 +1327,24 @@ void ZDFrameBuffer::KillNativeTexs()
 	}
 }
 
-bool ZDFrameBuffer::CreateFBTexture()
+void ZDFrameBuffer::CreateFBTexture()
 {
 	FBTexture = CreateTexture("FBTexture", GetWidth(), GetHeight(), 1, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
-	return FBTexture != nullptr;
 }
 
-bool ZDFrameBuffer::CreatePaletteTexture()
+void ZDFrameBuffer::CreatePaletteTexture()
 {
 	PaletteTexture = CreateTexture("PaletteTexture", 256, 1, 1, GPUPixelFormat::BGRA8);
-	return PaletteTexture != nullptr;
 }
 
-bool ZDFrameBuffer::CreateVertexes()
+void ZDFrameBuffer::CreateVertexes()
 {
 	VertexPos = -1;
 	IndexPos = -1;
 	QuadBatchPos = -1;
 	BatchType = BATCH_None;
 	VertexBuffer = CreateVertexBuffer(sizeof(FBVERTEX)*NUM_VERTS);
-	if (!VertexBuffer)
-	{
-		return false;
-	}
-	IndexBuffer = CreateIndexBuffer(sizeof(uint16_t)*NUM_INDEXES);
-	if (!IndexBuffer)
-	{
-		return false;
-	}
-	return true;
+	IndexBuffer = GetContext()->CreateIndexBuffer(nullptr, sizeof(uint16_t)*NUM_INDEXES);
 }
 
 void ZDFrameBuffer::CalcFullscreenCoords(FBVERTEX verts[6], bool viewarea_only, uint32_t color0, uint32_t color1) const
@@ -2077,7 +1912,7 @@ bool ZDFrameBuffer::OpenGLTex::Update()
 	assert(Box->Owner->Tex != nullptr);
 	assert(GameTex != nullptr);
 
-	GPUPixelFormat format = Box->Owner->Tex->Format;
+	GPUPixelFormat format = Box->Owner->Tex->Texture->Format();
 
 	rect = Box->Area;
 
@@ -2383,7 +2218,7 @@ void ZDFrameBuffer::BeginLineBatch()
 		return;
 	}
 	EndQuadBatch();		// Make sure all quads have been drawn first.
-	VertexData = VertexBuffer->Lock();
+	VertexData = (FBVERTEX*)VertexBuffer->Buffer->MapWriteOnly();
 	VertexPos = 0;
 	BatchType = BATCH_Lines;
 }
@@ -2394,12 +2229,12 @@ void ZDFrameBuffer::EndLineBatch()
 	{
 		return;
 	}
-	VertexBuffer->Unlock();
+	VertexBuffer->Buffer->Unmap();
 	if (VertexPos > 0)
 	{
-		SetPixelShader(Shaders[SHADER_VertexColor].get());
+		SetPixelShader(Shaders[SHADER_VertexColor]);
 		SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		SetStreamSource(VertexBuffer.get());
+		GetContext()->SetVertexArray(VertexBuffer->VertexArray);
 		DrawLineList(VertexPos / 2);
 	}
 	VertexPos = -1;
@@ -2514,8 +2349,8 @@ void ZDFrameBuffer::BeginQuadBatch()
 		return;
 	}
 	EndLineBatch();		// Make sure all lines have been drawn first.
-	VertexData = VertexBuffer->Lock();
-	IndexData = IndexBuffer->Lock();
+	VertexData = (FBVERTEX*)VertexBuffer->Buffer->MapWriteOnly();
+	IndexData = (uint16_t*)IndexBuffer->MapWriteOnly();
 	VertexPos = 0;
 	IndexPos = 0;
 	QuadBatchPos = 0;
@@ -2530,8 +2365,8 @@ void ZDFrameBuffer::EndQuadBatch()
 		return;
 	}
 	BatchType = BATCH_None;
-	VertexBuffer->Unlock();
-	IndexBuffer->Unlock();
+	VertexBuffer->Buffer->Unmap();
+	IndexBuffer->Unmap();
 	if (QuadBatchPos == 0)
 	{
 		QuadBatchPos = -1;
@@ -2539,8 +2374,8 @@ void ZDFrameBuffer::EndQuadBatch()
 		IndexPos = -1;
 		return;
 	}
-	SetStreamSource(VertexBuffer.get());
-	SetIndices(IndexBuffer.get());
+	GetContext()->SetVertexArray(VertexBuffer->VertexArray);
+	GetContext()->SetIndexBuffer(IndexBuffer);
 	bool uv_wrapped = false;
 	bool uv_should_wrap;
 	int indexpos, vertpos;
@@ -2596,26 +2431,26 @@ void ZDFrameBuffer::EndQuadBatch()
 		// Set the pixel shader
 		if (quad->ShaderNum == BQS_PalTex)
 		{
-			SetPixelShader(Shaders[(quad->Flags & BQF_InvertSource) ? SHADER_NormalColorPalInv : SHADER_NormalColorPal].get());
+			SetPixelShader(Shaders[(quad->Flags & BQF_InvertSource) ? SHADER_NormalColorPalInv : SHADER_NormalColorPal]);
 		}
 		else if (quad->ShaderNum == BQS_Plain)
 		{
-			SetPixelShader(Shaders[(quad->Flags & BQF_InvertSource) ? SHADER_NormalColorInv : SHADER_NormalColor].get());
+			SetPixelShader(Shaders[(quad->Flags & BQF_InvertSource) ? SHADER_NormalColorInv : SHADER_NormalColor]);
 		}
 		else if (quad->ShaderNum == BQS_RedToAlpha)
 		{
-			SetPixelShader(Shaders[(quad->Flags & BQF_InvertSource) ? SHADER_RedToAlphaInv : SHADER_RedToAlpha].get());
+			SetPixelShader(Shaders[(quad->Flags & BQF_InvertSource) ? SHADER_RedToAlphaInv : SHADER_RedToAlpha]);
 		}
 		else if (quad->ShaderNum == BQS_ColorOnly)
 		{
-			SetPixelShader(Shaders[SHADER_VertexColor].get());
+			SetPixelShader(Shaders[SHADER_VertexColor]);
 		}
 		else if (quad->ShaderNum == BQS_SpecialColormap)
 		{
 			int select;
 
 			select = !!(quad->Flags & BQF_Paletted);
-			SetPixelShader(Shaders[SHADER_SpecialColormap + select].get());
+			SetPixelShader(Shaders[SHADER_SpecialColormap + select]);
 		}
 		else if (quad->ShaderNum == BQS_InGameColormap)
 		{
@@ -2633,7 +2468,7 @@ void ZDFrameBuffer::EndQuadBatch()
 					ShaderConstantsModified = true;
 				}
 			}
-			SetPixelShader(Shaders[SHADER_InGameColormap + select].get());
+			SetPixelShader(Shaders[SHADER_InGameColormap + select]);
 		}
 
 		// Set the texture clamp addressing mode
@@ -2647,7 +2482,7 @@ void ZDFrameBuffer::EndQuadBatch()
 		// Set the texture
 		if (quad->Texture != nullptr)
 		{
-			SetTexture(0, quad->Texture);
+			GetContext()->SetTexture(0, quad->Texture->Texture);
 		}
 
 		// Draw the quad
@@ -2916,31 +2751,27 @@ void ZDFrameBuffer::SetAlphaBlend(int op, int srcblend, int destblend)
 	}
 }
 
-void ZDFrameBuffer::SetPixelShader(HWPixelShader *shader)
+void ZDFrameBuffer::SetPixelShader(const std::shared_ptr<GPUProgram> &shader)
 {
-	if (CurPixelShader != shader)
+	if (shader != CurrentShader)
 	{
-		CurPixelShader = shader;
-		SetHWPixelShader(shader);
+		GetContext()->SetProgram(shader);
 	}
-}
+	CurrentShader = shader;
 
-void ZDFrameBuffer::SetTexture(int tnum, HWTexture *texture)
-{
-	assert(unsigned(tnum) < countof(Texture));
-	if (texture)
+	if (ShaderConstantsModified)
 	{
-		if (Texture[tnum] != texture)
+		if (!GpuShaderUniforms)
 		{
-			Texture[tnum] = texture;
-			GetContext()->SetTexture(tnum, texture->Texture);
+			GpuShaderUniforms = GetContext()->CreateUniformBuffer(&ShaderConstants, sizeof(ShaderConstants));
 		}
+		else
+		{
+			GpuShaderUniforms->Upload(&ShaderConstants, sizeof(ShaderConstants));
+		}
+		ShaderConstantsModified = false;
 	}
-	else if (Texture[tnum] != texture)
-	{
-		Texture[tnum] = texture;
-		GetContext()->SetTexture(tnum, nullptr);
-	}
+	GetContext()->SetUniforms(0, GpuShaderUniforms);
 }
 
 void ZDFrameBuffer::SetPaletteTexture(HWTexture *texture, int count, uint32_t border_color)
@@ -2965,5 +2796,5 @@ void ZDFrameBuffer::SetPaletteTexture(HWTexture *texture, int count, uint32_t bo
 		ShaderConstantsModified = true;
 	}
 
-	SetTexture(1, texture);
+	GetContext()->SetTexture(1, texture->Texture);
 }
