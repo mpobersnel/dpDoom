@@ -163,6 +163,12 @@ void D3D11Context::SetViewport(int x, int y, int width, int height)
 
 void D3D11Context::SetProgram(const std::shared_ptr<GPUProgram> &program)
 {
+	if (mCurrentProgram == program)
+		return;
+
+	if (mCurrentProgram)
+		mCurrentProgram->ClearAll();
+
 	if (program)
 	{
 		mCurrentProgram = std::static_pointer_cast<D3D11Program>(program);
@@ -174,6 +180,8 @@ void D3D11Context::SetProgram(const std::shared_ptr<GPUProgram> &program)
 
 		if (mCurrentVertexArray)
 			DeviceContext->IASetInputLayout(mCurrentVertexArray->GetInputLayout(mCurrentProgram.get()));
+
+		mCurrentProgram->ApplyAll();
 	}
 	else
 	{
@@ -225,6 +233,32 @@ void D3D11Context::SetLineSmooth(bool enable)
 
 void D3D11Context::SetScissor(int x, int y, int width, int height)
 {
+	if (!mRasterizerStateScissorOn)
+	{
+		D3D11_RASTERIZER_DESC desc;
+		desc.FillMode = D3D11_FILL_SOLID;
+		desc.CullMode = D3D11_CULL_NONE;
+		desc.FrontCounterClockwise = FALSE;
+		desc.DepthBias = 0;
+		desc.SlopeScaledDepthBias = 0.0f;
+		desc.DepthBiasClamp = 0.0f;
+		desc.DepthClipEnable = TRUE;
+		desc.ScissorEnable = TRUE;
+		desc.MultisampleEnable = FALSE;
+		desc.AntialiasedLineEnable = TRUE;
+		HRESULT result = Device->CreateRasterizerState(&desc, mRasterizerStateScissorOn.OutputVariable());
+		if (FAILED(result))
+			I_FatalError("ID3D11DeviceContext.CreateRasterizerState failed");
+	}
+
+	DeviceContext->RSSetState(mRasterizerStateScissorOn);
+
+	D3D11_RECT rect;
+	rect.left = x;
+	rect.top = y;
+	rect.right = x + width;
+	rect.bottom = y + height;
+	DeviceContext->RSSetScissorRects(1, &rect);
 }
 
 void D3D11Context::ClearScissorBox(float r, float g, float b, float a)
@@ -233,6 +267,26 @@ void D3D11Context::ClearScissorBox(float r, float g, float b, float a)
 
 void D3D11Context::ResetScissor()
 {
+	if (!mRasterizerStateScissorOff)
+	{
+		D3D11_RASTERIZER_DESC desc;
+		desc.FillMode = D3D11_FILL_SOLID;
+		desc.CullMode = D3D11_CULL_NONE;
+		desc.FrontCounterClockwise = FALSE;
+		desc.DepthBias = 0;
+		desc.SlopeScaledDepthBias = 0.0f;
+		desc.DepthBiasClamp = 0.0f;
+		desc.DepthClipEnable = TRUE;
+		desc.ScissorEnable = FALSE;
+		desc.MultisampleEnable = FALSE;
+		desc.AntialiasedLineEnable = TRUE;
+		HRESULT result = Device->CreateRasterizerState(&desc, mRasterizerStateScissorOff.OutputVariable());
+		if (FAILED(result))
+			I_FatalError("ID3D11DeviceContext.CreateRasterizerState failed");
+	}
+
+	DeviceContext->RSSetState(mRasterizerStateScissorOff);
+	DeviceContext->RSSetScissorRects(0, nullptr);
 }
 
 void D3D11Context::SetBlend(int op, int srcblend, int destblend)

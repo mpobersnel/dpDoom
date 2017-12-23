@@ -126,7 +126,7 @@ float4 InGameColormap(float2 tex_coord, float4 color, float4 fade)
 
 float4 GammaCorrection(float2 tex_coord)
 {
-	float4 color = Image.Sample(ImageSampler, tex_coord);
+	float4 color = Image.Sample(ImageSampler, float2(tex_coord.x, 1.0 - tex_coord.y));
 	color.rgb = pow(color.rgb, Gamma.rgb);
 	return color;
 }

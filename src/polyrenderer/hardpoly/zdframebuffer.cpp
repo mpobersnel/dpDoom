@@ -1258,7 +1258,6 @@ void ZDFrameBuffer::DrawLineList(int count)
 void ZDFrameBuffer::DrawTriangleList(int minIndex, int numVertices, int startIndex, int primitiveCount)
 {
 	GetContext()->DrawIndexed(GPUDrawMode::Triangles, startIndex, primitiveCount * 3);
-	//GetContext()->DrawRangeIndexed(GPUDrawMode::Triangles, minIndex, minIndex + numVertices - 1, startIndex, primitiveCount * 3);
 }
 
 void ZDFrameBuffer::Present()

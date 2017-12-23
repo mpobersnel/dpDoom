@@ -480,6 +480,8 @@ private:
 	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
 	std::shared_ptr<D3D11Program> mCurrentProgram;
 	std::shared_ptr<D3D11VertexArray> mCurrentVertexArray;
+	ComPtr<ID3D11RasterizerState> mRasterizerStateScissorOn;
+	ComPtr<ID3D11RasterizerState> mRasterizerStateScissorOff;
 
 	std::vector<std::shared_ptr<GPUSampler>> mBoundSamplers = std::vector<std::shared_ptr<GPUSampler>>(64);
 	std::vector<std::shared_ptr<GPUTexture>> mBoundTextures = std::vector<std::shared_ptr<GPUTexture>>(64);
