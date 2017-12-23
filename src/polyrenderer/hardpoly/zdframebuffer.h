@@ -188,7 +188,6 @@ private:
 		OpenGLPal *Next;
 
 		std::unique_ptr<HWTexture> Tex;
-		uint32_t BorderColor;
 		bool DoColorSkip;
 
 		bool Update() override;
@@ -343,7 +342,7 @@ private:
 	void EnableAlphaTest(bool enabled);
 	void SetAlphaBlend(int op, int srcblend = 0, int destblend = 0);
 	void SetPixelShader(const std::shared_ptr<GPUProgram> &shader);
-	void SetPaletteTexture(HWTexture *texture, int count, uint32_t border_color);
+	void SetPaletteTexture(HWTexture *texture, int count);
 
 	static void BgraToRgba(uint32_t *dest, const uint32_t *src, int width, int height, int srcpitch);
 
@@ -354,7 +353,6 @@ private:
 	int In2D = 0;
 	bool InScene = false;
 
-	uint32_t BorderColor;
 	uint32_t FlashColor0 = 0;
 	uint32_t FlashColor1 = 0xFFFFFFFF;
 	PalEntry FlashColor = 0;
@@ -366,8 +364,6 @@ private:
 	std::shared_ptr<GPUUniformBuffer> GpuShaderUniforms;
 	std::shared_ptr<GPUProgram> CurrentShader;
 
-	uint32_t CurBorderColor;
-
 	PalEntry SourcePalette[256];
 	float Gamma = 1.0f;
 	bool NeedPalUpdate = false;
@@ -375,8 +371,6 @@ private:
 	LTRBRect BlendingRect;
 
 	bool GatheringWipeScreen = false;
-	bool AALines;
-	uint8_t BlockNum;
 	OpenGLPal *Palettes = nullptr;
 	OpenGLTex *Textures = nullptr;
 	Atlas *Atlases = nullptr;

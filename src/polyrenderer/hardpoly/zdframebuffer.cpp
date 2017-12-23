@@ -137,8 +137,6 @@ void ZDFrameBuffer::Init()
 	ShaderConstants.ScreenSize = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
 	ShaderConstantsModified = true;
 
-	CurBorderColor = 0;
-
 	// Clear to black, just in case it wasn't done already.
 	GetContext()->ClearColorBuffer(0, 0.0f, 0.0f, 0.0f, 1.0f);
 }
@@ -458,7 +456,7 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 
 	/*if (ViewFBHandle != 0)
 	{
-		SetPaletteTexture(PaletteTexture.get(), 256, BorderColor);
+		SetPaletteTexture(PaletteTexture.get(), 256);
 		memset(Constant, 0, sizeof(Constant));
 		SetAlphaBlend(0);
 		EnableAlphaTest(false);
@@ -482,7 +480,7 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 	}*/
 
 	GetContext()->SetTexture(0, FBTexture->Texture);
-	SetPaletteTexture(PaletteTexture.get(), 256, BorderColor);
+	SetPaletteTexture(PaletteTexture.get(), 256);
 	SetAlphaBlend(0);
 	EnableAlphaTest(false);
 	if (IsBgra())
@@ -1471,7 +1469,6 @@ void ZDFrameBuffer::UploadPalette()
 
 		current->Unmap();
 		GetContext()->CopyTexture(PaletteTexture->Texture, current);
-		BorderColor = ColorXRGB(SourcePalette[255].r, SourcePalette[255].g, SourcePalette[255].b);
 	}
 }
 
@@ -2053,7 +2050,6 @@ ZDFrameBuffer::OpenGLPal::OpenGLPal(FRemapTable *remap, ZDFrameBuffer *fb)
 	count = pow2count;
 	DoColorSkip = false;
 
-	BorderColor = 0;
 	RoundedPaletteSize = count;
 	Tex = fb->CreateTexture("Pal", count, 1, 1, GPUPixelFormat::BGRA8);
 	if (Tex)
@@ -2171,11 +2167,6 @@ bool ZDFrameBuffer::OpenGLPal::Update()
 		buff[i] = ColorARGB(pal[i].a, pal[i - 1].r, pal[i - 1].g, pal[i - 1].b);
 	}
 #endif
-	if (numEntries > 1)
-	{
-		i = numEntries - 1;
-		BorderColor = ColorARGB(pal[i].a, pal[i - 1].r, pal[i - 1].g, pal[i - 1].b);
-	}
 
 	current->Upload(0, 0, numEntries, 1, buff);
 	fb->GetContext()->CopyTexture(Tex->Texture, current);
@@ -2414,12 +2405,12 @@ void ZDFrameBuffer::EndQuadBatch()
 		// Set the palette (if one)
 		if ((quad->Flags & BQF_Paletted) == BQF_GamePalette)
 		{
-			SetPaletteTexture(PaletteTexture.get(), 256, BorderColor);
+			SetPaletteTexture(PaletteTexture.get(), 256);
 		}
 		else if ((quad->Flags & BQF_Paletted) == BQF_CustomPalette)
 		{
 			assert(quad->Palette != nullptr);
-			SetPaletteTexture(quad->Palette->Tex.get(), quad->Palette->RoundedPaletteSize, quad->Palette->BorderColor);
+			SetPaletteTexture(quad->Palette->Tex.get(), quad->Palette->RoundedPaletteSize);
 		}
 
 		// Set the alpha blending
@@ -2774,7 +2765,7 @@ void ZDFrameBuffer::SetPixelShader(const std::shared_ptr<GPUProgram> &shader)
 	GetContext()->SetUniforms(0, GpuShaderUniforms);
 }
 
-void ZDFrameBuffer::SetPaletteTexture(HWTexture *texture, int count, uint32_t border_color)
+void ZDFrameBuffer::SetPaletteTexture(HWTexture *texture, int count)
 {
 	// The pixel shader receives color indexes in the range [0.0,1.0].
 	// The palette texture is also addressed in the range [0.0,1.0],
