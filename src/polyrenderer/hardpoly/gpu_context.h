@@ -109,9 +109,10 @@ public:
 	virtual void Compile(GPUShaderType type, const char *name, const std::string &code) = 0;
 	virtual void SetAttribLocation(const std::string &name, int index) = 0;
 	virtual void SetFragOutput(const std::string &name, int index) = 0;
+	virtual void SetUniformBlockLocation(const std::string &name, int index) = 0;
+	virtual void SetTextureLocation(const std::string &name, int index) = 0;
+	virtual void SetTextureLocation(const std::string &texturename, const std::string &samplername, int index) = 0;
 	virtual void Link(const std::string &name) = 0;
-	virtual void SetUniformBlock(const std::string &name, int index) = 0;
-	virtual int GetUniformLocation(const char *name) = 0;
 
 protected:
 	std::map<std::string, std::string> mDefines;
@@ -253,12 +254,10 @@ public:
 	virtual void SetViewport(int x, int y, int width, int height) = 0;
 
 	virtual void SetProgram(const std::shared_ptr<GPUProgram> &program) = 0;
-	virtual void SetUniform1i(int location, int value) = 0;
 
 	virtual void SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler) = 0;
 	virtual void SetTexture(int index, const std::shared_ptr<GPUTexture> &texture) = 0;
 	virtual void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer) = 0;
-	virtual void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size) = 0;
 	virtual void SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage) = 0;
 
 	virtual void SetClipDistance(int index, bool enable) = 0;

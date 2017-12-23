@@ -189,12 +189,6 @@ void GLContext::SetProgram(const std::shared_ptr<GPUProgram> &program)
 		glUseProgram(0);
 }
 
-void GLContext::SetUniform1i(int location, int value)
-{
-	if (location != -1)
-		glUniform1i(location, value);
-}
-
 void GLContext::SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler)
 {
 	if (sampler)
@@ -216,14 +210,6 @@ void GLContext::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &
 {
 	if (buffer)
 		glBindBufferBase(GL_UNIFORM_BUFFER, index, std::static_pointer_cast<GLUniformBuffer>(buffer)->Handle());
-	else
-		glBindBufferBase(GL_UNIFORM_BUFFER, index, 0);
-}
-
-void GLContext::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size)
-{
-	if (buffer)
-		glBindBufferRange(GL_UNIFORM_BUFFER, index, std::static_pointer_cast<GLUniformBuffer>(buffer)->Handle(), offset, size);
 	else
 		glBindBufferBase(GL_UNIFORM_BUFFER, index, 0);
 }
@@ -609,6 +595,7 @@ void GLProgram::SetFragOutput(const std::string &name, int index)
 	glBindFragDataLocation(mHandle, index, name.c_str());
 }
 
+/*
 void GLProgram::SetUniformBlock(const std::string &name, int index)
 {
 	GLuint uniformBlockIndex = glGetUniformBlockIndex(mHandle, name.c_str());
@@ -619,6 +606,22 @@ void GLProgram::SetUniformBlock(const std::string &name, int index)
 int GLProgram::GetUniformLocation(const char *name)
 {
 	return glGetUniformLocation(mHandle, name);
+}
+*/
+
+void GLProgram::SetUniformBlockLocation(const std::string &name, int index)
+{
+	mUniformBlockBindings[name] = index;
+}
+
+void GLProgram::SetTextureLocation(const std::string &name, int index)
+{
+	mUniform1iBindings[name] = index;
+}
+
+void GLProgram::SetTextureLocation(const std::string &texturename, const std::string &samplername, int index)
+{
+	mUniform1iBindings[texturename] = index;
 }
 
 void GLProgram::Link(const std::string &name)
@@ -631,6 +634,24 @@ void GLProgram::Link(const std::string &name)
 	{
 		I_FatalError("Link Shader '%s':\n%s\n", name.c_str(), GetProgramInfoLog().c_str());
 	}
+
+	for (const auto &it : mUniform1iBindings)
+	{
+		GLuint uniformBlockIndex = glGetUniformBlockIndex(mHandle, it.first.c_str());
+		if (uniformBlockIndex != GL_INVALID_INDEX)
+			glUniformBlockBinding(mHandle, uniformBlockIndex, it.second);
+	}
+
+	GLint oldProgram = 0;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &oldProgram);
+	glUseProgram(mHandle);
+	for (const auto &it : mUniform1iBindings)
+	{
+		int location = glGetUniformLocation(mHandle, it.first.c_str());
+		if (location != -1)
+			glUniform1i(location, it.second);
+	}
+	glUseProgram(oldProgram);
 }
 
 std::string GLProgram::GetShaderInfoLog(int handle) const

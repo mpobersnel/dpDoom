@@ -133,9 +133,10 @@ public:
 	void Compile(GPUShaderType type, const char *name, const std::string &code) override;
 	void SetAttribLocation(const std::string &name, int index) override;
 	void SetFragOutput(const std::string &name, int index) override;
+	void SetUniformBlockLocation(const std::string &name, int index) override;
+	void SetTextureLocation(const std::string &name, int index) override;
+	void SetTextureLocation(const std::string &texturename, const std::string &samplername, int index) override;
 	void Link(const std::string &name) override;
-	void SetUniformBlock(const std::string &name, int index) override;
-	int GetUniformLocation(const char *name) override;
 
 private:
 	GLProgram(const GLProgram &) = delete;
@@ -147,6 +148,8 @@ private:
 
 	int mHandle = 0;
 	std::map<int, int> mShaderHandle;
+	std::map<std::string, int> mUniform1iBindings;
+	std::map<std::string, int> mUniformBlockBindings;
 };
 
 class GLSampler : public GPUSampler
@@ -273,12 +276,10 @@ public:
 	void SetViewport(int x, int y, int width, int height) override;
 
 	void SetProgram(const std::shared_ptr<GPUProgram> &program) override;
-	void SetUniform1i(int location, int value) override;
 
 	void SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler) override;
 	void SetTexture(int index, const std::shared_ptr<GPUTexture> &texture) override;
 	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer) override;
-	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size) override;
 	void SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage) override;
 
 	void SetClipDistance(int index, bool enable) override;

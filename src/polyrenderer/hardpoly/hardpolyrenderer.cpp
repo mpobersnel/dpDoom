@@ -353,10 +353,6 @@ void HardpolyRenderer::DrawRect(PolyRenderThread *thread, const RectDrawArgs &ar
 	context->SetVertexArray(mScreenQuad);
 	context->SetProgram(mRectProgram);
 
-	context->SetUniform1i(mRectProgram->GetUniformLocation("DiffuseTexture"), 0);
-	context->SetUniform1i(mRectProgram->GetUniformLocation("BasecolormapTexture"), 1);
-	context->SetUniform1i(mRectProgram->GetUniformLocation("TranslationTexture"), 2);
-
 	context->SetUniforms(0, mMatrixUniforms);
 	context->SetUniforms(1, mRectUniforms);
 	context->SetSampler(0, mSamplerNearest);
@@ -388,11 +384,6 @@ void HardpolyRenderer::RenderBatch(DrawBatch *batch)
 	context->SetProgram(mOpaqueProgram);
 	context->SetUniforms(0, mMatrixUniforms);
 	//context->SetUniforms(1, batch->FaceUniforms);
-
-	context->SetUniform1i(mRectProgram->GetUniformLocation("FaceUniformsTexture"), 0);
-	context->SetUniform1i(mRectProgram->GetUniformLocation("DiffuseTexture"), 1);
-	context->SetUniform1i(mRectProgram->GetUniformLocation("BasecolormapTexture"), 2);
-	context->SetUniform1i(mRectProgram->GetUniformLocation("TranslationTexture"), 3);
 
 	//glEnable(GL_STENCIL_TEST);
 	//glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
@@ -695,8 +686,12 @@ void HardpolyRenderer::CompileShaders()
 		mOpaqueProgram->SetAttribLocation("Position", 0);
 		mOpaqueProgram->SetAttribLocation("UV", 1);
 		mOpaqueProgram->SetFragOutput("FragColor", 0);
+		mOpaqueProgram->SetTextureLocation("FaceUniformsTexture", 0);
+		mOpaqueProgram->SetTextureLocation("DiffuseTexture", "DiffuseSampler", 1);
+		mOpaqueProgram->SetTextureLocation("BasecolormapTexture", "BasecolormapSampler", 2);
+		mOpaqueProgram->SetTextureLocation("TranslationTexture", "TranslationSampler", 3);
+		mOpaqueProgram->SetUniformBlockLocation("FrameUniforms", 0);
 		mOpaqueProgram->Link("program");
-		mOpaqueProgram->SetUniformBlock("FrameUniforms", 0);
 	}
 
 	if (!mRectProgram)
@@ -708,9 +703,12 @@ void HardpolyRenderer::CompileShaders()
 		mRectProgram->SetAttribLocation("Position", 0);
 		mRectProgram->SetAttribLocation("UV", 1);
 		mRectProgram->SetFragOutput("FragColor", 0);
+		mRectProgram->SetTextureLocation("DiffuseTexture", "DiffuseSampler", 0);
+		mRectProgram->SetTextureLocation("BasecolormapTexture", "BasecolormapSampler", 1);
+		mRectProgram->SetTextureLocation("TranslationTexture", "TranslationSampler", 2);
+		mRectProgram->SetUniformBlockLocation("FrameUniforms", 0);
+		mRectProgram->SetUniformBlockLocation("RectUniforms", 1);
 		mRectProgram->Link("program");
-		mRectProgram->SetUniformBlock("FrameUniforms", 0);
-		mRectProgram->SetUniformBlock("RectUniforms", 1);
 	}
 
 	if (!mStencilProgram)

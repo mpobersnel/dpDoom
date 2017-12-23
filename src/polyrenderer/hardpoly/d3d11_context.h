@@ -28,6 +28,8 @@
 #include <d3d11.h>
 #include <D3Dcompiler.h>
 
+#include <set>
+
 template <typename Type>
 class ComPtr
 {
@@ -183,11 +185,37 @@ private:
 	D3D11_MAPPED_SUBRESOURCE mMappedSubresource;
 };
 
+class D3D11ResourceBinding
+{
+public:
+	std::map<std::string, int> Locations;
+	std::vector<int> BindingsToLocations = std::vector<int>(64, -1);
+	std::set<int> Bindings;
+
+	void SetBinding(const std::string &name, int index)
+	{
+		auto locIt = Locations.find(name);
+		if (locIt != Locations.end())
+		{
+			int location = locIt->second;
+			BindingsToLocations[index] = location;
+			Bindings.insert(index);
+		}
+	}
+};
+
 class D3D11Shader
 {
 public:
 	D3D11Shader(D3D11Context *context, GPUShaderType type, const char *name, const std::string &source);
 	D3D11Shader(D3D11Context *context, GPUShaderType type, const char *name, const void *bytecode, int bytecodeSize);
+
+	void ApplyAll(D3D11Context *context);
+	void ApplySampler(D3D11Context *context, int index);
+	void ApplyTexture(D3D11Context *context, int index);
+	void ApplyUniforms(D3D11Context *context, int index);
+	void ApplyStorage(D3D11Context *context, int index);
+	void ClearAll(D3D11Context *context);
 
 	ID3D11VertexShader *HandleVertex() { return static_cast<ID3D11VertexShader*>(mHandle.Get()); }
 	ID3D11PixelShader *HandlePixel() { return static_cast<ID3D11PixelShader*>(mHandle.Get()); }
@@ -196,14 +224,15 @@ public:
 	ID3D11HullShader *HandleHull() { return static_cast<ID3D11HullShader*>(mHandle.Get()); }
 	ID3D11ComputeShader *HandleCompute() { return static_cast<ID3D11ComputeShader*>(mHandle.Get()); }
 
+	GPUShaderType Type;
 	std::vector<uint8_t> Bytecode;
 
-	std::map<std::string, int> SamplerLocations;
-	std::map<std::string, int> TextureLocations;
-	std::map<std::string, int> ImageLocations;
-	std::map<std::string, int> UniformBufferLocations;
-	std::map<std::string, int> StorageBufferSrvLocations;
-	std::map<std::string, int> StorageBufferUavLocations;
+	D3D11ResourceBinding Sampler;
+	D3D11ResourceBinding Texture;
+	D3D11ResourceBinding Image;
+	D3D11ResourceBinding UniformBuffer;
+	D3D11ResourceBinding StorageBufferSrv;
+	D3D11ResourceBinding StorageBufferUav;
 
 private:
 	D3D11Shader(const D3D11Shader &) = delete;
@@ -224,9 +253,17 @@ public:
 	void Compile(GPUShaderType type, const char *name, const std::string &code) override;
 	void SetAttribLocation(const std::string &name, int index) override;
 	void SetFragOutput(const std::string &name, int index) override;
+	void SetUniformBlockLocation(const std::string &name, int index) override;
+	void SetTextureLocation(const std::string &name, int index) override;
+	void SetTextureLocation(const std::string &texturename, const std::string &samplername, int index) override;
 	void Link(const std::string &name) override;
-	void SetUniformBlock(const std::string &name, int index) override;
-	int GetUniformLocation(const char *name) override;
+
+	void ApplyAll();
+	void ApplySampler(int index);
+	void ApplyTexture(int index);
+	void ApplyUniforms(int index);
+	void ApplyStorage(int index);
+	void ClearAll();
 
 	struct AttributeBinding
 	{
@@ -278,6 +315,7 @@ public:
 	void Upload(const void *data, int size) override;
 
 	ID3D11Buffer *Handle() const { return mHandle.Get(); }
+	ID3D11ShaderResourceView *SRVHandle() const { return mSRVHandle.Get(); }
 
 private:
 	D3D11StorageBuffer(const D3D11StorageBuffer &) = delete;
@@ -286,6 +324,7 @@ private:
 	D3D11Context *mContext;
 	int mSize;
 	ComPtr<ID3D11Buffer> mHandle;
+	ComPtr<ID3D11ShaderResourceView> mSRVHandle;
 };
 
 class D3D11UniformBuffer : public GPUUniformBuffer
@@ -383,12 +422,10 @@ public:
 	void SetViewport(int x, int y, int width, int height) override;
 
 	void SetProgram(const std::shared_ptr<GPUProgram> &program) override;
-	void SetUniform1i(int location, int value) override;
 
 	void SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler) override;
 	void SetTexture(int index, const std::shared_ptr<GPUTexture> &texture) override;
 	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer) override;
-	void SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size) override;
 	void SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage) override;
 
 	void SetClipDistance(int index, bool enable) override;
@@ -424,6 +461,11 @@ public:
 	void ClearStencilBuffer(int stencil) override;
 	void ClearDepthStencilBuffer(float depth, int stencil) override;
 
+	D3D11Sampler *GetSampler(int index) const { return static_cast<D3D11Sampler*>(mBoundSamplers[index].get()); }
+	D3D11Texture2D *GetTexture2D(int index) const { return static_cast<D3D11Texture2D*>(mBoundTextures[index].get()); }
+	D3D11UniformBuffer *GetUniforms(int index) const { return static_cast<D3D11UniformBuffer*>(mBoundUniformBuffers[index].get()); }
+	D3D11StorageBuffer *GetStorage(int index) const { return static_cast<D3D11StorageBuffer*>(mBoundStorageBuffers[index].get()); }
+
 	ComPtr<ID3D11Device> Device;
 	ComPtr<ID3D11DeviceContext> DeviceContext;
 	ComPtr<IDXGISwapChain> SwapChain;
@@ -438,4 +480,9 @@ private:
 	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
 	std::shared_ptr<D3D11Program> mCurrentProgram;
 	std::shared_ptr<D3D11VertexArray> mCurrentVertexArray;
+
+	std::vector<std::shared_ptr<GPUSampler>> mBoundSamplers = std::vector<std::shared_ptr<GPUSampler>>(64);
+	std::vector<std::shared_ptr<GPUTexture>> mBoundTextures = std::vector<std::shared_ptr<GPUTexture>>(64);
+	std::vector<std::shared_ptr<GPUUniformBuffer>> mBoundUniformBuffers = std::vector<std::shared_ptr<GPUUniformBuffer>>(64);
+	std::vector<std::shared_ptr<GPUStorageBuffer>> mBoundStorageBuffers = std::vector<std::shared_ptr<GPUStorageBuffer>>(64);
 };

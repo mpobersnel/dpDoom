@@ -183,69 +183,36 @@ void D3D11Context::SetProgram(const std::shared_ptr<GPUProgram> &program)
 	}
 }
 
-void D3D11Context::SetUniform1i(int location, int value)
-{
-}
-
 void D3D11Context::SetSampler(int index, const std::shared_ptr<GPUSampler> &sampler)
 {
-	if (sampler)
-	{
-		D3D11Sampler * d3dsampler = static_cast<D3D11Sampler*>(sampler.get());
-		ID3D11SamplerState *samplers[] = { d3dsampler->Handle() };
-		DeviceContext->VSSetSamplers(index, 1, samplers);
-		DeviceContext->PSSetSamplers(index, 1, samplers);
-	}
-	else
-	{
-		DeviceContext->VSSetSamplers(index, 1, nullptr);
-		DeviceContext->PSSetSamplers(index, 1, nullptr);
-	}
+	mBoundSamplers[index] = sampler;
+
+	if (mCurrentProgram)
+		mCurrentProgram->ApplySampler(index);
 }
 
 void D3D11Context::SetTexture(int index, const std::shared_ptr<GPUTexture> &texture)
 {
-	if (texture)
-	{
-		D3D11Texture2D *d3dtex = static_cast<D3D11Texture2D*>(texture.get());
-		ID3D11ShaderResourceView *srvs[] = { d3dtex->SRVHandle() };
-		DeviceContext->VSSetShaderResources(index, 1, srvs);
-		DeviceContext->PSSetShaderResources(index, 1, srvs);
-	}
-	else
-	{
-		DeviceContext->VSSetShaderResources(index, 1, nullptr);
-		DeviceContext->PSSetShaderResources(index, 1, nullptr);
-	}
+	mBoundTextures[index] = texture;
+
+	if (mCurrentProgram)
+		mCurrentProgram->ApplyTexture(index);
 }
 
 void D3D11Context::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer)
 {
-	if (buffer)
-	{
-		D3D11UniformBuffer *d3dbuffer = static_cast<D3D11UniformBuffer*>(buffer.get());
-		ID3D11Buffer *buffers[] = { d3dbuffer->Handle() };
-		DeviceContext->VSSetConstantBuffers(index, 1, buffers);
-		DeviceContext->PSSetConstantBuffers(index, 1, buffers);
-	}
-	else
-	{
-		DeviceContext->VSSetConstantBuffers(index, 1, nullptr);
-		DeviceContext->PSSetConstantBuffers(index, 1, nullptr);
-	}
+	mBoundUniformBuffers[index] = buffer;
+
+	if (mCurrentProgram)
+		mCurrentProgram->ApplyUniforms(index);
 }
 
-void D3D11Context::SetUniforms(int index, const std::shared_ptr<GPUUniformBuffer> &buffer, ptrdiff_t offset, size_t size)
+void D3D11Context::SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &storage)
 {
-	I_FatalError("D3D11Context::SetUniforms with an offset is not implemented");
-}
+	mBoundStorageBuffers[index] = storage;
 
-void D3D11Context::SetStorage(int index, const std::shared_ptr<GPUStorageBuffer> &buffer)
-{
-	//DeviceContext->CSSetUnorderedAccessViews
-	//DeviceContext->OMSetRenderTargetsAndUnorderedAccessViews
-
-	I_FatalError("D3D11Context::SetStorage is not implemented");
+	if (mCurrentProgram)
+		mCurrentProgram->ApplyStorage(index);
 }
 
 void D3D11Context::SetClipDistance(int index, bool enable)
@@ -554,7 +521,7 @@ static std::string GetShaderModel(D3D_FEATURE_LEVEL featureLevel, GPUShaderType 
 	return prefix + std::to_string(major) + "_" + std::to_string(minor);
 }
 
-D3D11Shader::D3D11Shader(D3D11Context *context, GPUShaderType type, const char *name, const std::string &source)
+D3D11Shader::D3D11Shader(D3D11Context *context, GPUShaderType type, const char *name, const std::string &source) : Type(type)
 {
 	std::string entryPoint = "main";
 	std::string shaderModel = GetShaderModel(context->FeatureLevel, type);
@@ -591,7 +558,7 @@ D3D11Shader::D3D11Shader(D3D11Context *context, GPUShaderType type, const char *
 	CreateShader(context, type);
 }
 
-D3D11Shader::D3D11Shader(D3D11Context *context, GPUShaderType type, const char *name, const void *bytecode, int bytecodeSize)
+D3D11Shader::D3D11Shader(D3D11Context *context, GPUShaderType type, const char *name, const void *bytecode, int bytecodeSize) : Type(type)
 {
 	Bytecode.resize(bytecodeSize);
 	memcpy(Bytecode.data(), bytecode, Bytecode.size());
@@ -622,12 +589,12 @@ void D3D11Shader::CreateShader(D3D11Context *context, GPUShaderType type)
 
 void D3D11Shader::FindLocations()
 {
-	SamplerLocations.clear();
-	TextureLocations.clear();
-	ImageLocations.clear();
-	UniformBufferLocations.clear();
-	StorageBufferSrvLocations.clear();
-	StorageBufferUavLocations.clear();
+	Sampler.Locations.clear();
+	Texture.Locations.clear();
+	Image.Locations.clear();
+	UniformBuffer.Locations.clear();
+	StorageBufferSrv.Locations.clear();
+	StorageBufferUav.Locations.clear();
 
 	ComPtr<ID3D11ShaderReflection> reflect;
 	HRESULT result = D3DReflect(Bytecode.data(), Bytecode.size(), IID_ID3D11ShaderReflection, (void**)reflect.OutputVariable());
@@ -649,7 +616,7 @@ void D3D11Shader::FindLocations()
 		switch (binding.Type)
 		{
 		case D3D_SIT_CBUFFER: // constant buffer
-			UniformBufferLocations[binding.Name] = binding.BindPoint;
+			UniformBuffer.Locations[binding.Name] = binding.BindPoint;
 			break;
 
 		case D3D_SIT_TBUFFER: // texture buffer
@@ -657,15 +624,15 @@ void D3D11Shader::FindLocations()
 			break;
 
 		case D3D_SIT_TEXTURE: // texture
-			TextureLocations[binding.Name] = binding.BindPoint;
+			Texture.Locations[binding.Name] = binding.BindPoint;
 			break;
 
 		case D3D_SIT_SAMPLER: // sampler
-			SamplerLocations[binding.Name] = binding.BindPoint;
+			Sampler.Locations[binding.Name] = binding.BindPoint;
 			break;
 
 		case D3D_SIT_UAV_RWTYPED: // read-and-write buffer
-			ImageLocations[binding.Name] = binding.BindPoint;
+			Image.Locations[binding.Name] = binding.BindPoint;
 			break;
 
 		case D3D_SIT_UAV_RWSTRUCTURED: // read-and-write structured buffer
@@ -673,14 +640,119 @@ void D3D11Shader::FindLocations()
 		case D3D_SIT_UAV_APPEND_STRUCTURED: // append-structured buffer
 		case D3D_SIT_UAV_CONSUME_STRUCTURED: // consume-structured buffer
 		case D3D_SIT_UAV_RWSTRUCTURED_WITH_COUNTER: // read-and-write structured buffer that uses the built-in counter to append or consume
-			StorageBufferUavLocations[binding.Name] = binding.BindPoint;
+			StorageBufferUav.Locations[binding.Name] = binding.BindPoint;
 			break;
 
 		case D3D_SIT_STRUCTURED: // structured buffer
 		case D3D_SIT_BYTEADDRESS: // byte-address buffer
-			StorageBufferSrvLocations[binding.Name] = binding.BindPoint;
+			StorageBufferSrv.Locations[binding.Name] = binding.BindPoint;
 			break;
 		}
+	}
+}
+
+void D3D11Shader::ApplyAll(D3D11Context *context)
+{
+	for (int index : Sampler.Bindings)
+		ApplySampler(context, index);
+	for (int index : Texture.Bindings)
+		ApplyTexture(context, index);
+	for (int index : UniformBuffer.Bindings)
+		ApplyUniforms(context, index);
+	for (int index : StorageBufferSrv.Bindings)
+		ApplyStorage(context, index);
+}
+
+void D3D11Shader::ApplySampler(D3D11Context *context, int index)
+{
+	int location = Sampler.BindingsToLocations[index];
+	if (location == -1)
+		return;
+	D3D11Sampler *d3dsampler = context->GetSampler(index);
+	ID3D11SamplerState *samplers[] = { d3dsampler ? d3dsampler->Handle() : nullptr };
+	switch (Type)
+	{
+	default: break;
+	case GPUShaderType::Vertex: context->DeviceContext->VSSetSamplers(location, 1, samplers);
+	case GPUShaderType::Fragment: context->DeviceContext->PSSetSamplers(location, 1, samplers);
+	}
+}
+
+void D3D11Shader::ApplyTexture(D3D11Context *context, int index)
+{
+	int location = Texture.BindingsToLocations[index];
+	if (location == -1)
+		return;
+	D3D11Texture2D *d3dtex = context->GetTexture2D(index);
+	ID3D11ShaderResourceView *srvs[] = { d3dtex ? d3dtex->SRVHandle() : nullptr };
+	switch (Type)
+	{
+	default: break;
+	case GPUShaderType::Vertex: context->DeviceContext->VSSetShaderResources(location, 1, srvs);
+	case GPUShaderType::Fragment: context->DeviceContext->PSSetShaderResources(location, 1, srvs);
+	}
+}
+
+void D3D11Shader::ApplyUniforms(D3D11Context *context, int index)
+{
+	int location = UniformBuffer.BindingsToLocations[index];
+	if (location == -1)
+		return;
+	D3D11UniformBuffer *d3dbuffer = context->GetUniforms(index);
+	ID3D11Buffer *buffers[] = { d3dbuffer ? d3dbuffer->Handle() : nullptr };
+	switch (Type)
+	{
+	default: break;
+	case GPUShaderType::Vertex: context->DeviceContext->VSSetConstantBuffers(location, 1, buffers);
+	case GPUShaderType::Fragment: context->DeviceContext->PSSetConstantBuffers(location, 1, buffers);
+	}
+}
+
+void D3D11Shader::ApplyStorage(D3D11Context *context, int index)
+{
+	int location = StorageBufferSrv.BindingsToLocations[index];
+	if (location == -1)
+		return;
+	D3D11StorageBuffer *d3dstorage = context->GetStorage(index);
+	ID3D11ShaderResourceView *srvs[] = { d3dstorage ? d3dstorage->SRVHandle() : nullptr };
+	switch (Type)
+	{
+	default: break;
+	case GPUShaderType::Vertex: context->DeviceContext->VSSetShaderResources(location, 1, srvs);
+	case GPUShaderType::Fragment: context->DeviceContext->PSSetShaderResources(location, 1, srvs);
+	}
+}
+
+void D3D11Shader::ClearAll(D3D11Context *context)
+{
+	ID3D11SamplerState *samplers[] = { nullptr };
+	ID3D11ShaderResourceView *srvs[] = { nullptr };
+	ID3D11Buffer *buffers[] = { nullptr };
+
+	switch (Type)
+	{
+	default:
+		break;
+	case GPUShaderType::Vertex:
+		for (int index : Sampler.Bindings)
+			context->DeviceContext->VSSetSamplers(Sampler.BindingsToLocations[index], 1, samplers);
+		for (int index : Texture.Bindings)
+			context->DeviceContext->VSSetShaderResources(Texture.BindingsToLocations[index], 1, srvs);
+		for (int index : UniformBuffer.Bindings)
+			context->DeviceContext->VSSetConstantBuffers(UniformBuffer.BindingsToLocations[index], 1, buffers);
+		for (int index : StorageBufferSrv.Bindings)
+			context->DeviceContext->VSSetShaderResources(StorageBufferSrv.BindingsToLocations[index], 1, srvs);
+		break;
+	case GPUShaderType::Fragment:
+		for (int index : Sampler.Bindings)
+			context->DeviceContext->PSSetSamplers(Sampler.BindingsToLocations[index], 1, samplers);
+		for (int index : Texture.Bindings)
+			context->DeviceContext->PSSetShaderResources(Texture.BindingsToLocations[index], 1, srvs);
+		for (int index : UniformBuffer.Bindings)
+			context->DeviceContext->PSSetConstantBuffers(UniformBuffer.BindingsToLocations[index], 1, buffers);
+		for (int index : StorageBufferSrv.Bindings)
+			context->DeviceContext->PSSetShaderResources(StorageBufferSrv.BindingsToLocations[index], 1, srvs);
+		break;
 	}
 }
 
@@ -734,17 +806,72 @@ void D3D11Program::SetFragOutput(const std::string &name, int index)
 	// This isn't relevant for Direct3D.  The output semantic names (SV_TargetN) have hardcoded locations in HLSL.
 }
 
-void D3D11Program::SetUniformBlock(const std::string &name, int index)
+void D3D11Program::SetUniformBlockLocation(const std::string &name, int index)
 {
+	for (const auto &it : ShaderHandle)
+	{
+		const std::unique_ptr<D3D11Shader> &shader = it.second;
+		shader->UniformBuffer.SetBinding(name, index);
+	}
 }
 
-int D3D11Program::GetUniformLocation(const char *name)
+void D3D11Program::SetTextureLocation(const std::string &name, int index)
 {
-	return -1;
+	for (const auto &it : ShaderHandle)
+	{
+		const std::unique_ptr<D3D11Shader> &shader = it.second;
+		shader->Texture.SetBinding(name, index);
+	}
+}
+
+void D3D11Program::SetTextureLocation(const std::string &texturename, const std::string &samplername, int index)
+{
+	for (const auto &it : ShaderHandle)
+	{
+		const std::unique_ptr<D3D11Shader> &shader = it.second;
+		shader->Texture.SetBinding(texturename, index);
+		shader->Sampler.SetBinding(samplername, index);
+	}
 }
 
 void D3D11Program::Link(const std::string &name)
 {
+}
+
+void D3D11Program::ApplyAll()
+{
+	for (const auto &it : ShaderHandle)
+		it.second->ApplyAll(mContext);
+}
+
+void D3D11Program::ApplySampler(int index)
+{
+	for (const auto &it : ShaderHandle)
+		it.second->ApplySampler(mContext, index);
+}
+
+void D3D11Program::ApplyTexture(int index)
+{
+	for (const auto &it : ShaderHandle)
+		it.second->ApplyTexture(mContext, index);
+}
+
+void D3D11Program::ApplyUniforms(int index)
+{
+	for (const auto &it : ShaderHandle)
+		it.second->ApplyUniforms(mContext, index);
+}
+
+void D3D11Program::ApplyStorage(int index)
+{
+	for (const auto &it : ShaderHandle)
+		it.second->ApplyStorage(mContext, index);
+}
+
+void D3D11Program::ClearAll()
+{
+	for (const auto &it : ShaderHandle)
+		it.second->ClearAll(mContext);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -826,6 +953,10 @@ D3D11StorageBuffer::D3D11StorageBuffer(D3D11Context *context, const void *data, 
 	HRESULT result = context->Device->CreateBuffer(&desc, data ? &resource_data : nullptr, mHandle.OutputVariable());
 	if (FAILED(result))
 		I_FatalError("ID3D11Device.CreateBuffer(storage) failed");
+
+	result = context->Device->CreateShaderResourceView(mHandle, nullptr, mSRVHandle.OutputVariable());
+	if (FAILED(result))
+		I_FatalError("ID3D11Device.CreateShaderResourceView(storage) failed");
 }
 
 void D3D11StorageBuffer::Upload(const void *data, int size)

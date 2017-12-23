@@ -1079,12 +1079,12 @@ std::unique_ptr<ZDFrameBuffer::HWPixelShader> ZDFrameBuffer::CreatePixelShader(F
 	shader->Program->SetAttribLocation("AttrColor1", 2);
 	shader->Program->SetAttribLocation("AttrTexCoord0", 3);
 	shader->Program->SetFragOutput("FragColor", 0);
+	shader->Program->SetUniformBlockLocation("ShaderUniforms", 0);
+	shader->Program->SetTextureLocation("Image", "ImageSampler", shader->ImageLocation);
+	shader->Program->SetTextureLocation("Palette", "PaletteSampler", shader->PaletteLocation);
+	shader->Program->SetTextureLocation("NewScreen", "NewScreenSampler", shader->NewScreenLocation);
+	shader->Program->SetTextureLocation("Burn", "BurnSampler", shader->BurnLocation);
 	shader->Program->Link("swshader");
-
-	shader->ImageLocation = shader->Program->GetUniformLocation("Image");
-	shader->PaletteLocation = shader->Program->GetUniformLocation("Palette");
-	shader->NewScreenLocation = shader->Program->GetUniformLocation("NewScreen");
-	shader->BurnLocation = shader->Program->GetUniformLocation("Burn");
 
 	return shader;
 }
@@ -1394,13 +1394,6 @@ bool ZDFrameBuffer::LoadShaders()
 		{
 			break;
 		}
-
-		GetContext()->SetProgram(Shaders[i]->Program);
-		if (Shaders[i]->ImageLocation != -1) GetContext()->SetUniform1i(Shaders[i]->ImageLocation, 0);
-		if (Shaders[i]->PaletteLocation != -1) GetContext()->SetUniform1i(Shaders[i]->PaletteLocation, 1);
-		if (Shaders[i]->NewScreenLocation != -1) GetContext()->SetUniform1i(Shaders[i]->NewScreenLocation, 0);
-		if (Shaders[i]->BurnLocation != -1) GetContext()->SetUniform1i(Shaders[i]->BurnLocation, 1);
-		GetContext()->SetProgram(nullptr);
 	}
 	if (i == NUM_SHADERS)
 	{ // Success!

@@ -133,10 +133,10 @@ private:
 	public:
 		std::shared_ptr<GPUProgram> Program;
 
-		int ImageLocation = -1;
-		int PaletteLocation = -1;
-		int NewScreenLocation = -1;
-		int BurnLocation = -1;
+		int ImageLocation = 0;
+		int PaletteLocation = 1;
+		int NewScreenLocation = 2;
+		int BurnLocation = 3;
 	};
 
 	// The number of points for the vertex buffer.
