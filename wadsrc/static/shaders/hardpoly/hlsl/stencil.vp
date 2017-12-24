@@ -1,0 +1,18 @@
+
+struct VertexIn
+{
+	float4 Position : Position;
+	float4 Texcoord : Texcoord;
+};
+
+struct VertexOut
+{
+	float4 ClipPosition : SV_Position;
+};
+
+VertexOut main(VertexIn input)
+{
+	VertexOut output;
+	output.ClipPosition = input.Position;
+	return output;
+}

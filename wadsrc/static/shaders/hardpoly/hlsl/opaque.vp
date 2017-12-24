@@ -1,0 +1,60 @@
+
+cbuffer FrameUniforms
+{
+	float4x4 WorldToView;
+	float4x4 ViewToProjection;
+	float GlobVis;
+};
+
+Texture2D FaceUniformsTexture;
+
+struct VertexIn
+{
+	float4 Position : Position;
+	float4 Texcoord : Texcoord;
+};
+
+struct VertexOut
+{
+	float4 ClipPosition : SV_Position;
+	float2 UV : PixelUV;
+	float3 PositionInView : PixelPositionInView;
+	float Light : PixelLight;
+	float AlphaTest : PixelAlphaTest;
+	int Mode : PixelMode;
+	float4 FillColor : PixelFillColor;
+
+	float3 ClipDistance : SV_ClipDistance0;
+};
+
+float4 GetFaceUniform(uint faceIndex, uint offset)
+{
+	uint pos = faceIndex * 5 + offset;
+	return FaceUniformsTexture.Load(uint3(pos % 255, pos / 255, 0));
+}
+
+VertexOut main(VertexIn input)
+{
+	VertexOut output;
+
+	uint faceIndex = uint(input.Position.w);
+	float4 data = GetFaceUniform(faceIndex, 0);
+	output.FillColor = GetFaceUniform(faceIndex, 1);
+	float4 clipPlane0 = GetFaceUniform(faceIndex, 2);
+	float4 clipPlane1 = GetFaceUniform(faceIndex, 3);
+	float4 clipPlane2 = GetFaceUniform(faceIndex, 4);
+	output.Light = data.x;
+	output.AlphaTest = data.y;
+	output.Mode = int(data.z);
+
+	float4 posInView = mul(WorldToView, float4(input.Position.xyz, 1.0));
+	output.PositionInView = posInView.xyz;
+	output.ClipPosition = mul(ViewToProjection, posInView);
+	output.ClipDistance.x = dot(clipPlane0, float4(input.Position.xyz, 1.0));
+	output.ClipDistance.y = dot(clipPlane1, float4(input.Position.xyz, 1.0));
+	output.ClipDistance.z = dot(clipPlane2, float4(input.Position.xyz, 1.0));
+
+	output.UV = input.Texcoord.xy;
+
+	return output;
+}

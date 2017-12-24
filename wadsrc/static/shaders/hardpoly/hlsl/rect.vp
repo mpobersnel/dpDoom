@@ -1,0 +1,32 @@
+
+cbuffer RectUniforms
+{
+	float X0, Y0, U0, V0;
+	float X1, Y1, U1, V1;
+	float Light;
+};
+
+struct VertexIn
+{
+	float4 Position : Position;
+};
+
+struct VertexOut
+{
+	float4 ClipPosition : SV_Position;
+	float2 UV : PixelUV;
+};
+
+VertexOut main(VertexIn input)
+{
+	VertexOut output;
+
+	output.ClipPosition.x = lerp(X0, X1, input.Position.x);
+	output.ClipPosition.y = lerp(Y0, Y1, input.Position.y);
+	output.ClipPosition.z = -1.0;
+	output.ClipPosition.w = 1.0;
+	output.UV.x = lerp(U0, U1, input.Position.x);
+	output.UV.y = lerp(V0, V1, input.Position.y);
+
+	return output;
+}

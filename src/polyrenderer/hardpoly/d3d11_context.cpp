@@ -179,7 +179,11 @@ void D3D11Context::SetProgram(const std::shared_ptr<GPUProgram> &program)
 			DeviceContext->PSSetShader(mCurrentProgram->ShaderHandle[GPUShaderType::Fragment]->HandlePixel(), nullptr, 0);
 
 		if (mCurrentVertexArray)
-			DeviceContext->IASetInputLayout(mCurrentVertexArray->GetInputLayout(mCurrentProgram.get()));
+		{
+			auto layout = mCurrentVertexArray->GetInputLayout(mCurrentProgram.get());
+			if (layout)
+				DeviceContext->IASetInputLayout(layout);
+		}
 
 		mCurrentProgram->ApplyAll();
 	}
@@ -371,7 +375,11 @@ void D3D11Context::SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexa
 		}
 
 		if (mCurrentProgram)
-			DeviceContext->IASetInputLayout(mCurrentVertexArray->GetInputLayout(mCurrentProgram.get()));
+		{
+			auto layout = mCurrentVertexArray->GetInputLayout(mCurrentProgram.get());
+			if (layout)
+				DeviceContext->IASetInputLayout(layout);
+		}
 	}
 	else
 	{
@@ -1100,6 +1108,8 @@ void D3D11StagingTexture::Unmap()
 
 D3D11Texture2D::D3D11Texture2D(D3D11Context *context, int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels)
 {
+	mipmap = false; // HMM!
+
 	mContext = context;
 	mWidth = width;
 	mHeight = height;
@@ -1110,9 +1120,9 @@ D3D11Texture2D::D3D11Texture2D(D3D11Context *context, int width, int height, boo
 	D3D11_TEXTURE2D_DESC desc;
 	desc.Width = width;
 	desc.Height = height;
-	desc.MipLevels = mipmap ? NumLevels(width, height) : 1;
+	desc.MipLevels = mipmap ? 0 : 1;
 	desc.Format = ToD3DFormat(format);
-	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Count = MAX(sampleCount, 1);
 	desc.SampleDesc.Quality = 0;
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.CPUAccessFlags = 0;
@@ -1134,7 +1144,8 @@ D3D11Texture2D::D3D11Texture2D(D3D11Context *context, int width, int height, boo
 		bindFlagsWithoutCompute = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 		bindFlagsWithCompute = bindFlagsWithoutCompute | D3D11_BIND_UNORDERED_ACCESS;
 
-		desc.MiscFlags |= D3D11_RESOURCE_MISC_GENERATE_MIPS;
+		if (mipmap && sampleCount <= 1)
+			desc.MiscFlags |= D3D11_RESOURCE_MISC_GENERATE_MIPS;
 	}
 
 	desc.BindFlags = bindFlagsWithCompute;
@@ -1159,6 +1170,11 @@ D3D11Texture2D::D3D11Texture2D(D3D11Context *context, int width, int height, boo
 		result = context->Device->CreateShaderResourceView(mHandle, nullptr, mSRVHandle.OutputVariable());
 		if (FAILED(result))
 			I_FatalError("ID3D11Device.CreateShaderResourceView(Texture2D) failed");
+	}
+
+	if (pixels && mipmap && sampleCount <= 1)
+	{
+		context->DeviceContext->GenerateMips(mSRVHandle);
 	}
 }
 
@@ -1347,7 +1363,7 @@ ComPtr<ID3D11InputLayout> D3D11VertexArray::CreateInputLayout(D3D11Program *prog
 	ComPtr<ID3D11InputLayout> inputLayout;
 	HRESULT result = mContext->Device->CreateInputLayout(elements.data(), (UINT)elements.size(), bytecode.data(), (UINT)bytecode.size(), inputLayout.OutputVariable());
 	if (FAILED(result))
-		I_FatalError("CreateInputLayout failed");
+		return ComPtr<ID3D11InputLayout>(); //I_FatalError("CreateInputLayout failed");
 	return inputLayout;
 }
 

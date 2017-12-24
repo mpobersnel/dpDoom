@@ -683,8 +683,8 @@ void HardpolyRenderer::CompileShaders()
 	{
 		mOpaqueProgram = screen->GetContext()->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mOpaqueProgram->SetDefine("TRUECOLOR");
-		mOpaqueProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/opaque.vp");
-		mOpaqueProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/opaque.fp");
+		mOpaqueProgram->Compile(GPUShaderType::Vertex, screen->IsOpenGL() ? "shaders/hardpoly/glsl/opaque.vp" : "shaders/hardpoly/hlsl/opaque.vp");
+		mOpaqueProgram->Compile(GPUShaderType::Fragment, screen->IsOpenGL() ? "shaders/hardpoly/glsl/opaque.fp" : "shaders/hardpoly/hlsl/opaque.fp");
 		mOpaqueProgram->SetAttribLocation("Position", 0);
 		mOpaqueProgram->SetAttribLocation("UV", 1);
 		mOpaqueProgram->SetFragOutput("FragColor", 0);
@@ -700,8 +700,8 @@ void HardpolyRenderer::CompileShaders()
 	{
 		mRectProgram = screen->GetContext()->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mRectProgram->SetDefine("TRUECOLOR");
-		mRectProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/rect.vp");
-		mRectProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/rect.fp");
+		mRectProgram->Compile(GPUShaderType::Vertex, screen->IsOpenGL() ? "shaders/hardpoly/glsl/rect.vp" : "shaders/hardpoly/hlsl/rect.vp");
+		mRectProgram->Compile(GPUShaderType::Fragment, screen->IsOpenGL() ? "shaders/hardpoly/glsl/rect.fp" : "shaders/hardpoly/hlsl/rect.fp");
 		mRectProgram->SetAttribLocation("Position", 0);
 		mRectProgram->SetAttribLocation("UV", 1);
 		mRectProgram->SetFragOutput("FragColor", 0);
@@ -717,8 +717,8 @@ void HardpolyRenderer::CompileShaders()
 	{
 		mStencilProgram = screen->GetContext()->CreateProgram();
 		if (PolyRenderer::Instance()->RenderTarget->IsBgra()) mStencilProgram->SetDefine("TRUECOLOR");
-		mStencilProgram->Compile(GPUShaderType::Vertex, "shaders/hardpoly/stencil.vp");
-		mStencilProgram->Compile(GPUShaderType::Fragment, "shaders/hardpoly/stencil.fp");
+		mStencilProgram->Compile(GPUShaderType::Vertex, screen->IsOpenGL() ? "shaders/hardpoly/glsl/stencil.vp" : "shaders/hardpoly/hlsl/stencil.vp");
+		mStencilProgram->Compile(GPUShaderType::Fragment, screen->IsOpenGL() ? "shaders/hardpoly/glsl/stencil.fp" : "shaders/hardpoly/hlsl/stencil.fp");
 		mStencilProgram->SetAttribLocation("Position", 0);
 		mStencilProgram->SetFragOutput("FragColor", 0);
 		mStencilProgram->SetFragOutput("FragNormal", 1);
