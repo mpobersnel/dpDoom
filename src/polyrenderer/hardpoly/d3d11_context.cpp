@@ -295,12 +295,56 @@ void D3D11Context::ResetScissor()
 	DeviceContext->RSSetScissorRects(0, nullptr);
 }
 
+static D3D11_BLEND ToD3DBlend(int glblend)
+{
+	switch (glblend)
+	{
+	case GL_ZERO: return D3D11_BLEND_ZERO;
+	case GL_ONE: return D3D11_BLEND_ONE;
+	case GL_SRC_COLOR: return D3D11_BLEND_SRC_COLOR;
+	case GL_ONE_MINUS_SRC_COLOR: return D3D11_BLEND_INV_SRC_COLOR;
+	case GL_SRC_ALPHA: return D3D11_BLEND_SRC_ALPHA;
+	default:
+	case GL_ONE_MINUS_SRC_ALPHA: return D3D11_BLEND_INV_SRC_ALPHA;
+	case GL_DST_ALPHA: return D3D11_BLEND_DEST_ALPHA;
+	case GL_ONE_MINUS_DST_ALPHA: return D3D11_BLEND_INV_DEST_ALPHA;
+	case GL_DST_COLOR: return D3D11_BLEND_DEST_COLOR;
+	case GL_ONE_MINUS_DST_COLOR: return D3D11_BLEND_INV_DEST_COLOR;
+	}
+}
+
 void D3D11Context::SetBlend(int op, int srcblend, int destblend)
 {
+	auto &blendState = mBlendState[{ op, srcblend, destblend }];
+	if (!blendState)
+	{
+		D3D11_BLEND_DESC desc;
+		desc.AlphaToCoverageEnable = FALSE;
+		desc.IndependentBlendEnable = FALSE;
+		desc.RenderTarget[0].BlendEnable = TRUE;
+		switch (op)
+		{
+		default:
+		case GL_FUNC_ADD: desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD; break;
+		case GL_FUNC_SUBTRACT: desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_SUBTRACT; break;
+		case GL_FUNC_REVERSE_SUBTRACT: desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_REV_SUBTRACT; break;
+		}
+		desc.RenderTarget[0].SrcBlend = ToD3DBlend(srcblend);
+		desc.RenderTarget[0].DestBlend = ToD3DBlend(destblend);
+		desc.RenderTarget[0].SrcBlendAlpha = desc.RenderTarget[0].SrcBlend;
+		desc.RenderTarget[0].DestBlendAlpha = desc.RenderTarget[0].DestBlend;
+		desc.RenderTarget[0].BlendOpAlpha = desc.RenderTarget[0].BlendOp;
+		desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+		HRESULT result = Device->CreateBlendState(&desc, blendState.OutputVariable());
+		if (FAILED(result))
+			I_FatalError("ID3D11DeviceContext.CreateBlendState failed");
+	}
+	DeviceContext->OMSetBlendState(blendState, nullptr, 0xffffffff);
 }
 
 void D3D11Context::ResetBlend()
 {
+	DeviceContext->OMSetBlendState(nullptr, nullptr, 0xffffffff);
 }
 
 void D3D11Context::SetOpaqueBlend(int srcalpha, int destalpha)

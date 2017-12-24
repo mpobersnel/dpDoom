@@ -125,7 +125,7 @@ void D3D11FB::SwapBuffers()
 	mContext.DeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
 
 	I_FPSLimit();
-	mContext.SwapChain->Present(1, 0);
+	mContext.SwapChain->Present(vid_vsync ? 1 : 0, 0);
 
 	DXGI_SWAP_CHAIN_DESC swapDesc;
 	HRESULT result = mContext.SwapChain->GetDesc(&swapDesc);

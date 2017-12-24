@@ -479,12 +479,25 @@ private:
 
 	void SetDrawMode(GPUDrawMode mode);
 
+	struct BlendKey
+	{
+		BlendKey() { }
+		BlendKey(int op, int srcblend, int destblend) : op(op), srcblend(srcblend), destblend(destblend) { }
+
+		bool operator<(const BlendKey &other) const { return memcmp(this, &other, sizeof(BlendKey)) < 0; }
+
+		int op = 0;
+		int srcblend = 0;
+		int destblend = 0;
+	};
+
 	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
 	std::shared_ptr<D3D11Program> mCurrentProgram;
 	std::shared_ptr<D3D11VertexArray> mCurrentVertexArray;
 	std::shared_ptr<D3D11FrameBuffer> mCurrentFrameBuffer;
 	ComPtr<ID3D11RasterizerState> mRasterizerStateScissorOn;
 	ComPtr<ID3D11RasterizerState> mRasterizerStateScissorOff;
+	std::map<BlendKey, ComPtr<ID3D11BlendState>> mBlendState;
 
 	std::vector<std::shared_ptr<GPUSampler>> mBoundSamplers = std::vector<std::shared_ptr<GPUSampler>>(64);
 	std::vector<std::shared_ptr<GPUTexture>> mBoundTextures = std::vector<std::shared_ptr<GPUTexture>>(64);
