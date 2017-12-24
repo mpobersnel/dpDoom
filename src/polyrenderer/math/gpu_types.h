@@ -98,6 +98,18 @@ typedef Vec4<uint8_t> Vec4ub;
 typedef Vec3<uint8_t> Vec3ub;
 typedef Vec2<uint8_t> Vec2ub;
 
+enum class Handedness
+{
+	Left,
+	Right
+};
+
+enum class ClipZRange
+{
+	NegativePositiveW, // OpenGL, -wclip <= zclip <= wclip
+	ZeroPositiveW      // Direct3D, 0 <= zclip <= wclip
+};
+
 class Mat4f
 {
 public:
@@ -109,8 +121,8 @@ public:
 	static Mat4f Scale(float x, float y, float z);
 	static Mat4f Rotate(float angle, float x, float y, float z);
 	static Mat4f SwapYZ();
-	static Mat4f Perspective(float fovy, float aspect, float near, float far);
-	static Mat4f Frustum(float left, float right, float bottom, float top, float near, float far);
+	static Mat4f Perspective(float fovy, float aspect, float near, float far, Handedness handedness, ClipZRange clipZ);
+	static Mat4f Frustum(float left, float right, float bottom, float top, float near, float far, Handedness handedness, ClipZRange clipZ);
 
 	Vec4f operator*(const Vec4f &v) const;
 	Mat4f operator*(const Mat4f &m) const;

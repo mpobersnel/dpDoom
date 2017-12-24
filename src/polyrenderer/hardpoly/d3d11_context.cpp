@@ -116,12 +116,12 @@ void D3D11Context::SetFrameBuffer(const std::shared_ptr<GPUFrameBuffer> &fb)
 {
 	if (fb)
 	{
-		auto d3dfb = static_cast<D3D11FrameBuffer*>(fb.get());
+		mCurrentFrameBuffer = std::static_pointer_cast<D3D11FrameBuffer>(fb);
 
-		std::vector<ID3D11RenderTargetView*> views(d3dfb->RenderTargetViews.size());
+		std::vector<ID3D11RenderTargetView*> views(mCurrentFrameBuffer->RenderTargetViews.size());
 		for (size_t i = 0; i < views.size(); i++)
-			views[i] = d3dfb->RenderTargetViews[i].Get();
-		ID3D11DepthStencilView *depthStencilView = d3dfb->DepthStencilView ? d3dfb->DepthStencilView.Get() : nullptr;
+			views[i] = mCurrentFrameBuffer->RenderTargetViews[i].Get();
+		ID3D11DepthStencilView *depthStencilView = mCurrentFrameBuffer->DepthStencilView ? mCurrentFrameBuffer->DepthStencilView.Get() : nullptr;
 		DeviceContext->OMSetRenderTargets((UINT)views.size(), views.data(), depthStencilView);
 	}
 	else
@@ -144,6 +144,8 @@ void D3D11Context::SetFrameBuffer(const std::shared_ptr<GPUFrameBuffer> &fb)
 			{
 				ID3D11RenderTargetView *backbuffer_rtvs[] = { view };
 				DeviceContext->OMSetRenderTargets(1, backbuffer_rtvs, nullptr);
+
+				mCurrentFrameBuffer = nullptr;
 			}
 		}
 	}
@@ -455,18 +457,35 @@ void D3D11Context::DrawIndexedInstanced(GPUDrawMode mode, int indexStart, int in
 
 void D3D11Context::ClearColorBuffer(int index, float r, float g, float b, float a)
 {
+	if (mCurrentFrameBuffer)
+	{
+		float color[4] = { r, g, b, a };
+		DeviceContext->ClearRenderTargetView(mCurrentFrameBuffer->RenderTargetViews[index], color);
+	}
 }
 
 void D3D11Context::ClearDepthBuffer(float depth)
 {
+	if (mCurrentFrameBuffer && mCurrentFrameBuffer->DepthStencilView)
+	{
+		DeviceContext->ClearDepthStencilView(mCurrentFrameBuffer->DepthStencilView, D3D11_CLEAR_DEPTH, depth, 0);
+	}
 }
 
 void D3D11Context::ClearStencilBuffer(int stencil)
 {
+	if (mCurrentFrameBuffer && mCurrentFrameBuffer->DepthStencilView)
+	{
+		DeviceContext->ClearDepthStencilView(mCurrentFrameBuffer->DepthStencilView, D3D11_CLEAR_STENCIL, 0.0f, stencil);
+	}
 }
 
 void D3D11Context::ClearDepthStencilBuffer(float depth, int stencil)
 {
+	if (mCurrentFrameBuffer && mCurrentFrameBuffer->DepthStencilView)
+	{
+		DeviceContext->ClearDepthStencilView(mCurrentFrameBuffer->DepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, depth, stencil);
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1461,6 +1480,7 @@ D3D11VertexBuffer::~D3D11VertexBuffer()
 {
 }
 
+#if 0 // Note: this code is disabled because it is only allowed if the buffer usage type is D3D11_USAGE_DEFAULT.
 void D3D11VertexBuffer::Upload(const void *data, int size)
 {
 	int offset = 0;
@@ -1476,6 +1496,7 @@ void D3D11VertexBuffer::Upload(const void *data, int size)
 	box.back = 1;
 	mContext->DeviceContext->UpdateSubresource(mHandle, 0, &box, data, 0, 0);
 }
+#endif
 
 void *D3D11VertexBuffer::MapWriteOnly()
 {

@@ -202,7 +202,7 @@ class GPUVertexBuffer
 {
 public:
 	virtual ~GPUVertexBuffer() { }
-	virtual void Upload(const void *data, int size) = 0;
+	//virtual void Upload(const void *data, int size) = 0;
 	virtual void *MapWriteOnly() = 0;
 	virtual void Unmap() = 0;
 };
@@ -230,6 +230,8 @@ class GPUContext
 {
 public:
 	virtual ~GPUContext() { }
+
+	virtual ClipZRange GetClipZRange() const = 0;
 
 	virtual std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) = 0;
 	virtual std::shared_ptr<GPUTexture2D> CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr) = 0;

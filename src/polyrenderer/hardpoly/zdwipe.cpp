@@ -274,7 +274,7 @@ void ZDFrameBuffer::Wiper::DrawScreen(ZDFrameBuffer *fb, HWTexture *tex,
 	fb->GetContext()->SetTexture(0, tex->Texture);
 	fb->SetAlphaBlend(blendop, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	fb->SetPixelShader(fb->Shaders[SHADER_NormalColor]);
-	fb->DrawTriangles(2, verts);
+	fb->DrawSingleQuad(verts);
 }
 
 // WIPE: CROSSFADE ---------------------------------------------------------
@@ -558,7 +558,7 @@ bool ZDFrameBuffer::Wiper_Burn::Run(int ticks, ZDFrameBuffer *fb)
 	fb->SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	fb->SetPixelShader(fb->Shaders[SHADER_BurnWipe]);
 	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdgeLinear);
-	fb->DrawTriangles(2, verts);
+	fb->DrawSingleQuad(verts);
 	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdge);
 
 	// The fire may not always stabilize, so the wipe is forced to end

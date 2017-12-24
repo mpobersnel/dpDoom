@@ -686,7 +686,7 @@ void HardpolyRenderer::CompileShaders()
 		mOpaqueProgram->Compile(GPUShaderType::Vertex, screen->IsOpenGL() ? "shaders/hardpoly/glsl/opaque.vp" : "shaders/hardpoly/hlsl/opaque.vp");
 		mOpaqueProgram->Compile(GPUShaderType::Fragment, screen->IsOpenGL() ? "shaders/hardpoly/glsl/opaque.fp" : "shaders/hardpoly/hlsl/opaque.fp");
 		mOpaqueProgram->SetAttribLocation("Position", 0);
-		mOpaqueProgram->SetAttribLocation("UV", 1);
+		mOpaqueProgram->SetAttribLocation("Texcoord", 1);
 		mOpaqueProgram->SetFragOutput("FragColor", 0);
 		mOpaqueProgram->SetTextureLocation("FaceUniformsTexture", 0);
 		mOpaqueProgram->SetTextureLocation("DiffuseTexture", "DiffuseSampler", 1);
@@ -703,7 +703,6 @@ void HardpolyRenderer::CompileShaders()
 		mRectProgram->Compile(GPUShaderType::Vertex, screen->IsOpenGL() ? "shaders/hardpoly/glsl/rect.vp" : "shaders/hardpoly/hlsl/rect.vp");
 		mRectProgram->Compile(GPUShaderType::Fragment, screen->IsOpenGL() ? "shaders/hardpoly/glsl/rect.fp" : "shaders/hardpoly/hlsl/rect.fp");
 		mRectProgram->SetAttribLocation("Position", 0);
-		mRectProgram->SetAttribLocation("UV", 1);
 		mRectProgram->SetFragOutput("FragColor", 0);
 		mRectProgram->SetTextureLocation("DiffuseTexture", "DiffuseSampler", 0);
 		mRectProgram->SetTextureLocation("BasecolormapTexture", "BasecolormapSampler", 1);

@@ -233,7 +233,7 @@ public:
 	GLVertexBuffer(const void *data, int size);
 	~GLVertexBuffer();
 
-	void Upload(const void *data, int size) override;
+	//void Upload(const void *data, int size) override;
 
 	void *MapWriteOnly() override;
 	void Unmap() override;
@@ -253,6 +253,8 @@ public:
 	GLContext();
 	~GLContext();
 	
+	ClipZRange GetClipZRange() const override { return ClipZRange::NegativePositiveW; }
+
 	std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) override;
 	std::shared_ptr<GPUTexture2D> CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr) override;
 	std::shared_ptr<GPUFrameBuffer> CreateFrameBuffer(const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil) override;

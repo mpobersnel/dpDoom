@@ -502,7 +502,12 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 			color1 = FlashColor1;
 		}
 		CalcFullscreenCoords(verts, Accel2D, color0, color1);
-		DrawTriangles(2, verts);
+		if (UseHardwareScene && !IsOpenGL())
+		{
+			for (int i = 0; i < 6; i++)
+				verts[i].tv = 1.0f - verts[i].tv;
+		}
+		DrawSingleQuad(verts);
 	}
 	if (IsBgra())
 		SetPixelShader(Shaders[SHADER_NormalColor]);
@@ -660,7 +665,7 @@ void ZDFrameBuffer::DrawPixel(int x, int y, int palcolor, uint32_t color)
 	EndBatch();		// Draw out any batched operations.
 	SetPixelShader(Shaders[SHADER_VertexColor]);
 	SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	DrawPoints(1, &pt);
+	DrawSinglePoint(&pt);
 }
 
 void ZDFrameBuffer::DrawTextureParms(FTexture *img, DrawParms &parms)
@@ -1134,9 +1139,9 @@ std::unique_ptr<ZDFrameBuffer::HWTexture> ZDFrameBuffer::CopyCurrentScreen()
 	return obj;
 }
 
-void ZDFrameBuffer::DrawTriangles(int count, const FBVERTEX *vertices)
+void ZDFrameBuffer::DrawSingleQuad(const FBVERTEX *vertices)
 {
-	count *= 3;
+	int count = 6;
 
 	if (!StreamVertexBuffer)
 	{
@@ -1152,7 +1157,9 @@ void ZDFrameBuffer::DrawTriangles(int count, const FBVERTEX *vertices)
 	}
 	else
 	{
-		StreamVertexBuffer->Buffer->Upload(vertices, count * sizeof(FBVERTEX));
+		void *ptr = StreamVertexBuffer->Buffer->MapWriteOnly();
+		memcpy(ptr, vertices, count * sizeof(FBVERTEX));
+		StreamVertexBuffer->Buffer->Unmap();
 	}
 
 	GetContext()->SetVertexArray(StreamVertexBuffer->VertexArray);
@@ -1160,9 +1167,9 @@ void ZDFrameBuffer::DrawTriangles(int count, const FBVERTEX *vertices)
 	GetContext()->SetVertexArray(nullptr);
 }
 
-void ZDFrameBuffer::DrawTriangles(int count, const BURNVERTEX *vertices)
+void ZDFrameBuffer::DrawSingleQuad(const BURNVERTEX *vertices)
 {
-	count *= 3;
+	int count = 6;
 
 	if (!StreamVertexBufferBurn)
 	{
@@ -1176,7 +1183,9 @@ void ZDFrameBuffer::DrawTriangles(int count, const BURNVERTEX *vertices)
 	}
 	else
 	{
-		StreamVertexBufferBurn->Buffer->Upload(vertices, count * sizeof(BURNVERTEX));
+		void *ptr = StreamVertexBufferBurn->Buffer->MapWriteOnly();
+		memcpy(ptr, vertices, count * sizeof(BURNVERTEX));
+		StreamVertexBufferBurn->Buffer->Unmap();
 	}
 
 	GetContext()->SetVertexArray(StreamVertexBufferBurn->VertexArray);
@@ -1184,12 +1193,15 @@ void ZDFrameBuffer::DrawTriangles(int count, const BURNVERTEX *vertices)
 	GetContext()->SetVertexArray(nullptr);
 }
 
-void ZDFrameBuffer::DrawPoints(int count, const FBVERTEX *vertices)
+void ZDFrameBuffer::DrawSinglePoint(const FBVERTEX *vertex)
 {
 	if (!StreamVertexBuffer)
 	{
+		FBVERTEX init[6];
+		init[0] = *vertex;
+
 		StreamVertexBuffer.reset(new HWVertexBuffer());
-		StreamVertexBuffer->Buffer = GetContext()->CreateVertexBuffer(vertices, count * sizeof(FBVERTEX));
+		StreamVertexBuffer->Buffer = GetContext()->CreateVertexBuffer(init, 6 * sizeof(FBVERTEX));
 		StreamVertexBuffer->VertexArray = GetContext()->CreateVertexArray(
 		{
 			{ 0, 4, GPUVertexAttributeType::Float, false, sizeof(FBVERTEX), offsetof(FBVERTEX, x), StreamVertexBuffer->Buffer },
@@ -1200,11 +1212,13 @@ void ZDFrameBuffer::DrawPoints(int count, const FBVERTEX *vertices)
 	}
 	else
 	{
-		StreamVertexBuffer->Buffer->Upload(vertices, count * sizeof(FBVERTEX));
+		void *ptr = StreamVertexBuffer->Buffer->MapWriteOnly();
+		memcpy(ptr, vertex, sizeof(FBVERTEX));
+		StreamVertexBuffer->Buffer->Unmap();
 	}
 
 	GetContext()->SetVertexArray(StreamVertexBufferBurn->VertexArray);
-	GetContext()->Draw(GPUDrawMode::Points, 0, count);
+	GetContext()->Draw(GPUDrawMode::Points, 0, 1);
 	GetContext()->SetVertexArray(nullptr);
 }
 
@@ -1249,7 +1263,7 @@ void ZDFrameBuffer::Present()
 		SetPixelShader(Shaders[SHADER_GammaCorrection]);
 		SetAlphaBlend(0);
 		EnableAlphaTest(false);
-		DrawTriangles(2, verts);
+		DrawSingleQuad(verts);
 
 		if (ViewportLinearScale())
 			GetContext()->SetSampler(0, SamplerClampToEdge);

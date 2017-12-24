@@ -311,9 +311,9 @@ private:
 	std::unique_ptr<HWTexture> CreateTexture(const FString &name, int width, int height, int levels, GPUPixelFormat format);
 
 	void SetGammaRamp(const GammaRamp *ramp);
-	void DrawTriangles(int count, const FBVERTEX *vertices);
-	void DrawTriangles(int count, const BURNVERTEX *vertices);
-	void DrawPoints(int count, const FBVERTEX *vertices);
+	void DrawSingleQuad(const FBVERTEX *vertices);
+	void DrawSingleQuad(const BURNVERTEX *vertices);
+	void DrawSinglePoint(const FBVERTEX *vertex);
 	void DrawLineList(int count);
 	void DrawTriangleList(int minIndex, int numVertices, int startIndex, int primitiveCount);
 	void Present();

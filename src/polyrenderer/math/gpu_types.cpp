@@ -105,7 +105,7 @@ Mat4f Mat4f::SwapYZ()
 	return m;
 }
 
-Mat4f Mat4f::Perspective(float fovy, float aspect, float z_near, float z_far)
+Mat4f Mat4f::Perspective(float fovy, float aspect, float z_near, float z_far, Handedness handedness, ClipZRange clipZ)
 {
 	float f = (float)(1.0 / tan(fovy * M_PI / 360.0));
 	Mat4f m = Null();
@@ -114,10 +114,24 @@ Mat4f Mat4f::Perspective(float fovy, float aspect, float z_near, float z_far)
 	m.Matrix[2 + 2 * 4] = (z_far + z_near) / (z_near - z_far);
 	m.Matrix[2 + 3 * 4] = (2.0f * z_far * z_near) / (z_near - z_far);
 	m.Matrix[3 + 2 * 4] = -1.0f;
+
+	if (handedness == Handedness::Left)
+	{
+		m = m * Mat4f::Scale(1.0f, 1.0f, -1.0f);
+	}
+
+	if (clipZ == ClipZRange::ZeroPositiveW)
+	{
+		Mat4f scale_translate = Identity();
+		scale_translate.Matrix[2 + 2 * 4] = 0.5f;
+		scale_translate.Matrix[2 + 3 * 4] = 0.5f;
+		m = scale_translate * m;
+	}
+
 	return m;
 }
 
-Mat4f Mat4f::Frustum(float left, float right, float bottom, float top, float near, float far)
+Mat4f Mat4f::Frustum(float left, float right, float bottom, float top, float near, float far, Handedness handedness, ClipZRange clipZ)
 {
 	float a = (right + left) / (right - left);
 	float b = (top + bottom) / (top - bottom);
@@ -131,6 +145,20 @@ Mat4f Mat4f::Frustum(float left, float right, float bottom, float top, float nea
 	m.Matrix[2 + 2 * 4] = c;
 	m.Matrix[2 + 3 * 4] = d;
 	m.Matrix[3 + 2 * 4] = -1;
+
+	if (handedness == Handedness::Left)
+	{
+		m = m * Mat4f::Scale(1.0f, 1.0f, -1.0f);
+	}
+
+	if (clipZ == ClipZRange::ZeroPositiveW)
+	{
+		Mat4f scale_translate = Identity();
+		scale_translate.Matrix[2 + 2 * 4] = 0.5f;
+		scale_translate.Matrix[2 + 3 * 4] = 0.5f;
+		m = scale_translate * m;
+	}
+
 	return m;
 }
 

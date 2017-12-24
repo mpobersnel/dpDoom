@@ -376,7 +376,7 @@ public:
 	D3D11VertexBuffer(D3D11Context *context, const void *data, int size);
 	~D3D11VertexBuffer();
 
-	void Upload(const void *data, int size) override;
+	//void Upload(const void *data, int size) override;
 
 	void *MapWriteOnly() override;
 	void Unmap() override;
@@ -398,6 +398,8 @@ class D3D11Context : public GPUContext
 public:
 	D3D11Context();
 	~D3D11Context();
+
+	ClipZRange GetClipZRange() const override { return ClipZRange::ZeroPositiveW; }
 
 	std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) override;
 	std::shared_ptr<GPUTexture2D> CreateTexture2D(int width, int height, bool mipmap, int sampleCount, GPUPixelFormat format, const void *pixels = nullptr) override;
@@ -480,6 +482,7 @@ private:
 	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
 	std::shared_ptr<D3D11Program> mCurrentProgram;
 	std::shared_ptr<D3D11VertexArray> mCurrentVertexArray;
+	std::shared_ptr<D3D11FrameBuffer> mCurrentFrameBuffer;
 	ComPtr<ID3D11RasterizerState> mRasterizerStateScissorOn;
 	ComPtr<ID3D11RasterizerState> mRasterizerStateScissorOff;
 

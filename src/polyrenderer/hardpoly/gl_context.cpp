@@ -1113,6 +1113,7 @@ GLVertexBuffer::~GLVertexBuffer()
 	glDeleteBuffers(1, (GLuint*)&mHandle);
 }
 
+#if 0
 void GLVertexBuffer::Upload(const void *data, int size)
 {
 	GLint oldHandle;
@@ -1123,6 +1124,7 @@ void GLVertexBuffer::Upload(const void *data, int size)
 
 	glBindBuffer(GL_ARRAY_BUFFER, oldHandle);
 }
+#endif
 
 void *GLVertexBuffer::MapWriteOnly()
 {

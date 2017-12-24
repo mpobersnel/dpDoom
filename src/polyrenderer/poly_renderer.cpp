@@ -264,7 +264,7 @@ void PolyRenderer::SetupPerspectiveMatrix()
 			Mat4f::SwapYZ() *
 			Mat4f::Translate((float)-Viewpoint.Pos.X, (float)-Viewpoint.Pos.Y, (float)-Viewpoint.Pos.Z);
 
-		Threads.MainThread()->DrawBatcher.ViewToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f);
+		Threads.MainThread()->DrawBatcher.ViewToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f, Handedness::Right, screen->GetContext()->GetClipZRange());
 		Threads.MainThread()->DrawBatcher.MatrixUpdated();
 	}
 }
