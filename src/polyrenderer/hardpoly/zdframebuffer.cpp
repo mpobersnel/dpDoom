@@ -233,22 +233,25 @@ bool ZDFrameBuffer::Lock(bool buffered)
 	}
 	assert(!In2D);
 	Accel2D = vid_hw2d;
-	if (UseMappedMemBuffer)
+	if (!UseHardwareScene)
 	{
-		if (!MappedMemBuffer)
+		if (UseMappedMemBuffer)
 		{
-			BindFBBuffer();
+			if (!MappedMemBuffer)
+			{
+				BindFBBuffer();
 
-			MappedMemBuffer = FBTexture->Buffers[FBTexture->CurrentBuffer]->Map();
-			Pitch = Width;
-			if (MappedMemBuffer == nullptr)
-				return true;
+				MappedMemBuffer = FBTexture->Buffers[FBTexture->CurrentBuffer]->Map();
+				Pitch = Width;
+				if (MappedMemBuffer == nullptr)
+					return true;
+			}
+			Buffer = (uint8_t*)MappedMemBuffer;
 		}
-		Buffer = (uint8_t*)MappedMemBuffer;
-	}
-	else
-	{
-		Buffer = MemBuffer;
+		else
+		{
+			Buffer = MemBuffer;
+		}
 	}
 	return false;
 }
@@ -266,13 +269,16 @@ void ZDFrameBuffer::Unlock()
 	}
 	else if (--m_Lock == 0)
 	{
-		Buffer = nullptr;
-
-		if (MappedMemBuffer)
+		if (!UseHardwareScene)
 		{
-			BindFBBuffer();
-			FBTexture->Buffers[FBTexture->CurrentBuffer]->Unmap();
-			MappedMemBuffer = nullptr;
+			Buffer = nullptr;
+
+			if (MappedMemBuffer)
+			{
+				BindFBBuffer();
+				FBTexture->Buffers[FBTexture->CurrentBuffer]->Unmap();
+				MappedMemBuffer = nullptr;
+			}
 		}
 	}
 }
@@ -412,7 +418,13 @@ void ZDFrameBuffer::BindFBBuffer()
 
 void ZDFrameBuffer::Draw3DPart(bool copy3d)
 {
-	if (copy3d /*&& ViewFBHandle == 0*/)
+	GetContext()->SetFrameBuffer(OutputFB);
+	GetContext()->SetViewport(0, 0, GetWidth(), GetHeight());
+	GetContext()->SetSampler(0, SamplerClampToEdge);
+	GetContext()->SetSampler(1, SamplerClampToEdge);
+	CurrentShader = nullptr;
+
+	if (copy3d && !UseHardwareScene)
 	{
 		BindFBBuffer();
 
@@ -453,31 +465,6 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 	InScene = true;
 
 	GetContext()->SetLineSmooth(vid_hwaalines);
-
-	/*if (ViewFBHandle != 0)
-	{
-		SetPaletteTexture(PaletteTexture.get(), 256);
-		memset(Constant, 0, sizeof(Constant));
-		SetAlphaBlend(0);
-		EnableAlphaTest(false);
-		
-		if (copy3d)
-		{
-			GLint oldReadFramebufferBinding = 0;
-			glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &oldReadFramebufferBinding);
-		
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, ViewFBHandle);
-			glBlitFramebuffer(0, 0, Width, Height, 0, 0, Width, Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, oldReadFramebufferBinding);
-		}
-		
-		if (IsBgra())
-			SetPixelShader(Shaders[SHADER_NormalColor].get());
-		else
-			SetPixelShader(Shaders[SHADER_NormalColorPal].get());
-		
-		return;
-	}*/
 
 	GetContext()->SetTexture(0, FBTexture->Texture);
 	SetPaletteTexture(PaletteTexture.get(), 256);

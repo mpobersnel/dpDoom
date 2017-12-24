@@ -635,7 +635,7 @@ void GLProgram::Link(const std::string &name)
 		I_FatalError("Link Shader '%s':\n%s\n", name.c_str(), GetProgramInfoLog().c_str());
 	}
 
-	for (const auto &it : mUniform1iBindings)
+	for (const auto &it : mUniformBlockBindings)
 	{
 		GLuint uniformBlockIndex = glGetUniformBlockIndex(mHandle, it.first.c_str());
 		if (uniformBlockIndex != GL_INVALID_INDEX)

@@ -53,8 +53,12 @@ public:
 	virtual int GetClientHeight() = 0;
 	virtual void SwapBuffers() = 0;
 
+	std::shared_ptr<GPUTexture2D> GetFBTexture() override { return FBTexture->Texture; }
+	void SetUseHardwareScene(bool enable) override { UseHardwareScene = enable; }
+
 	std::shared_ptr<GPUFrameBuffer> OutputFB;
 	std::shared_ptr<GPUTexture2D> OutputTexture;
+	bool UseHardwareScene = false;
 
 private:
 	typedef DFrameBuffer Super;
@@ -315,7 +319,6 @@ private:
 	void Present();
 
 	void Flip();
-	void SetInitialState();
 	void LoadShaders();
 	void CreateFBTexture();
 	void CreatePaletteTexture();

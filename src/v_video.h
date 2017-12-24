@@ -42,6 +42,8 @@
 #include "r_data/renderstyle.h"
 #include "c_cvars.h"
 
+#include <memory>
+
 extern int CleanWidth, CleanHeight, CleanXfac, CleanYfac;
 extern int CleanWidth_1, CleanHeight_1, CleanXfac_1, CleanYfac_1;
 extern int DisplayWidth, DisplayHeight, DisplayBits;
@@ -351,6 +353,7 @@ public:
 };
 
 class GPUContext;
+class GPUTexture2D;
 
 // A canvas that represents the actual display. The video code is responsible
 // for actually implementing this. Built on top of SimpleCanvas, because it
@@ -448,6 +451,8 @@ public:
 
 	virtual bool IsOpenGL() const { return true; }
 	virtual GPUContext *GetContext() { return nullptr; }
+	virtual std::shared_ptr<GPUTexture2D> GetFBTexture() { return nullptr; }
+	virtual void SetUseHardwareScene(bool enable) { }
 
 	// The original size of the framebuffer as selected in the video menu.
 	int VideoWidth = 0;

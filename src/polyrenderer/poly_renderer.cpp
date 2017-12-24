@@ -73,21 +73,19 @@ void PolyRenderer::RenderView(player_t *player)
 	ActiveRatio(width, height, &trueratio);
 	//viewport->SetViewport(&Thread, width, height, trueratio);
 
-	if (screen->IsOpenGL())
+	if (r_hardpoly)
 	{
-		if (r_hardpoly)
-		{
-			RedirectToHardpoly = true;
-			if (!Hardpoly)
-				Hardpoly = std::make_shared<HardpolyRenderer>();
+		RedirectToHardpoly = true;
+		if (!Hardpoly)
+			Hardpoly = std::make_shared<HardpolyRenderer>();
 
-			Hardpoly->Begin();
-		}
-		else
-		{
-			//auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
-			//swframebuffer->SetViewFB(0);
-		}
+		Hardpoly->Begin();
+	}
+	else
+	{
+		//auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
+		//swframebuffer->SetViewFB(0);
+		screen->SetUseHardwareScene(false);
 	}
 
 	RenderActorView(player->mo, false);

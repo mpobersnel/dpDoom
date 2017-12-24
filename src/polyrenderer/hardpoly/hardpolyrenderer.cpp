@@ -71,8 +71,7 @@ void HardpolyRenderer::End()
 	screen->GetContext()->SetViewport(0, 0, screen->GetWidth(), screen->GetHeight());
 	screen->GetContext()->End();
 
-	//auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
-	//swframebuffer->SetViewFB(std::static_pointer_cast<GLFrameBuffer>(mSceneFB)->Handle());
+	screen->SetUseHardwareScene(true);
 }
 
 void HardpolyRenderer::ClearBuffers(DCanvas *canvas)
@@ -467,7 +466,8 @@ void HardpolyRenderer::SetupFramebuffer()
 	auto context = screen->GetContext();
 	int width = screen->GetWidth();
 	int height = screen->GetHeight();
-	if (!mSceneFB || mAlbedoBuffer->Width() != width || mAlbedoBuffer->Height() != height)
+	//if (!mSceneFB || mAlbedoBuffer->Width() != width || mAlbedoBuffer->Height() != height)
+	if (!mSceneFB || mAlbedoBuffer != screen->GetFBTexture())
 	{
 		mSceneFB.reset();
 		mAlbedoBuffer.reset();
@@ -475,7 +475,8 @@ void HardpolyRenderer::SetupFramebuffer()
 		mNormalBuffer.reset();
 		mSpriteDepthBuffer.reset();
 
-		mAlbedoBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
+		mAlbedoBuffer = screen->GetFBTexture();
+		//mAlbedoBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
 		mNormalBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::RGBA16f);
 		mDepthStencilBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::Depth24_Stencil8);
 		mSpriteDepthBuffer = context->CreateTexture2D(width, height, false, 0, GPUPixelFormat::R32f);
@@ -488,6 +489,7 @@ void HardpolyRenderer::SetupFramebuffer()
 	}
 
 	context->SetFrameBuffer(mSceneFB);
+	context->ResetScissor();
 }
 
 void HardpolyRenderer::CreateSamplers()
