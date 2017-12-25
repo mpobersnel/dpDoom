@@ -154,6 +154,7 @@ public:
 	D3D11FrameBuffer(D3D11Context *context, const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil);
 	~D3D11FrameBuffer();
 
+	std::vector<std::shared_ptr<GPUTexture2D>> ColorBuffers;
 	std::vector<ComPtr<ID3D11RenderTargetView>> RenderTargetViews;
 	ComPtr<ID3D11DepthStencilView> DepthStencilView;
 
@@ -413,6 +414,7 @@ public:
 	std::shared_ptr<GPUVertexBuffer> CreateVertexBuffer(const void *data, int size) override;
 
 	void CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source) override;
+	void CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest) override;
 
 	void Begin() override;
 	void End() override;

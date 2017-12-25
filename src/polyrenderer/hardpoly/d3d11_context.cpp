@@ -91,9 +91,26 @@ std::shared_ptr<GPUVertexBuffer> D3D11Context::CreateVertexBuffer(const void *da
 
 void D3D11Context::CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source)
 {
-	auto destimpl = std::static_pointer_cast<D3D11Texture2D>(dest);
-	auto sourceimpl = std::static_pointer_cast<D3D11StagingTexture>(source);
+	auto destimpl = static_cast<D3D11Texture2D*>(dest.get());
+	auto sourceimpl = static_cast<D3D11StagingTexture*>(source.get());
 	DeviceContext->CopyResource(destimpl->Handle(), sourceimpl->Handle());
+}
+
+void D3D11Context::CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest)
+{
+	auto destimpl = static_cast<D3D11Texture2D*>(dest.get());
+	if (mCurrentFrameBuffer)
+	{
+		auto srcimpl = static_cast<D3D11Texture2D*>(mCurrentFrameBuffer->ColorBuffers.front().get());
+		DeviceContext->CopyResource(destimpl->Handle(), srcimpl->Handle());
+	}
+	else
+	{
+		ComPtr<ID3D11Texture2D> backbuffer;
+		HRESULT result = SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)backbuffer.OutputVariable());
+		if (SUCCEEDED(result))
+			DeviceContext->CopyResource(destimpl->Handle(), backbuffer);
+	}
 }
 
 void D3D11Context::Begin()
@@ -602,7 +619,7 @@ void D3D11Context::ClearDepthStencilBuffer(float depth, int stencil)
 
 /////////////////////////////////////////////////////////////////////////////
 
-D3D11FrameBuffer::D3D11FrameBuffer(D3D11Context *context, const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil)
+D3D11FrameBuffer::D3D11FrameBuffer(D3D11Context *context, const std::vector<std::shared_ptr<GPUTexture2D>> &color, const std::shared_ptr<GPUTexture2D> &depthstencil) : ColorBuffers(color)
 {
 	for (const auto &texture : color)
 	{

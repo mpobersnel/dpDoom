@@ -267,6 +267,7 @@ public:
 	std::shared_ptr<GPUVertexBuffer> CreateVertexBuffer(const void *data, int size) override;
 
 	void CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source) override;
+	void CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest) override;
 
 	void Begin() override;
 	void End() override;

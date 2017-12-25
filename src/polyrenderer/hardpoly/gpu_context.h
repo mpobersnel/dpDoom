@@ -245,6 +245,7 @@ public:
 	virtual std::shared_ptr<GPUVertexBuffer> CreateVertexBuffer(const void *data, int size) = 0;
 
 	virtual void CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source) = 0;
+	virtual void CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest) = 0;
 
 	virtual void Begin() = 0;
 	virtual void End() = 0;

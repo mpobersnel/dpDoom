@@ -108,6 +108,17 @@ void GLContext::CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldBufferBinding);
 }
 
+void GLContext::CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest)
+{
+	auto destimpl = std::static_pointer_cast<GLTexture2D>(dest);
+
+	GLint oldBinding = 0, oldBufferBinding = 0;
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBinding);
+	glBindTexture(GL_TEXTURE_2D, destimpl->Handle());
+	glCopyTexImage2D(GL_TEXTURE_2D, 0, GLTexture2D::ToInternalFormat(destimpl->Format()), 0, 0, destimpl->Width(), destimpl->Height(), 0);
+	glBindTexture(GL_TEXTURE_2D, oldBinding);
+}
+
 void GLContext::Begin()
 {
 	ClearError();

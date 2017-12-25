@@ -1138,8 +1138,7 @@ std::unique_ptr<ZDFrameBuffer::HWTexture> ZDFrameBuffer::CopyCurrentScreen()
 {
 	std::unique_ptr<HWTexture> obj(new HWTexture());
 	obj->Texture = GetContext()->CreateTexture2D(Width, Height, false, 1, GPUPixelFormat::RGBA16f, nullptr);
-	//GetContext()->CopyTexture(obj->Texture, FBTexture->Texture);
-	//glCopyTexImage2D(GL_TEXTURE_2D, 0, obj->Format, 0, 0, Width, Height, 0);
+	GetContext()->CopyColorBufferToTexture(obj->Texture);
 	return obj;
 }
 
