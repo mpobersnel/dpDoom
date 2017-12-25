@@ -9,7 +9,6 @@ public:
 	D3D11FB(int width, int height, bool bgra, bool fullscreen);
 	~D3D11FB();
 
-	bool IsOpenGL() const override { return false; }
 	GPUContext *GetContext() override { return &mContext; }
 	void SwapBuffers() override;
 

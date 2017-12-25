@@ -400,6 +400,7 @@ public:
 	D3D11Context();
 	~D3D11Context();
 
+	bool IsOpenGL() const override { return false; }
 	ClipZRange GetClipZRange() const override { return ClipZRange::ZeroPositiveW; }
 
 	std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) override;

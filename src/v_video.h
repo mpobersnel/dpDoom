@@ -449,7 +449,6 @@ public:
 
 	uint64_t GetLastFPS() const { return LastCount; }
 
-	virtual bool IsOpenGL() const { return true; }
 	virtual GPUContext *GetContext() { return nullptr; }
 	virtual std::shared_ptr<GPUTexture2D> GetFBTexture() { return nullptr; }
 	virtual void SetUseHardwareScene(bool enable) { }

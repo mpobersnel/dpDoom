@@ -506,7 +506,7 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 			color1 = FlashColor1;
 		}
 		CalcFullscreenCoords(verts, Accel2D, color0, color1);
-		if (UseHardwareScene && !IsOpenGL())
+		if (UseHardwareScene && !GetContext()->IsOpenGL())
 		{
 			for (int i = 0; i < 6; i++)
 				verts[i].tv = 1.0f - verts[i].tv;
@@ -1284,8 +1284,8 @@ void ZDFrameBuffer::Present()
 
 void ZDFrameBuffer::LoadShaders()
 {
-	const char *lumpvert = IsOpenGL() ? "shaders/glsl/swshader.vp" : "shaders/d3d/swshader.vp";
-	const char *lumpfrag = IsOpenGL() ? "shaders/glsl/swshader.fp" : "shaders/d3d/swshader.fp";
+	const char *lumpvert = GetContext()->IsOpenGL() ? "shaders/glsl/swshader.vp" : "shaders/d3d/swshader.vp";
+	const char *lumpfrag = GetContext()->IsOpenGL() ? "shaders/glsl/swshader.fp" : "shaders/d3d/swshader.fp";
 
 	for (int i = 0; i < NUM_SHADERS; ++i)
 	{

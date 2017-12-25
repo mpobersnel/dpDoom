@@ -253,6 +253,7 @@ public:
 	GLContext();
 	~GLContext();
 	
+	bool IsOpenGL() const override { return true; }
 	ClipZRange GetClipZRange() const override { return ClipZRange::NegativePositiveW; }
 
 	std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) override;

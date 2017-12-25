@@ -231,6 +231,7 @@ class GPUContext
 public:
 	virtual ~GPUContext() { }
 
+	virtual bool IsOpenGL() const = 0;
 	virtual ClipZRange GetClipZRange() const = 0;
 
 	virtual std::shared_ptr<GPUStagingTexture> CreateStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr) = 0;

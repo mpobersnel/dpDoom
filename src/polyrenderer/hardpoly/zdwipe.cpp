@@ -271,7 +271,7 @@ void ZDFrameBuffer::Wiper::DrawScreen(ZDFrameBuffer *fb, HWTexture *tex,
 	FBVERTEX verts[6];
 	fb->CalcFullscreenCoords(verts, false, color0, color1);
 
-	if (!fb->IsOpenGL())
+	if (!fb->GetContext()->IsOpenGL())
 	{
 		for (int i = 0; i < 6; i++)
 			verts[i].tv = 1.0f - verts[i].tv;
@@ -357,7 +357,7 @@ bool ZDFrameBuffer::Wiper_Melt::Run(int ticks, ZDFrameBuffer *fb)
 	int fbheight = fb->Height;
 	bool done = true;
 
-	bool textureIsUpsideDown = !fb->IsOpenGL();
+	bool textureIsUpsideDown = !fb->GetContext()->IsOpenGL();
 
 	// Copy the old screen in vertical strips on top of the new one.
 	while (ticks--)
