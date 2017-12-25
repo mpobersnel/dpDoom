@@ -32,7 +32,7 @@ PixelOut main(PixelIn input)
 	if (output.FragColor.a < 0.5) discard;
 #else
 	int shade = 31 - int(Light * 31.0 / 255.0 + 0.5);
-	int fg = int(texture(DiffuseTexture, input.UV).r * 255.0 + 0.5);
+	int fg = int(DiffuseTexture.Sample(DiffuseSampler, input.UV).r * 255.0 + 0.5);
 	if (fg == 0) discard;
 	output.FragColor = BasecolormapTexture.Load(uint3(fg, shade, 0));
 #endif
