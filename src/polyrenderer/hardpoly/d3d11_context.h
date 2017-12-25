@@ -437,12 +437,14 @@ public:
 	void ClearScissorBox(float r, float g, float b, float a) override;
 	void ResetScissor() override;
 
+	void SetBlend(int op, int srcblend, int destblend, float *color);
 	void SetBlend(int op, int srcblend, int destblend) override;
 	void ResetBlend() override;
 
 	void SetOpaqueBlend(int srcalpha, int destalpha) override;
 	void SetMaskedBlend(int srcalpha, int destalpha) override;
 	void SetAlphaBlendFunc(int srcalpha, int destalpha) override;
+	void SetAlphaBlendFunc(int op, int srcalpha, int destalpha);
 	void SetAddClampBlend(int srcalpha, int destalpha) override;
 	void SetSubClampBlend(int srcalpha, int destalpha) override;
 	void SetRevSubClampBlend(int srcalpha, int destalpha) override;

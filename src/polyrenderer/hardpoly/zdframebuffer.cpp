@@ -126,6 +126,8 @@ void ZDFrameBuffer::Init()
 
 	GetContext()->SetSampler(0, SamplerClampToEdge);
 	GetContext()->SetSampler(1, SamplerClampToEdge);
+	GetContext()->SetSampler(2, SamplerClampToEdge);
+	GetContext()->SetSampler(3, SamplerClampToEdge);
 
 	NeedGammaUpdate = true;
 	NeedPalUpdate = true;
@@ -422,6 +424,8 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 	GetContext()->SetViewport(0, 0, GetWidth(), GetHeight());
 	GetContext()->SetSampler(0, SamplerClampToEdge);
 	GetContext()->SetSampler(1, SamplerClampToEdge);
+	GetContext()->SetSampler(2, SamplerClampToEdge);
+	GetContext()->SetSampler(3, SamplerClampToEdge);
 	CurrentShader = nullptr;
 
 	if (copy3d && !UseHardwareScene)

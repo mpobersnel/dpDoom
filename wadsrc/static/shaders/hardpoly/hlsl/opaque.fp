@@ -94,24 +94,24 @@ int FillColorPal(PixelIn input)
 
 #if defined(TRUECOLOR)
 
-PixelOut TextureSampler(PixelIn input)
+PixelOut TextureSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
 	float4 fg = DiffuseTexture.Sample(DiffuseSampler, input.UV);
-	//if (fg.a < 0.5) discard;
+	if (fg.a < 0.5) alphatest = true;
 	output.FragColor = LightShade(input, fg);
 	output.FragColor.a = 1.0;
 
 	return output;
 }
 
-PixelOut TranslatedSampler(PixelIn input)
+PixelOut TranslatedSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
 	int fg = SampleFg(input);
-	//if (fg == 0) discard;
+	if (fg == 0) alphatest = true;
 
 	output.FragColor = LightShade(input, Translate(fg));
 	output.FragColor.rgb *= output.FragColor.a;
@@ -119,29 +119,29 @@ PixelOut TranslatedSampler(PixelIn input)
 	return output;
 }
 
-PixelOut ShadedSampler(PixelIn input)
+PixelOut ShadedSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
 	float alpha = DiffuseTexture.Sample(DiffuseSampler, input.UV).r;
-	//if (alpha < 0.5) discard;
+	if (alpha < 0.5) alphatest = true;
 	output.FragColor = LightShade(input, float4(input.FillColor.rgb, 1.0)) * alpha;
 
 	return output;
 }
 
-PixelOut StencilSampler(PixelIn input)
+PixelOut StencilSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
 	float alpha = step(0.5, DiffuseTexture.Sample(DiffuseSampler, input.UV).a);
-	//if (output.FragColor.a < 0.5) discard;
+	if (alpha < 0.5) alphatest = true;
 	output.FragColor = LightShade(input, float4(input.FillColor.rgb, 1.0)) * alpha;
 
 	return output;
 }
 
-PixelOut FillSampler(PixelIn input)
+PixelOut FillSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -150,7 +150,7 @@ PixelOut FillSampler(PixelIn input)
 	return output;
 }
 
-PixelOut SkycapSampler(PixelIn input)
+PixelOut SkycapSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -169,7 +169,7 @@ PixelOut SkycapSampler(PixelIn input)
 	return output;
 }
 
-PixelOut FuzzSampler(PixelIn input)
+PixelOut FuzzSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -179,7 +179,7 @@ PixelOut FuzzSampler(PixelIn input)
 	return output;
 }
 
-PixelOut FogBoundarySampler(PixelIn input)
+PixelOut FogBoundarySampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -190,24 +190,24 @@ PixelOut FogBoundarySampler(PixelIn input)
 
 #else
 
-PixelOut TextureSampler(PixelIn input)
+PixelOut TextureSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
 	int fg = SampleFg(input);
-	//if (fg == 0) discard;
+	if (fg == 0) alphatest = true;
 	output.FragColor = LightShadePal(input, fg);
 	output.FragColor.rgb *= output.FragColor.a;
 
 	return output;
 }
 
-PixelOut TranslatedSampler(PixelIn input)
+PixelOut TranslatedSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
 	int fg = SampleFg(input);
-	//if (fg == 0) discard;
+	if (fg == 0) alphatest = true;
 
 	output.FragColor = LightShadePal(input, TranslatePal(fg));
 	output.FragColor.rgb *= output.FragColor.a;
@@ -215,7 +215,7 @@ PixelOut TranslatedSampler(PixelIn input)
 	return output;
 }
 
-PixelOut ShadedSampler(PixelIn input)
+PixelOut ShadedSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -224,7 +224,7 @@ PixelOut ShadedSampler(PixelIn input)
 	return output;
 }
 
-PixelOut StencilSampler(PixelIn input)
+PixelOut StencilSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -234,7 +234,7 @@ PixelOut StencilSampler(PixelIn input)
 	return output;
 }
 
-PixelOut FillSampler(PixelIn input)
+PixelOut FillSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -243,7 +243,7 @@ PixelOut FillSampler(PixelIn input)
 	return output;
 }
 
-PixelOut SkycapSampler(PixelIn input)
+PixelOut SkycapSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -262,7 +262,7 @@ PixelOut SkycapSampler(PixelIn input)
 	return output;
 }
 
-PixelOut FuzzSampler(PixelIn input)
+PixelOut FuzzSampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -272,7 +272,7 @@ PixelOut FuzzSampler(PixelIn input)
 	return output;
 }
 
-PixelOut FogBoundarySampler(PixelIn input)
+PixelOut FogBoundarySampler(PixelIn input, inout bool alphatest)
 {
 	PixelOut output;
 
@@ -287,17 +287,21 @@ PixelOut main(PixelIn input)
 {
 	PixelOut output;
 
+	bool alphatest = false;
+
 	switch (input.Mode)
 	{
-	case 0: output = TextureSampler(input); break;
-	case 1: output = TranslatedSampler(input); break;
-	case 2: output = ShadedSampler(input); break;
-	case 3: output = StencilSampler(input); break;
-	case 4: output = FillSampler(input); break;
-	case 5: output = SkycapSampler(input); break;
-	case 6: output = FuzzSampler(input); break;
-	case 7: output = FogBoundarySampler(input); break;
+	case 0: output = TextureSampler(input, alphatest); break;
+	case 1: output = TranslatedSampler(input, alphatest); break;
+	case 2: output = ShadedSampler(input, alphatest); break;
+	case 3: output = StencilSampler(input, alphatest); break;
+	case 4: output = FillSampler(input, alphatest); break;
+	case 5: output = SkycapSampler(input, alphatest); break;
+	case 6: output = FuzzSampler(input, alphatest); break;
+	case 7: output = FogBoundarySampler(input, alphatest); break;
 	}
+
+	if (alphatest) discard;
 
 	return output;
 }

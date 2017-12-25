@@ -310,10 +310,36 @@ static D3D11_BLEND ToD3DBlend(int glblend)
 	case GL_ONE_MINUS_DST_ALPHA: return D3D11_BLEND_INV_DEST_ALPHA;
 	case GL_DST_COLOR: return D3D11_BLEND_DEST_COLOR;
 	case GL_ONE_MINUS_DST_COLOR: return D3D11_BLEND_INV_DEST_COLOR;
+	case GL_CONSTANT_COLOR: return D3D11_BLEND_BLEND_FACTOR;
+	case GL_ONE_MINUS_CONSTANT_COLOR: return D3D11_BLEND_INV_BLEND_FACTOR;
+	case GL_CONSTANT_ALPHA: return D3D11_BLEND_BLEND_FACTOR;
+	case GL_ONE_MINUS_CONSTANT_ALPHA: return D3D11_BLEND_INV_BLEND_FACTOR;
 	}
 }
 
-void D3D11Context::SetBlend(int op, int srcblend, int destblend)
+static D3D11_BLEND ToD3DBlendAlpha(int glblend)
+{
+	switch (glblend)
+	{
+	case GL_ZERO: return D3D11_BLEND_ZERO;
+	case GL_ONE: return D3D11_BLEND_ONE;
+	case GL_SRC_COLOR: return D3D11_BLEND_SRC_ALPHA;
+	case GL_ONE_MINUS_SRC_COLOR: return D3D11_BLEND_INV_SRC_ALPHA;
+	case GL_SRC_ALPHA: return D3D11_BLEND_SRC_ALPHA;
+	default:
+	case GL_ONE_MINUS_SRC_ALPHA: return D3D11_BLEND_INV_SRC_ALPHA;
+	case GL_DST_ALPHA: return D3D11_BLEND_DEST_ALPHA;
+	case GL_ONE_MINUS_DST_ALPHA: return D3D11_BLEND_INV_DEST_ALPHA;
+	case GL_DST_COLOR: return D3D11_BLEND_DEST_ALPHA;
+	case GL_ONE_MINUS_DST_COLOR: return D3D11_BLEND_INV_DEST_ALPHA;
+	case GL_CONSTANT_COLOR: return D3D11_BLEND_BLEND_FACTOR;
+	case GL_ONE_MINUS_CONSTANT_COLOR: return D3D11_BLEND_INV_BLEND_FACTOR;
+	case GL_CONSTANT_ALPHA: return D3D11_BLEND_BLEND_FACTOR;
+	case GL_ONE_MINUS_CONSTANT_ALPHA: return D3D11_BLEND_INV_BLEND_FACTOR;
+	}
+}
+
+void D3D11Context::SetBlend(int op, int srcblend, int destblend, float *color)
 {
 	auto &blendState = mBlendState[{ op, srcblend, destblend }];
 	if (!blendState)
@@ -331,15 +357,20 @@ void D3D11Context::SetBlend(int op, int srcblend, int destblend)
 		}
 		desc.RenderTarget[0].SrcBlend = ToD3DBlend(srcblend);
 		desc.RenderTarget[0].DestBlend = ToD3DBlend(destblend);
-		desc.RenderTarget[0].SrcBlendAlpha = desc.RenderTarget[0].SrcBlend;
-		desc.RenderTarget[0].DestBlendAlpha = desc.RenderTarget[0].DestBlend;
+		desc.RenderTarget[0].SrcBlendAlpha = ToD3DBlendAlpha(srcblend);
+		desc.RenderTarget[0].DestBlendAlpha = ToD3DBlendAlpha(destblend);
 		desc.RenderTarget[0].BlendOpAlpha = desc.RenderTarget[0].BlendOp;
 		desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 		HRESULT result = Device->CreateBlendState(&desc, blendState.OutputVariable());
 		if (FAILED(result))
 			I_FatalError("ID3D11DeviceContext.CreateBlendState failed");
 	}
-	DeviceContext->OMSetBlendState(blendState, nullptr, 0xffffffff);
+	DeviceContext->OMSetBlendState(blendState, color, 0xffffffff);
+}
+
+void D3D11Context::SetBlend(int op, int srcblend, int destblend)
+{
+	SetBlend(op, srcblend, destblend, nullptr);
 }
 
 void D3D11Context::ResetBlend()
@@ -349,38 +380,75 @@ void D3D11Context::ResetBlend()
 
 void D3D11Context::SetOpaqueBlend(int srcalpha, int destalpha)
 {
+	ResetBlend();
 }
 
 void D3D11Context::SetMaskedBlend(int srcalpha, int destalpha)
 {
+	SetBlend(GL_FUNC_ADD, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+void D3D11Context::SetAlphaBlendFunc(int op, int srcalpha, int destalpha)
+{
+	int srcblend;
+	if (srcalpha == 0.0f)
+		srcblend = GL_ZERO;
+	else if (srcalpha == 1.0f)
+		srcblend = GL_ONE;
+	else
+		srcblend = GL_CONSTANT_ALPHA;
+
+	int destblend;
+	if (destalpha == 0.0f)
+		destblend = GL_ZERO;
+	else if (destalpha == 1.0f)
+		destblend = GL_ONE;
+	else if (srcalpha + destalpha >= 255)
+		destblend = GL_ONE_MINUS_CONSTANT_ALPHA;
+	else
+		destblend = GL_CONSTANT_COLOR;
+
+	float blendColor[4] = { destalpha / 256.0f, destalpha / 256.0f, destalpha / 256.0f, srcalpha / 256.0f };
+	SetBlend(op, srcblend, destblend, blendColor);
 }
 
 void D3D11Context::SetAlphaBlendFunc(int srcalpha, int destalpha)
 {
+	SetBlend(GL_FUNC_ADD, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	//SetAlphaBlendFunc(GL_FUNC_ADD, srcalpha, destalpha);
 }
 
 void D3D11Context::SetAddClampBlend(int srcalpha, int destalpha)
 {
+	SetBlend(GL_FUNC_ADD, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	//SetAlphaBlendFunc(GL_FUNC_ADD, srcalpha, destalpha);
 }
 
 void D3D11Context::SetSubClampBlend(int srcalpha, int destalpha)
 {
+	SetBlend(GL_FUNC_SUBTRACT, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	//SetAlphaBlendFunc(GL_FUNC_SUBTRACT, srcalpha, destalpha);
 }
 
 void D3D11Context::SetRevSubClampBlend(int srcalpha, int destalpha)
 {
+	SetBlend(GL_FUNC_REVERSE_SUBTRACT, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	//SetAlphaBlendFunc(GL_FUNC_REVERSE_SUBTRACT, srcalpha, destalpha);
 }
 
 void D3D11Context::SetAddSrcColorBlend(int srcalpha, int destalpha)
 {
+	SetBlend(GL_FUNC_ADD, GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
 }
 
 void D3D11Context::SetShadedBlend(int srcalpha, int destalpha)
 {
+	SetBlend(GL_FUNC_ADD, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void D3D11Context::SetAddClampShadedBlend(int srcalpha, int destalpha)
 {
+	SetBlend(GL_FUNC_ADD, GL_ONE, GL_ONE);
 }
 
 void D3D11Context::SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray)
