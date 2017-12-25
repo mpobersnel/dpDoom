@@ -61,7 +61,7 @@ class GPUStagingTexture
 public:
 	virtual ~GPUStagingTexture() { }
 
-	virtual void Upload(int x, int y, int width, int height, const void *pixels) = 0;
+	//virtual void Upload(int x, int y, int width, int height, const void *pixels) = 0;
 	virtual int Width() const = 0;
 	virtual int Height() const = 0;
 	virtual GPUPixelFormat Format() const = 0;

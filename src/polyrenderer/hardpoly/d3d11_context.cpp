@@ -1200,6 +1200,7 @@ D3D11StagingTexture::~D3D11StagingTexture()
 {
 }
 
+#if 0 // Warning: this code doesn't work for some reason
 void D3D11StagingTexture::Upload(int x, int y, int width, int height, const void *pixels)
 {
 	D3D11_TEXTURE2D_DESC desc;
@@ -1217,10 +1218,10 @@ void D3D11StagingTexture::Upload(int x, int y, int width, int height, const void
 	box.back = 1;
 
 	int rowPitch = width * D3D11Texture2D::GetBytesPerPixel(mFormat);
-	int slicePitch = rowPitch * height;
 
-	mContext->DeviceContext->UpdateSubresource(mHandle, 0, &box, pixels, rowPitch, slicePitch);
+	mContext->DeviceContext->UpdateSubresource(mHandle, 0, &box, pixels, rowPitch, 0);
 }
+#endif
 
 void *D3D11StagingTexture::Map()
 {
@@ -1335,9 +1336,8 @@ void D3D11Texture2D::Upload(int x, int y, int width, int height, int level, cons
 	box.back = 1;
 
 	int rowPitch = width * GetBytesPerPixel(mFormat);
-	int slicePitch = rowPitch * height;
 
-	mContext->DeviceContext->UpdateSubresource(mHandle, destSubresource, &box, pixels, rowPitch, slicePitch);
+	mContext->DeviceContext->UpdateSubresource(mHandle, destSubresource, &box, pixels, rowPitch, 0);
 }
 
 int D3D11Texture2D::NumLevels(int width, int height)

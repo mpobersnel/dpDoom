@@ -2173,7 +2173,10 @@ bool ZDFrameBuffer::OpenGLPal::Update()
 	}
 #endif
 
-	current->Upload(0, 0, numEntries, 1, buff);
+	//current->Upload(0, 0, numEntries, 1, buff);
+	void *p = current->Map();
+	memcpy(p, buff, numEntries * sizeof(uint32_t));
+	current->Unmap();
 	fb->GetContext()->CopyTexture(Tex->Texture, current);
 
 	return true;

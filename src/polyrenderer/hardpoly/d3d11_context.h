@@ -89,7 +89,7 @@ public:
 	D3D11StagingTexture(D3D11Context *context, int width, int height, GPUPixelFormat format, const void *pixels = nullptr);
 	~D3D11StagingTexture();
 
-	void Upload(int x, int y, int width, int height, const void *pixels);
+	//void Upload(int x, int y, int width, int height, const void *pixels);
 
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }

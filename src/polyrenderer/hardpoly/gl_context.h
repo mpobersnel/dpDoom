@@ -30,7 +30,7 @@ public:
 	GLStagingTexture(int width, int height, GPUPixelFormat format, const void *pixels = nullptr);
 	~GLStagingTexture();
 
-	void Upload(int x, int y, int width, int height, const void *pixels);
+	//void Upload(int x, int y, int width, int height, const void *pixels) override;
 
 	int Width() const override { return mWidth; }
 	int Height() const override { return mHeight; }

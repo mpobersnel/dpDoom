@@ -802,6 +802,7 @@ int GLStagingTexture::GetBytesPerPixel(GPUPixelFormat format)
 	}
 }
 
+#if 0
 void GLStagingTexture::Upload(int x, int y, int width, int height, const void *pixels)
 {
 	if (x == 0 && y == 0 && width == mWidth && height == mHeight)
@@ -835,6 +836,7 @@ void GLStagingTexture::Upload(int x, int y, int width, int height, const void *p
 		}
 	}
 }
+#endif
 
 void *GLStagingTexture::Map()
 {
