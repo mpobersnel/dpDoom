@@ -92,6 +92,7 @@ namespace swrenderer
 	{
 		auto viewport = MainThread()->Viewport.get();
 		viewport->RenderTarget = screen;
+		viewport->RenderTarget->LockBuffer();
 
 		int width = SCREENWIDTH;
 		int height = SCREENHEIGHT;
