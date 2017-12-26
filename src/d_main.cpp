@@ -736,11 +736,6 @@ void D_Display ()
 	}
 	setmodeneeded = false;
 
-	if (screen->Lock (false))
-	{
-		V_SetBorderNeedRefresh();
-	}
-
 	// [RH] Allow temporarily disabling wipes
 	if (NoWipe)
 	{
@@ -983,7 +978,7 @@ void D_Display ()
 void D_ErrorCleanup ()
 {
 	savegamerestore = false;
-	screen->Unlock ();
+	screen->UnlockBuffer();
 	bglobal.RemoveAllBots (true);
 	D_QuitNetGame ();
 	if (demorecording || demoplayback)

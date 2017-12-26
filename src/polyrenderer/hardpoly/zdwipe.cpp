@@ -172,7 +172,7 @@ void ZDFrameBuffer::WipeEndScreen()
 
 	// If the whole screen was drawn without 2D accel, get it in to
 	// video memory now.
-	if (!In2D)
+	if (Buffer)
 	{
 		Begin2D(true);
 	}
@@ -214,12 +214,6 @@ bool ZDFrameBuffer::WipeDo(int ticks)
 	{ // This is the first time we've been called for this wipe.
 		GatheringWipeScreen = false;
 	}
-	else
-	{ // This is the second or later time we've been called for this wipe.
-		InScene = true;
-	}
-
-	In2D = 3;
 
 	EnableAlphaTest(false);
 	bool done = ScreenWipe->Run(ticks, this);

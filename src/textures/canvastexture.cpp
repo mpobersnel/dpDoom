@@ -113,7 +113,6 @@ const uint32_t *FCanvasTexture::GetPixelsBgra()
 void FCanvasTexture::MakeTexture ()
 {
 	Canvas = new DSimpleCanvas (Width, Height, false);
-	Canvas->Lock ();
 
 	if (Width != Height || Width != Canvas->GetPitch())
 	{
@@ -134,7 +133,6 @@ void FCanvasTexture::MakeTexture ()
 void FCanvasTexture::MakeTextureBgra()
 {
 	CanvasBgra = new DSimpleCanvas(Width, Height, true);
-	CanvasBgra->Lock();
 
 	if (Width != Height || Width != CanvasBgra->GetPitch())
 	{

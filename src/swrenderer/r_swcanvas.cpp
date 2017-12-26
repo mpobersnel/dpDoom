@@ -58,7 +58,7 @@ void SWCanvas::DrawTexture(DCanvas *canvas, FTexture *img, DrawParms &parms)
 
 	auto viewport = thread.Viewport.get();
 	viewport->RenderTarget = canvas;
-	viewport->RenderTarget->Lock(true);
+	viewport->RenderTarget->LockBuffer();
 
 	lighttable_t *translation = nullptr;
 	FDynamicColormap *basecolormap = &identitycolormap;
@@ -206,7 +206,6 @@ void SWCanvas::DrawTexture(DCanvas *canvas, FTexture *img, DrawParms &parms)
 		viewwindowy = oldviewwindowy;
 	}
 
-	viewport->RenderTarget->Unlock();
 	viewport->RenderTarget = canvas;
 }
 
@@ -271,7 +270,7 @@ void SWCanvas::FillSimplePoly(DCanvas *canvas, FTexture *tex, FVector2 *points, 
 	auto viewport = thread.Viewport.get();
 	viewport->RenderTarget = canvas;
 
-	viewport->RenderTarget->Lock(true);
+	viewport->RenderTarget->LockBuffer();
 
 	scalex = tex->Scale.X / scalex;
 	scaley = tex->Scale.Y / scaley;
@@ -384,7 +383,6 @@ void SWCanvas::FillSimplePoly(DCanvas *canvas, FTexture *tex, FVector2 *points, 
 		pt2--;			if (pt2 < 0) pt2 = npoints;
 	} while (pt1 != botpt);
 
-	viewport->RenderTarget->Unlock();
 	viewport->RenderTarget = screen;
 }
 
@@ -401,7 +399,7 @@ void SWCanvas::DrawLine(DCanvas *canvas, int x0, int y0, int x1, int y1, int pal
 		palColor = PalFromRGB(realcolor);
 	}
 
-	canvas->Lock();
+	canvas->LockBuffer();
 	int deltaX, deltaY, xDir;
 
 	if (y0 > y1)
@@ -582,7 +580,6 @@ void SWCanvas::DrawLine(DCanvas *canvas, int x0, int y0, int x1, int y1, int pal
 		}
 		PUTTRANSDOT(canvas, x1, y1, palColor, 0);
 	}
-	canvas->Unlock();
 }
 
 void SWCanvas::DrawPixel(DCanvas *canvas, int x, int y, int palColor, uint32_t realcolor)

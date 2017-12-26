@@ -77,6 +77,7 @@ const std::vector<const char *> ZDFrameBuffer::ShaderDefines[ZDFrameBuffer::NUM_
 
 ZDFrameBuffer::ZDFrameBuffer(int width, int height, bool bgra) : DFrameBuffer(width, height, bgra)
 {
+	Buffer = nullptr;
 }
 
 ZDFrameBuffer::~ZDFrameBuffer()
@@ -209,32 +210,8 @@ void ZDFrameBuffer::ReleaseScreenshotBuffer()
 	//ScreenshotTexture.reset();
 }
 
-bool ZDFrameBuffer::Begin2D(bool copy3d)
+void ZDFrameBuffer::LockBuffer()
 {
-	Super::Begin2D(copy3d);
-	if (!Accel2D)
-	{
-		return false;
-	}
-	if (In2D)
-	{
-		return true;
-	}
-	In2D = 2 - copy3d;
-	Update();
-	In2D = 3;
-
-	return true;
-}
-
-bool ZDFrameBuffer::Lock(bool buffered)
-{
-	if (m_Lock++ > 0)
-	{
-		return false;
-	}
-	assert(!In2D);
-	Accel2D = vid_hw2d;
 	if (!UseHardwareScene)
 	{
 		if (UseMappedMemBuffer)
@@ -245,8 +222,6 @@ bool ZDFrameBuffer::Lock(bool buffered)
 
 				MappedMemBuffer = FBTexture->Buffers[FBTexture->CurrentBuffer]->Map();
 				Pitch = Width;
-				if (MappedMemBuffer == nullptr)
-					return true;
 			}
 			Buffer = (uint8_t*)MappedMemBuffer;
 		}
@@ -255,125 +230,70 @@ bool ZDFrameBuffer::Lock(bool buffered)
 			Buffer = MemBuffer;
 		}
 	}
-	return false;
 }
 
-void ZDFrameBuffer::Unlock()
+void ZDFrameBuffer::UnlockBuffer()
 {
-	if (m_Lock == 0)
+	if (Buffer)
 	{
-		return;
-	}
+		Buffer = nullptr;
 
-	if (UpdatePending && m_Lock == 1)
-	{
-		Update();
-	}
-	else if (--m_Lock == 0)
-	{
-		if (!UseHardwareScene)
+		if (MappedMemBuffer)
 		{
-			Buffer = nullptr;
-
-			if (MappedMemBuffer)
-			{
-				BindFBBuffer();
-				FBTexture->Buffers[FBTexture->CurrentBuffer]->Unmap();
-				MappedMemBuffer = nullptr;
-			}
+			BindFBBuffer();
+			FBTexture->Buffers[FBTexture->CurrentBuffer]->Unmap();
+			MappedMemBuffer = nullptr;
 		}
+
+		UploadSWBuffer();
 	}
+}
+
+bool ZDFrameBuffer::Begin2D(bool copy3d)
+{
+	if (GetContext() && Accel2D)
+	{
+		UnlockBuffer();
+		UpdateGammaAndPalette();
+		Draw3DPart(copy3d);
+	}
+	return Super::Begin2D(copy3d);
 }
 
 void ZDFrameBuffer::Update()
 {
-	// When In2D == 0: Copy buffer to screen and present
-	// When In2D == 1: Copy buffer to screen but do not present
-	// When In2D == 2: Set up for 2D drawing but do not draw anything
-	// When In2D == 3: Present and set In2D to 0
-
-	if (In2D == 3)
-	{
-		if (InScene)
-		{
-			DrawRateStuff();
-			DrawPackedTextures(r_showpacks);
-			EndBatch();		// Make sure all batched primitives are drawn.
-			Flip();
-		}
-		In2D = 0;
-		return;
-	}
-
-	if (m_Lock != 1)
-	{
-		I_FatalError("Framebuffer must have exactly 1 lock to be updated");
-		if (m_Lock > 0)
-		{
-			UpdatePending = true;
-			--m_Lock;
-		}
-		return;
-	}
-
-	if (In2D == 0)
-	{
-		DrawRateStuff();
-	}
-
-	if (NeedGammaUpdate)
-	{
-		float igamma;
-
-		NeedGammaUpdate = false;
-		igamma = 1 / Gamma;
-		if (IsFullscreen())
-		{
-			GammaRamp ramp;
-
-			for (int i = 0; i < 256; ++i)
-			{
-				ramp.blue[i] = ramp.green[i] = ramp.red[i] = uint16_t(65535.f * powf(i / 255.f, igamma));
-			}
-			SetGammaRamp(&ramp);
-		}
-		ShaderConstants.Gamma = { igamma, igamma, igamma, 0.5f /* For SM14 version */ };
-		ShaderConstantsModified = true;
-	}
-
-	if (NeedPalUpdate)
-	{
-		UploadPalette();
-		NeedPalUpdate = false;
-	}
+	if (Accel2D)
+		UnlockBuffer();
 
 #ifdef WIN32
 	BlitCycles.Reset();
 	BlitCycles.Clock();
 #endif
 
-	m_Lock = 0;
-	Draw3DPart(In2D <= 1);
-	if (In2D == 0)
+	UpdateGammaAndPalette();
+
+	DrawRateStuff();
+	DrawPackedTextures(r_showpacks);
+
+	if (!Accel2D)
 	{
-		Flip();
+		UnlockBuffer();
+		UpdateGammaAndPalette();
+		Draw3DPart(true);
 	}
+
+	EndBatch();		// Make sure all batched primitives are drawn.
+	Flip();
 
 #ifdef WIN32
 	BlitCycles.Unclock();
 	//LOG1 ("cycles = %d\n", BlitCycles);
 #endif
-
-	Buffer = nullptr;
-	UpdatePending = false;
 }
 
 void ZDFrameBuffer::Flip()
 {
-	assert(InScene);
-
 	Present();
-	InScene = false;
 
 	if (!IsFullscreen())
 	{
@@ -407,6 +327,37 @@ void ZDFrameBuffer::Flip()
 			V_OutputResized(Width, Height);
 		}
 	}
+
+	Accel2D = vid_hw2d;
+}
+
+void ZDFrameBuffer::UpdateGammaAndPalette()
+{
+	if (NeedGammaUpdate)
+	{
+		float igamma;
+
+		NeedGammaUpdate = false;
+		igamma = 1 / Gamma;
+		if (IsFullscreen())
+		{
+			GammaRamp ramp;
+
+			for (int i = 0; i < 256; ++i)
+			{
+				ramp.blue[i] = ramp.green[i] = ramp.red[i] = uint16_t(65535.f * powf(i / 255.f, igamma));
+			}
+			SetGammaRamp(&ramp);
+		}
+		ShaderConstants.Gamma = { igamma, igamma, igamma, 0.5f /* For SM14 version */ };
+		ShaderConstantsModified = true;
+	}
+
+	if (NeedPalUpdate)
+	{
+		UploadPalette();
+		NeedPalUpdate = false;
+	}
 }
 
 void ZDFrameBuffer::BindFBBuffer()
@@ -418,17 +369,9 @@ void ZDFrameBuffer::BindFBBuffer()
 	}
 }
 
-void ZDFrameBuffer::Draw3DPart(bool copy3d)
+void ZDFrameBuffer::UploadSWBuffer()
 {
-	GetContext()->SetFrameBuffer(OutputFB);
-	GetContext()->SetViewport(0, 0, GetWidth(), GetHeight());
-	GetContext()->SetSampler(0, SamplerClampToEdge);
-	GetContext()->SetSampler(1, SamplerClampToEdge);
-	GetContext()->SetSampler(2, SamplerClampToEdge);
-	GetContext()->SetSampler(3, SamplerClampToEdge);
-	CurrentShader = nullptr;
-
-	if (copy3d && !UseHardwareScene)
+	if (!UseHardwareScene)
 	{
 		BindFBBuffer();
 
@@ -466,7 +409,17 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 
 		FBTexture->CurrentBuffer = (FBTexture->CurrentBuffer + 1) & 1;
 	}
-	InScene = true;
+}
+
+void ZDFrameBuffer::Draw3DPart(bool copy3d)
+{
+	GetContext()->SetFrameBuffer(OutputFB);
+	GetContext()->SetViewport(0, 0, GetWidth(), GetHeight());
+	GetContext()->SetSampler(0, SamplerClampToEdge);
+	GetContext()->SetSampler(1, SamplerClampToEdge);
+	GetContext()->SetSampler(2, SamplerClampToEdge);
+	GetContext()->SetSampler(3, SamplerClampToEdge);
+	CurrentShader = nullptr;
 
 	GetContext()->SetLineSmooth(vid_hwaalines);
 
@@ -552,7 +505,7 @@ void ZDFrameBuffer::DrawLetterbox(int x, int y, int width, int height)
 
 void ZDFrameBuffer::DrawBlendingRect()
 {
-	if (!In2D || !Accel2D)
+	if (Buffer || !Accel2D)
 	{
 		return;
 	}
@@ -561,13 +514,9 @@ void ZDFrameBuffer::DrawBlendingRect()
 
 void ZDFrameBuffer::DoClear(int left, int top, int right, int bottom, int palcolor, uint32_t color)
 {
-	if (In2D < 2)
+	if (Buffer || !Accel2D)
 	{
 		Super::DoClear(left, top, right, bottom, palcolor, color);
-		return;
-	}
-	if (!InScene)
-	{
 		return;
 	}
 
@@ -590,13 +539,9 @@ void ZDFrameBuffer::DoDim(PalEntry color, float amount, int x1, int y1, int w, i
 	{
 		return;
 	}
-	if (In2D < 2)
+	if (Buffer || !Accel2D)
 	{
 		Super::DoDim(color, amount, x1, y1, w, h);
-		return;
-	}
-	if (!InScene)
-	{
 		return;
 	}
 
@@ -609,13 +554,9 @@ void ZDFrameBuffer::DoDim(PalEntry color, float amount, int x1, int y1, int w, i
 
 void ZDFrameBuffer::DrawLine(int x0, int y0, int x1, int y1, int palcolor, uint32_t color)
 {
-	if (In2D < 2)
+	if (Buffer || !Accel2D)
 	{
 		Super::DrawLine(x0, y0, x1, y1, palcolor, color);
-		return;
-	}
-	if (!InScene)
-	{
 		return;
 	}
 
@@ -652,13 +593,9 @@ void ZDFrameBuffer::DrawLine(int x0, int y0, int x1, int y1, int palcolor, uint3
 
 void ZDFrameBuffer::DrawPixel(int x, int y, int palcolor, uint32_t color)
 {
-	if (In2D < 2)
+	if (Buffer || !Accel2D)
 	{
 		Super::DrawPixel(x, y, palcolor, color);
-		return;
-	}
-	if (!InScene)
-	{
 		return;
 	}
 
@@ -674,13 +611,9 @@ void ZDFrameBuffer::DrawPixel(int x, int y, int palcolor, uint32_t color)
 
 void ZDFrameBuffer::DrawTextureParms(FTexture *img, DrawParms &parms)
 {
-	if (In2D < 2)
+	if (Buffer || !Accel2D)
 	{
 		Super::DrawTextureParms(img, parms);
-		return;
-	}
-	if (!InScene)
-	{
 		return;
 	}
 
@@ -843,13 +776,9 @@ done:
 
 void ZDFrameBuffer::FlatFill(int left, int top, int right, int bottom, FTexture *src, bool local_origin)
 {
-	if (In2D < 2)
+	if (Buffer || !Accel2D)
 	{
 		Super::FlatFill(left, top, right, bottom, src, local_origin);
-		return;
-	}
-	if (!InScene)
-	{
 		return;
 	}
 
@@ -949,13 +878,9 @@ void ZDFrameBuffer::FillSimplePoly(FTexture *texture, FVector2 *points, int npoi
 	{ // This is no polygon.
 		return;
 	}
-	if (In2D < 2)
+	if (Buffer || !Accel2D)
 	{
 		Super::FillSimplePoly(texture, points, npoints, originx, originy, scalex, scaley, rotation, colormap, lightlevel, flatcolor, bottomclip);
-		return;
-	}
-	if (!InScene)
-	{
 		return;
 	}
 
@@ -2211,7 +2136,7 @@ FNativePalette *ZDFrameBuffer::CreatePalette(FRemapTable *remap)
 
 void ZDFrameBuffer::BeginLineBatch()
 {
-	if (In2D < 2 || !InScene || BatchType == BATCH_Lines)
+	if (Buffer || !Accel2D || BatchType == BATCH_Lines)
 	{
 		return;
 	}
@@ -2223,7 +2148,7 @@ void ZDFrameBuffer::BeginLineBatch()
 
 void ZDFrameBuffer::EndLineBatch()
 {
-	if (In2D < 2 || !InScene || BatchType != BATCH_Lines)
+	if (Buffer || !Accel2D || BatchType != BATCH_Lines)
 	{
 		return;
 	}
@@ -2342,7 +2267,7 @@ void ZDFrameBuffer::CheckQuadBatch(int numtris, int numverts)
 // Locks the vertex buffer for quads and sets the cursor to 0.
 void ZDFrameBuffer::BeginQuadBatch()
 {
-	if (In2D < 2 || !InScene || QuadBatchPos >= 0)
+	if (Buffer || !Accel2D || QuadBatchPos >= 0)
 	{
 		return;
 	}
@@ -2358,7 +2283,7 @@ void ZDFrameBuffer::BeginQuadBatch()
 // Draws all the quads that have been batched up.
 void ZDFrameBuffer::EndQuadBatch()
 {
-	if (In2D < 2 || !InScene || BatchType != BATCH_Quads)
+	if (Buffer || !Accel2D || BatchType != BATCH_Quads)
 	{
 		return;
 	}

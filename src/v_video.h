@@ -206,19 +206,15 @@ public:
 	DCanvas (int width, int height, bool bgra);
 	virtual ~DCanvas ();
 
+	virtual void LockBuffer() { }
+	virtual void UnlockBuffer() { }
+
 	// Member variable access
 	inline uint8_t *GetBuffer () const { return Buffer; }
 	inline int GetWidth () const { return Width; }
 	inline int GetHeight () const { return Height; }
 	inline int GetPitch () const { return Pitch; }
 	inline bool IsBgra() const { return Bgra; }
-
-	virtual bool IsValid ();
-
-	// Access control
-	virtual bool Lock (bool buffered=true) = 0;		// Returns true if the surface was lost since last time
-	virtual void Unlock () = 0;
-	virtual bool IsLocked () { return Buffer != NULL; }	// Returns true if the surface is locked
 
 	// Draw a linear block of pixels into the canvas
 	virtual void DrawBlock (int x, int y, int width, int height, const uint8_t *src) const;
@@ -293,7 +289,6 @@ protected:
 	int Width;
 	int Height;
 	int Pitch;
-	int LockCount;
 	bool Bgra;
 	int clipleft = 0, cliptop = 0, clipwidth = -1, clipheight = -1;
 
@@ -322,10 +317,6 @@ class DSimpleCanvas : public DCanvas
 public:
 	DSimpleCanvas (int width, int height, bool bgra);
 	~DSimpleCanvas ();
-
-	bool IsValid ();
-	bool Lock (bool buffered=true);
-	void Unlock ();
 
 protected:
 	void Resize(int width, int height);
@@ -365,10 +356,6 @@ class DFrameBuffer : public DSimpleCanvas
 public:
 	DFrameBuffer (int width, int height, bool bgra);
 
-	// Force the surface to use buffered output if true is passed.
-	virtual bool Lock (bool buffered) = 0;
-
-	// Make the surface visible. Also implies Unlock().
 	virtual void Update () = 0;
 
 	// Return a pointer to 256 palette entries that can be written to.

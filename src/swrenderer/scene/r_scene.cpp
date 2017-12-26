@@ -368,13 +368,12 @@ namespace swrenderer
 		DrawerWaitCycles.Unclock();
 
 		viewport->RenderTarget = screen;
+		viewport->RenderTarget->LockBuffer();
 
 		R_ExecuteSetViewSize(MainThread()->Viewport->viewpoint, MainThread()->Viewport->viewwindow);
 		float trueratio;
 		ActiveRatio(width, height, &trueratio);
-		screen->Lock(true);
 		viewport->SetViewport(MainThread(), width, height, trueratio);
-		screen->Unlock();
 
 		viewactive = savedviewactive;
 	}
@@ -387,9 +386,7 @@ namespace swrenderer
 		int height = SCREENHEIGHT;
 		float trueratio;
 		ActiveRatio(width, height, &trueratio);
-		screen->Lock(true);
 		viewport->SetViewport(MainThread(), SCREENWIDTH, SCREENHEIGHT, trueratio);
-		screen->Unlock();
 	}
 
 	void RenderScene::Init()

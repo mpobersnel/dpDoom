@@ -220,7 +220,6 @@ DCanvas::DCanvas (int _width, int _height, bool _bgra)
 {
 	// Init member vars
 	Buffer = NULL;
-	LockCount = 0;
 	Width = _width;
 	Height = _height;
 	Bgra = _bgra;
@@ -234,18 +233,6 @@ DCanvas::DCanvas (int _width, int _height, bool _bgra)
 
 DCanvas::~DCanvas ()
 {
-}
-
-//==========================================================================
-//
-// DCanvas :: IsValid
-//
-//==========================================================================
-
-bool DCanvas::IsValid ()
-{
-	// A nun-subclassed DCanvas is never valid
-	return false;
 }
 
 //==========================================================================
@@ -331,7 +318,7 @@ void DCanvas::Dim (PalEntry color)
 
 void DCanvas::GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, ESSType &color_type, float &gamma)
 {
-	Lock(true);
+	LockBuffer();
 	buffer = GetBuffer();
 	pitch = IsBgra() ? GetPitch() * 4 : GetPitch();
 	color_type = IsBgra() ? SS_BGRA : SS_PAL;
@@ -349,7 +336,7 @@ void DCanvas::GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, ESSType &c
 
 void DCanvas::ReleaseScreenshotBuffer()
 {
-	Unlock();
+	// To do: remove this silly function and change GetScreenshotBuffer to provide a buffer to copy the contents to
 }
 
 //==========================================================================
@@ -716,6 +703,8 @@ void DSimpleCanvas::Resize(int width, int height)
 	int bytes_per_pixel = Bgra ? 4 : 1;
 	MemBuffer = new uint8_t[Pitch * height * bytes_per_pixel];
 	memset (MemBuffer, 0, Pitch * height * bytes_per_pixel);
+
+	Buffer = MemBuffer;
 }
 
 //==========================================================================
@@ -730,48 +719,6 @@ DSimpleCanvas::~DSimpleCanvas ()
 	{
 		delete[] MemBuffer;
 		MemBuffer = NULL;
-	}
-}
-
-//==========================================================================
-//
-// DSimpleCanvas :: IsValid
-//
-//==========================================================================
-
-bool DSimpleCanvas::IsValid ()
-{
-	return (MemBuffer != NULL);
-}
-
-//==========================================================================
-//
-// DSimpleCanvas :: Lock
-//
-//==========================================================================
-
-bool DSimpleCanvas::Lock (bool)
-{
-	if (LockCount == 0)
-	{
-		Buffer = MemBuffer;
-	}
-	LockCount++;
-	return false;		// System surfaces are never lost
-}
-
-//==========================================================================
-//
-// DSimpleCanvas :: Unlock
-//
-//==========================================================================
-
-void DSimpleCanvas::Unlock ()
-{
-	if (--LockCount <= 0)
-	{
-		LockCount = 0;
-		Buffer = NULL;	// Enforce buffer access only between Lock/Unlock
 	}
 }
 
@@ -1209,7 +1156,6 @@ bool DFrameBuffer::WipeStartScreen(int type)
 void DFrameBuffer::WipeEndScreen()
 {
 	wipe_EndScreen();
-	Unlock();
 }
 
 //==========================================================================
@@ -1224,7 +1170,7 @@ void DFrameBuffer::WipeEndScreen()
 
 bool DFrameBuffer::WipeDo(int ticks)
 {
-	Lock(true);
+	LockBuffer();
 	return wipe_ScreenWipe(ticks);
 }
 

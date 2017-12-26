@@ -15,9 +15,9 @@ public:
 
 	void Init();
 
-	bool IsValid() override { return true; }
-	bool Lock(bool buffered) override;
-	void Unlock() override;
+	void LockBuffer() override;
+	void UnlockBuffer() override;
+
 	void Update() override;
 	PalEntry *GetPalette() override;
 	void GetFlashedPalette(PalEntry palette[256]) override;
@@ -304,6 +304,9 @@ private:
 	void *MappedMemBuffer = nullptr;
 	bool UseMappedMemBuffer = true;
 
+	void UploadSWBuffer();
+	void UpdateGammaAndPalette();
+
 	void DrawLetterbox(int x, int y, int width, int height);
 	void Draw3DPart(bool copy3d);
 
@@ -350,11 +353,6 @@ private:
 	static void BgraToRgba(uint32_t *dest, const uint32_t *src, int width, int height, int srcpitch);
 
 	static const std::vector<const char *> ShaderDefines[NUM_SHADERS];
-
-	int m_Lock = 0;
-	bool UpdatePending;
-	int In2D = 0;
-	bool InScene = false;
 
 	uint32_t FlashColor0 = 0;
 	uint32_t FlashColor1 = 0xFFFFFFFF;

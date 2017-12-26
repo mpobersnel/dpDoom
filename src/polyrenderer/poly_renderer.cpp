@@ -83,9 +83,8 @@ void PolyRenderer::RenderView(player_t *player)
 	}
 	else
 	{
-		//auto swframebuffer = static_cast<OpenGLSWFrameBuffer*>(screen);
-		//swframebuffer->SetViewFB(0);
 		screen->SetUseHardwareScene(false);
+		screen->LockBuffer();
 	}
 
 	RenderActorView(player->mo, false);
@@ -123,14 +122,12 @@ void PolyRenderer::RenderViewToCanvas(AActor *actor, DCanvas *canvas, int x, int
 	viewwindowy = y;
 	viewactive = true;
 	
-	canvas->Lock(true);
+	canvas->LockBuffer();
 	
 	RenderActorView(actor, dontmaplines);
 	Threads.MainThread()->FlushDrawQueue();
 	DrawerThreads::WaitForWorkers();
 	
-	canvas->Unlock();
-
 	RenderTarget = screen;
 	R_ExecuteSetViewSize(Viewpoint, Viewwindow);
 	float trueratio;

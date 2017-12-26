@@ -303,7 +303,7 @@ DFrameBuffer *Win32Video::CreateFrameBuffer (int width, int height, bool bgra, b
 		fb = new D3D11FB (width, height, bgra, fullscreen);
 	}
 
-	if (fb == nullptr || !fb->IsValid())
+	if (fb == nullptr)
 	{
 		I_FatalError("Could not create new screen (%d x %d): %08lx", width, height);
 	}

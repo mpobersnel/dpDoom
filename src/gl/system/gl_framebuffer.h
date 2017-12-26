@@ -47,11 +47,6 @@ public:
 	bool Begin2D(bool copy3d);
 	void GameRestart();
 
-	int m_2dLock = 0;
-	bool Lock(bool buffered) override { Buffer = MemBuffer; m_2dLock++; return true; }
-	void Unlock() override { Buffer = nullptr; m_2dLock--; }
-	bool IsLocked() { return m_2dLock != 0; }
-
 	// Retrieves a buffer containing image data for a screenshot.
 	// Hint: Pitch can be negative for upside-down images, in which case buffer
 	// points to the last row in the buffer, which will be the first row output.
