@@ -113,6 +113,93 @@ void D3D11Context::CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> 
 	}
 }
 
+// Note: Only works for 'normal' half-float values
+static float HalfToFloatSimple(unsigned short hf)
+{
+	unsigned int float_value = ((hf & 0x8000) << 16) | (((hf & 0x7c00) + 0x1C000) << 13) | ((hf & 0x03FF) << 13);
+	void *ptr = static_cast<void*>(&float_value);
+	return *static_cast<float*>(ptr);
+}
+
+void D3D11Context::GetPixelsBgra(int width, int height, uint32_t *pixels)
+{
+	ComPtr<ID3D11Texture2D> backbuffer;
+	ID3D11Texture2D *srctexture;
+
+	HRESULT result;
+	if (mCurrentFrameBuffer)
+	{
+		srctexture = static_cast<D3D11Texture2D*>(mCurrentFrameBuffer->ColorBuffers.front().get())->Handle();
+	}
+	else
+	{
+		result = SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)backbuffer.OutputVariable());
+		if (FAILED(result))
+			I_FatalError("IDXGISwapChain.GetBuffer failed");
+		srctexture = backbuffer.Get();
+	}
+
+	D3D11_TEXTURE2D_DESC srcdesc;
+	srctexture->GetDesc(&srcdesc);
+
+	if (width > srcdesc.Width || height > srcdesc.Height)
+		I_FatalError("Invalid dimensions passed into D3D11Context.GetPixelsBgra");
+
+	if (srcdesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM && srcdesc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT)
+		I_FatalError("Format must be bgra8 or rgba16f");
+
+	D3D11_TEXTURE2D_DESC desc;
+	desc.Width = srcdesc.Width;
+	desc.Height = srcdesc.Height;
+	desc.MipLevels = 1;
+	desc.Format = srcdesc.Format;
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
+	desc.Usage = D3D11_USAGE_STAGING;
+	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+	desc.MiscFlags = 0;
+	desc.ArraySize = 1;
+	desc.BindFlags = 0;
+
+	ComPtr<ID3D11Texture2D> desttexture;
+	result = Device->CreateTexture2D(&desc, nullptr, desttexture.OutputVariable());
+	if (FAILED(result))
+		I_FatalError("ID3D11Device.CreateTexture2D(getpixels) failed");
+
+	DeviceContext->CopyResource(desttexture, srctexture);
+
+	D3D11_MAPPED_SUBRESOURCE lock;
+	result = DeviceContext->Map(desttexture, 0, D3D11_MAP_READ, 0, &lock);
+	if (FAILED(result))
+		return;
+
+	if (desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM)
+	{
+		for (int y = 0; y < height; y++)
+		{
+			memcpy(pixels + y * width, (uint8_t*)lock.pData + y * lock.RowPitch, width * 4);
+		}
+	}
+	else if (desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT)
+	{
+		for (int y = 0; y < height; y++)
+		{
+			uint16_t *src = (uint16_t*)((uint8_t*)lock.pData + y * lock.RowPitch);
+			uint32_t *dest = pixels + y * width;
+			for (int x = 0; x < width; x++)
+			{
+				uint32_t red = (uint32_t)clamp(HalfToFloatSimple(*(src++)) * 255.0f, 0.0f, 255.0f);
+				uint32_t green = (uint32_t)clamp(HalfToFloatSimple(*(src++)) * 255.0f, 0.0f, 255.0f);
+				uint32_t blue = (uint32_t)clamp(HalfToFloatSimple(*(src++)) * 255.0f, 0.0f, 255.0f);
+				uint32_t alpha = (uint32_t)clamp(HalfToFloatSimple(*(src++)) * 255.0f, 0.0f, 255.0f);
+				*(dest++) = (alpha << 24) | (red << 16) | (green << 8) | blue;
+			}
+		}
+	}
+
+	DeviceContext->Unmap(desttexture, 0);
+}
+
 void D3D11Context::Begin()
 {
 }

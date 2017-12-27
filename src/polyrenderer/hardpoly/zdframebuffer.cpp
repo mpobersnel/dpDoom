@@ -169,45 +169,22 @@ void ZDFrameBuffer::GetLetterboxFrame(int &letterboxX, int &letterboxY, int &let
 
 void ZDFrameBuffer::GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, ESSType &color_type, float &gamma)
 {
-	Super::GetScreenshotBuffer(buffer, pitch, color_type, gamma);
-	/*
-	LockedRect lrect;
+	int width = OutputTexture->Width();
+	int height = OutputTexture->Height();
+	ScreenshotBuffer.reset(new uint32_t[width * height * 4]);
 
-	if (!Accel2D)
-	{
-	Super::GetScreenshotBuffer(buffer, pitch, color_type, gamma);
-	return;
-	}
-	buffer = nullptr;
-	if ((ScreenshotTexture = GetCurrentScreen()) != nullptr)
-	{
-	if (!ScreenshotTexture->GetSurfaceLevel(0, &ScreenshotSurface))
-	{
-	delete ScreenshotTexture;
-	ScreenshotTexture = nullptr;
-	}
-	else if (!ScreenshotSurface->LockRect(&lrect, nullptr, false))
-	{
-	delete ScreenshotSurface;
-	ScreenshotSurface = nullptr;
-	delete ScreenshotTexture;
-	ScreenshotTexture = nullptr;
-	}
-	else
-	{
-	buffer = (const uint8_t *)lrect.pBits;
-	pitch = lrect.Pitch;
+	GetContext()->SetFrameBuffer(OutputFB);
+	GetContext()->GetPixelsBgra(width, height, ScreenshotBuffer.get());
+
+	buffer = (uint8_t*)(ScreenshotBuffer.get() + width * (height - 1));
+	pitch = -width * 4;
 	color_type = SS_BGRA;
-	gamma = Gamma;
-	}
-	}
-	*/
+	gamma = 2.2f;
 }
 
 void ZDFrameBuffer::ReleaseScreenshotBuffer()
 {
-	Super::ReleaseScreenshotBuffer();
-	//ScreenshotTexture.reset();
+	ScreenshotBuffer.reset();
 }
 
 void ZDFrameBuffer::LockBuffer()

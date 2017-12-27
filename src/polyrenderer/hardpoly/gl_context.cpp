@@ -119,6 +119,11 @@ void GLContext::CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &de
 	glBindTexture(GL_TEXTURE_2D, oldBinding);
 }
 
+void GLContext::GetPixelsBgra(int width, int height, uint32_t *pixels)
+{
+	glReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
+}
+
 void GLContext::Begin()
 {
 	ClearError();

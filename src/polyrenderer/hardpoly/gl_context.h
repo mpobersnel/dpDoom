@@ -269,6 +269,7 @@ public:
 
 	void CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source) override;
 	void CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest) override;
+	void GetPixelsBgra(int width, int height, uint32_t *pixels) override;
 
 	void Begin() override;
 	void End() override;

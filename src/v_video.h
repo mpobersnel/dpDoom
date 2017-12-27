@@ -250,15 +250,6 @@ public:
 	// Calculate gamma table
 	void CalcGamma (float gamma, uint8_t gammalookup[256]);
 
-
-	// Retrieves a buffer containing image data for a screenshot.
-	// Hint: Pitch can be negative for upside-down images, in which case buffer
-	// points to the last row in the buffer, which will be the first row output.
-	virtual void GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, ESSType &color_type, float &gamma);
-
-	// Releases the screenshot buffer.
-	virtual void ReleaseScreenshotBuffer();
-
 	// Text drawing functions -----------------------------------------------
 
 	// 2D Texture drawing
@@ -420,6 +411,14 @@ public:
 
 	// Create a palette texture from a remap/palette table.
 	virtual FNativePalette *CreatePalette(FRemapTable *remap);
+
+	// Retrieves a buffer containing image data for a screenshot.
+	// Hint: Pitch can be negative for upside-down images, in which case buffer
+	// points to the last row in the buffer, which will be the first row output.
+	virtual void GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, ESSType &color_type, float &gamma) = 0;
+
+	// Releases the screenshot buffer.
+	virtual void ReleaseScreenshotBuffer() = 0;
 
 	// Precaches or unloads a texture
 	

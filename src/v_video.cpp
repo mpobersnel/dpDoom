@@ -127,6 +127,9 @@ public:
 	bool Is8BitMode() { return false; }
 #endif
 
+	void GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, ESSType &color_type, float &gamma) { buffer = nullptr; }
+	void ReleaseScreenshotBuffer() { }
+
 	float Gamma;
 };
 
@@ -305,38 +308,6 @@ void DCanvas::Dim (PalEntry color)
 		amount = dim[3];
 	}
 	Dim (dimmer, amount, 0, 0, Width, Height);
-}
-
-//==========================================================================
-//
-// DCanvas :: GetScreenshotBuffer
-//
-// Returns a buffer containing the most recently displayed frame. The
-// width and height of this buffer are the same as the canvas.
-//
-//==========================================================================
-
-void DCanvas::GetScreenshotBuffer(const uint8_t *&buffer, int &pitch, ESSType &color_type, float &gamma)
-{
-	LockBuffer();
-	buffer = GetBuffer();
-	pitch = IsBgra() ? GetPitch() * 4 : GetPitch();
-	color_type = IsBgra() ? SS_BGRA : SS_PAL;
-	gamma = Gamma;
-}
-
-//==========================================================================
-//
-// DCanvas :: ReleaseScreenshotBuffer
-//
-// Releases the buffer obtained through GetScreenshotBuffer. These calls
-// must not be nested.
-//
-//==========================================================================
-
-void DCanvas::ReleaseScreenshotBuffer()
-{
-	// To do: remove this silly function and change GetScreenshotBuffer to provide a buffer to copy the contents to
 }
 
 //==========================================================================

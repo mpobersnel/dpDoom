@@ -399,6 +399,8 @@ private:
 	std::unique_ptr<HWTexture> InitialWipeScreen, FinalWipeScreen;
 	std::unique_ptr<Wiper> ScreenWipe;
 
+	std::unique_ptr<uint32_t[]> ScreenshotBuffer;
+
 	class Wiper_Melt;			friend class Wiper_Melt;
 	class Wiper_Burn;			friend class Wiper_Burn;
 	class Wiper_Crossfade;		friend class Wiper_Crossfade;

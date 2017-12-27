@@ -247,6 +247,7 @@ public:
 
 	virtual void CopyTexture(const std::shared_ptr<GPUTexture2D> &dest, const std::shared_ptr<GPUStagingTexture> &source) = 0;
 	virtual void CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest) = 0;
+	virtual void GetPixelsBgra(int width, int height, uint32_t *pixels) = 0;
 
 	virtual void Begin() = 0;
 	virtual void End() = 0;
