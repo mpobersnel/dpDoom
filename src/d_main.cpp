@@ -791,7 +791,13 @@ void D_Display ()
 		case GS_LEVEL:
 		case GS_TITLELEVEL:
 			if (!gametic)
+			{
+				if (!screen->HasBegun2D())
+				{
+					screen->Begin2D(false);
+				}
 				break;
+			}
 
 			if (StatusBar != NULL)
 			{
