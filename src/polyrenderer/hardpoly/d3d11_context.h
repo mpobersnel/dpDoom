@@ -418,9 +418,6 @@ public:
 	void CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest) override;
 	void GetPixelsBgra(int width, int height, uint32_t *pixels) override;
 
-	void Begin() override;
-	void End() override;
-
 	void ClearError() override;
 	void CheckError() override;
 
@@ -441,20 +438,8 @@ public:
 	void ClearScissorBox(float r, float g, float b, float a) override;
 	void ResetScissor() override;
 
-	void SetBlend(int op, int srcblend, int destblend, float *color);
-	void SetBlend(int op, int srcblend, int destblend) override;
+	void SetBlend(GPUBlendEquation opcolor, GPUBlendFunc srccolor, GPUBlendFunc destcolor, GPUBlendEquation opalpha, GPUBlendFunc srcalpha, GPUBlendFunc destalpha, const Vec4f &blendcolor = Vec4f(0.0f)) override;
 	void ResetBlend() override;
-
-	void SetOpaqueBlend(int srcalpha, int destalpha) override;
-	void SetMaskedBlend(int srcalpha, int destalpha) override;
-	void SetAlphaBlendFunc(int srcalpha, int destalpha) override;
-	void SetAlphaBlendFunc(int op, int srcalpha, int destalpha);
-	void SetAddClampBlend(int srcalpha, int destalpha) override;
-	void SetSubClampBlend(int srcalpha, int destalpha) override;
-	void SetRevSubClampBlend(int srcalpha, int destalpha) override;
-	void SetAddSrcColorBlend(int srcalpha, int destalpha) override;
-	void SetShadedBlend(int srcalpha, int destalpha) override;
-	void SetAddClampShadedBlend(int srcalpha, int destalpha) override;
 
 	void SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray) override;
 	void SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16) override;
@@ -485,25 +470,13 @@ private:
 
 	void SetDrawMode(GPUDrawMode mode);
 
-	struct BlendKey
-	{
-		BlendKey() { }
-		BlendKey(int op, int srcblend, int destblend) : op(op), srcblend(srcblend), destblend(destblend) { }
-
-		bool operator<(const BlendKey &other) const { return memcmp(this, &other, sizeof(BlendKey)) < 0; }
-
-		int op = 0;
-		int srcblend = 0;
-		int destblend = 0;
-	};
-
 	GPUIndexFormat mIndexFormat = GPUIndexFormat::Uint16;
 	std::shared_ptr<D3D11Program> mCurrentProgram;
 	std::shared_ptr<D3D11VertexArray> mCurrentVertexArray;
 	std::shared_ptr<D3D11FrameBuffer> mCurrentFrameBuffer;
 	ComPtr<ID3D11RasterizerState> mRasterizerStateScissorOn;
 	ComPtr<ID3D11RasterizerState> mRasterizerStateScissorOff;
-	std::map<BlendKey, ComPtr<ID3D11BlendState>> mBlendState;
+	std::map<int, ComPtr<ID3D11BlendState>> mBlendState;
 
 	std::vector<std::shared_ptr<GPUSampler>> mBoundSamplers = std::vector<std::shared_ptr<GPUSampler>>(64);
 	std::vector<std::shared_ptr<GPUTexture>> mBoundTextures = std::vector<std::shared_ptr<GPUTexture>>(64);

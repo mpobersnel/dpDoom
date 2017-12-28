@@ -271,9 +271,6 @@ public:
 	void CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest) override;
 	void GetPixelsBgra(int width, int height, uint32_t *pixels) override;
 
-	void Begin() override;
-	void End() override;
-	
 	void ClearError() override;
 	void CheckError() override;
 
@@ -294,18 +291,8 @@ public:
 	void ClearScissorBox(float r, float g, float b, float a) override;
 	void ResetScissor() override;
 
-	void SetBlend(int op, int srcblend, int destblend) override;
+	void SetBlend(GPUBlendEquation op, GPUBlendFunc srccolor, GPUBlendFunc destcolor, GPUBlendEquation opcolor, GPUBlendFunc srcalpha, GPUBlendFunc destalpha, const Vec4f &blendcolor = Vec4f(0.0f)) override;
 	void ResetBlend() override;
-
-	void SetOpaqueBlend(int srcalpha, int destalpha) override;
-	void SetMaskedBlend(int srcalpha, int destalpha) override;
-	void SetAlphaBlendFunc(int srcalpha, int destalpha) override;
-	void SetAddClampBlend(int srcalpha, int destalpha) override;
-	void SetSubClampBlend(int srcalpha, int destalpha) override;
-	void SetRevSubClampBlend(int srcalpha, int destalpha) override;
-	void SetAddSrcColorBlend(int srcalpha, int destalpha) override;
-	void SetShadedBlend(int srcalpha, int destalpha) override;
-	void SetAddClampShadedBlend(int srcalpha, int destalpha) override;
 
 	void SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray) override;
 	void SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16) override;

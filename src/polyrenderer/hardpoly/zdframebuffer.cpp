@@ -402,7 +402,7 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 
 	GetContext()->SetTexture(0, FBTexture->Texture);
 	SetPaletteTexture(PaletteTexture.get(), 256);
-	SetAlphaBlend(0);
+	GetContext()->ResetBlend();
 	EnableAlphaTest(false);
 	if (IsBgra())
 		SetPixelShader(Shaders[SHADER_NormalColor]);
@@ -582,7 +582,9 @@ void ZDFrameBuffer::DrawPixel(int x, int y, int palcolor, uint32_t color)
 	};
 	EndBatch();		// Draw out any batched operations.
 	SetPixelShader(Shaders[SHADER_VertexColor]);
-	SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	GetContext()->SetBlend(
+		GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha,
+		GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha);
 	DrawSinglePoint(&pt);
 }
 
@@ -1166,7 +1168,7 @@ void ZDFrameBuffer::Present()
 		}
 
 		SetPixelShader(Shaders[SHADER_GammaCorrection]);
-		SetAlphaBlend(0);
+		GetContext()->ResetBlend();
 		EnableAlphaTest(false);
 		DrawSingleQuad(verts);
 
@@ -1175,6 +1177,9 @@ void ZDFrameBuffer::Present()
 	}
 
 	SwapBuffers();
+
+	screen->GetContext()->CheckError();
+	screen->GetContext()->ClearError();
 	//Debug->Update();
 
 	ShaderConstants.ScreenSize = { (float)GetWidth(), (float)GetHeight(), 1.0f, 1.0f };
@@ -2133,7 +2138,9 @@ void ZDFrameBuffer::EndLineBatch()
 	if (VertexPos > 0)
 	{
 		SetPixelShader(Shaders[SHADER_VertexColor]);
-		SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		GetContext()->SetBlend(
+			GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha,
+			GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha);
 		GetContext()->SetVertexArray(VertexBuffer->VertexArray);
 		DrawLineList(VertexPos / 2);
 	}
@@ -2157,9 +2164,9 @@ void ZDFrameBuffer::AddColorOnlyQuad(int left, int top, int width, int height, u
 	quad->ShaderNum = BQS_ColorOnly;
 	if ((color & 0xFF000000) != 0xFF000000)
 	{
-		quad->BlendOp = GL_FUNC_ADD;
-		quad->SrcBlend = GL_SRC_ALPHA;
-		quad->DestBlend = GL_ONE_MINUS_SRC_ALPHA;
+		quad->BlendOp = GPUBlendEquation::Add;
+		quad->SrcBlend = GPUBlendFunc::SrcAlpha;
+		quad->DestBlend = GPUBlendFunc::InvSrcAlpha;
 	}
 	quad->Palette = nullptr;
 	quad->Texture = nullptr;
@@ -2323,7 +2330,14 @@ void ZDFrameBuffer::EndQuadBatch()
 		}
 
 		// Set the alpha blending
-		SetAlphaBlend(quad->BlendOp, quad->SrcBlend, quad->DestBlend);
+		if (quad->BlendOp == GPUBlendEquation::Add && quad->SrcBlend == GPUBlendFunc::One && quad->DestBlend == GPUBlendFunc::Zero)
+		{
+			GetContext()->ResetBlend();
+		}
+		else
+		{
+			GetContext()->SetBlend(quad->BlendOp, quad->SrcBlend, quad->DestBlend, quad->BlendOp, quad->SrcBlend, quad->DestBlend);
+		}
 
 		// Set the alpha test
 		EnableAlphaTest(!(quad->Flags & BQF_DisableAlphaTest));
@@ -2467,9 +2481,9 @@ bool ZDFrameBuffer::SetStyle(OpenGLTex *tex, DrawParms &parms, uint32_t &color0,
 	switch (style.BlendOp)
 	{
 	default:
-	case STYLEOP_Add:		quad.BlendOp = GL_FUNC_ADD;			break;
-	case STYLEOP_Sub:		quad.BlendOp = GL_FUNC_SUBTRACT;		break;
-	case STYLEOP_RevSub:	quad.BlendOp = GL_FUNC_REVERSE_SUBTRACT;	break;
+	case STYLEOP_Add:		quad.BlendOp = GPUBlendEquation::Add; break;
+	case STYLEOP_Sub:		quad.BlendOp = GPUBlendEquation::Subtract; break;
+	case STYLEOP_RevSub:	quad.BlendOp = GPUBlendEquation::ReverseSubtract; break;
 	case STYLEOP_None:		return false;
 	}
 	quad.SrcBlend = GetStyleAlpha(style.SrcAlpha);
@@ -2591,26 +2605,28 @@ bool ZDFrameBuffer::SetStyle(OpenGLTex *tex, DrawParms &parms, uint32_t &color0,
 		color1 &= ColorRGBA(255, 255, 255, 0);
 
 		// If our alpha is one and we are doing normal adding, then we can turn the blend off completely.
-		if (quad.BlendOp == GL_FUNC_ADD &&
-			((alpha == 1 && quad.SrcBlend == GL_SRC_ALPHA) || quad.SrcBlend == GL_ONE) &&
-			((alpha == 1 && quad.DestBlend == GL_ONE_MINUS_SRC_ALPHA) || quad.DestBlend == GL_ZERO))
+		if (quad.BlendOp == GPUBlendEquation::Add &&
+			((alpha == 1 && quad.SrcBlend == GPUBlendFunc::SrcAlpha) || quad.SrcBlend == GPUBlendFunc::One) &&
+			((alpha == 1 && quad.DestBlend == GPUBlendFunc::InvSrcAlpha) || quad.DestBlend == GPUBlendFunc::Zero))
 		{
-			quad.BlendOp = 0;
+			quad.BlendOp = GPUBlendEquation::Add;
+			quad.SrcBlend = GPUBlendFunc::One;
+			quad.DestBlend = GPUBlendFunc::Zero;
 		}
 		quad.Flags |= BQF_DisableAlphaTest;
 	}
 	return true;
 }
 
-int ZDFrameBuffer::GetStyleAlpha(int type)
+GPUBlendFunc ZDFrameBuffer::GetStyleAlpha(int type)
 {
 	switch (type)
 	{
-	case STYLEALPHA_Zero:		return GL_ZERO;
-	case STYLEALPHA_One:		return GL_ONE;
-	case STYLEALPHA_Src:		return GL_SRC_ALPHA;
-	case STYLEALPHA_InvSrc:		return GL_ONE_MINUS_SRC_ALPHA;
-	default:					return GL_ZERO;
+	default:
+	case STYLEALPHA_Zero:		return GPUBlendFunc::Zero;
+	case STYLEALPHA_One:		return GPUBlendFunc::One;
+	case STYLEALPHA_Src:		return GPUBlendFunc::SrcAlpha;
+	case STYLEALPHA_InvSrc:		return GPUBlendFunc::InvSrcAlpha;
 	}
 }
 
@@ -2637,18 +2653,6 @@ void ZDFrameBuffer::SetColorOverlay(uint32_t color, float alpha, uint32_t &color
 void ZDFrameBuffer::EnableAlphaTest(bool enabled)
 {
 	//glEnable(GL_ALPHA_TEST); // To do: move to shader as this is only in the compatibility profile
-}
-
-void ZDFrameBuffer::SetAlphaBlend(int op, int srcblend, int destblend)
-{
-	if (op == 0)
-	{
-		GetContext()->ResetBlend();
-	}
-	else
-	{
-		GetContext()->SetBlend(op, srcblend, destblend);
-	}
 }
 
 void ZDFrameBuffer::SetPixelShader(const std::shared_ptr<GPUProgram> &shader)

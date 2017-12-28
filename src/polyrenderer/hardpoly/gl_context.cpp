@@ -124,6 +124,7 @@ void GLContext::GetPixelsBgra(int width, int height, uint32_t *pixels)
 	glReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
 }
 
+#if 0
 void GLContext::Begin()
 {
 	ClearError();
@@ -161,6 +162,7 @@ void GLContext::End()
 	glBindTexture(GL_TEXTURE_2D, oldTextureBinding0);
 	CheckError();
 }
+#endif
 
 void GLContext::ClearError()
 {
@@ -271,96 +273,50 @@ void GLContext::ResetScissor()
 	glDisable(GL_SCISSOR_TEST);
 }
 
-void GLContext::SetBlend(int op, int srcblend, int destblend)
+static GLint ToGLBlendEquation(GPUBlendEquation op)
+{
+	switch (op)
+	{
+	default:
+	case GPUBlendEquation::Add: return GL_FUNC_ADD;
+	case GPUBlendEquation::Subtract: return GL_FUNC_SUBTRACT;
+	case GPUBlendEquation::ReverseSubtract: return GL_FUNC_REVERSE_SUBTRACT;
+	case GPUBlendEquation::Min: return GL_MIN;
+	case GPUBlendEquation::Max: return GL_MAX;
+	}
+}
+
+static GLint ToGLBlendFunc(GPUBlendFunc blend)
+{
+	switch (blend)
+	{
+	default:
+	case GPUBlendFunc::Zero: return GL_ZERO;
+	case GPUBlendFunc::One: return GL_ONE;
+	case GPUBlendFunc::SrcColor: return GL_SRC_COLOR;
+	case GPUBlendFunc::InvSrcColor: return GL_ONE_MINUS_SRC_COLOR;
+	case GPUBlendFunc::SrcAlpha: return GL_SRC_ALPHA;
+	case GPUBlendFunc::InvSrcAlpha: return GL_ONE_MINUS_SRC_ALPHA;
+	case GPUBlendFunc::DestAlpha: return GL_DST_ALPHA;
+	case GPUBlendFunc::InvDestAlpha: return GL_ONE_MINUS_DST_ALPHA;
+	case GPUBlendFunc::DestColor: return GL_DST_COLOR;
+	case GPUBlendFunc::InvDestColor: return GL_ONE_MINUS_DST_COLOR;
+	case GPUBlendFunc::BlendFactor: return GL_CONSTANT_COLOR;
+	case GPUBlendFunc::InvBlendFactor: return GL_ONE_MINUS_CONSTANT_COLOR;
+	}
+}
+
+void GLContext::SetBlend(GPUBlendEquation opcolor, GPUBlendFunc srccolor, GPUBlendFunc destcolor, GPUBlendEquation opalpha, GPUBlendFunc srcalpha, GPUBlendFunc destalpha, const Vec4f &blendcolor)
 {
 	glEnable(GL_BLEND);
-	glBlendEquation(op);
-	glBlendFunc(srcblend, destblend);
+	glBlendEquationSeparate(ToGLBlendEquation(opcolor), ToGLBlendEquation(opalpha));
+	glBlendFuncSeparate(ToGLBlendFunc(srccolor), ToGLBlendFunc(destcolor), ToGLBlendFunc(srcalpha), ToGLBlendFunc(destalpha));
+	glBlendColor(blendcolor.X, blendcolor.Y, blendcolor.Z, blendcolor.W);
 }
 
 void GLContext::ResetBlend()
 {
 	glDisable(GL_BLEND);
-}
-
-void GLContext::SetOpaqueBlend(int srcalpha, int destalpha)
-{
-	glDisable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_ONE, GL_ZERO);
-}
-
-void GLContext::SetMaskedBlend(int srcalpha, int destalpha)
-{
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-}
-
-void GLContext::SetAlphaBlendFunc(int srcalpha, int destalpha)
-{
-	int srcblend;
-	if (srcalpha == 0.0f)
-		srcblend = GL_ZERO;
-	else if (srcalpha == 1.0f)
-		srcblend = GL_ONE;
-	else
-		srcblend = GL_CONSTANT_ALPHA;
-
-	int destblend;
-	if (destalpha == 0.0f)
-		destblend = GL_ZERO;
-	else if (destalpha == 1.0f)
-		destblend = GL_ONE;
-	else if (srcalpha + destalpha >= 255)
-		destblend = GL_ONE_MINUS_CONSTANT_ALPHA;
-	else
-		destblend = GL_CONSTANT_COLOR;
-
-	glBlendColor(destalpha / 256.0f, destalpha / 256.0f, destalpha / 256.0f, srcalpha / 256.0f);
-	glBlendFunc(srcblend, destblend);
-}
-
-void GLContext::SetAddClampBlend(int srcalpha, int destalpha)
-{
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	SetAlphaBlendFunc(srcalpha, destalpha);
-}
-
-void GLContext::SetSubClampBlend(int srcalpha, int destalpha)
-{
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_SUBTRACT);
-	SetAlphaBlendFunc(srcalpha, destalpha);
-}
-
-void GLContext::SetRevSubClampBlend(int srcalpha, int destalpha)
-{
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
-	SetAlphaBlendFunc(srcalpha, destalpha);
-}
-
-void GLContext::SetAddSrcColorBlend(int srcalpha, int destalpha)
-{
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
-}
-
-void GLContext::SetShadedBlend(int srcalpha, int destalpha)
-{
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-}
-
-void GLContext::SetAddClampShadedBlend(int srcalpha, int destalpha)
-{
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_ONE, GL_ONE);
 }
 
 void GLContext::SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray)

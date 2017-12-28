@@ -259,8 +259,7 @@ ZDFrameBuffer::Wiper::~Wiper()
 //
 //==========================================================================
 
-void ZDFrameBuffer::Wiper::DrawScreen(ZDFrameBuffer *fb, HWTexture *tex,
-	int blendop, uint32_t color0, uint32_t color1)
+void ZDFrameBuffer::Wiper::DrawScreen(ZDFrameBuffer *fb, HWTexture *tex, bool alphablend, uint32_t color0, uint32_t color1)
 {
 	FBVERTEX verts[6];
 	fb->CalcFullscreenCoords(verts, false, color0, color1);
@@ -272,7 +271,10 @@ void ZDFrameBuffer::Wiper::DrawScreen(ZDFrameBuffer *fb, HWTexture *tex,
 	}
 
 	fb->GetContext()->SetTexture(0, tex->Texture);
-	fb->SetAlphaBlend(blendop, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	if (alphablend)
+		fb->GetContext()->SetBlend(GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha, GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha);
+	else
+		fb->GetContext()->ResetBlend();
 	fb->SetPixelShader(fb->Shaders[SHADER_NormalColor]);
 	fb->DrawSingleQuad(verts);
 }
@@ -306,7 +308,7 @@ bool ZDFrameBuffer::Wiper_Crossfade::Run(int ticks, ZDFrameBuffer *fb)
 	DrawScreen(fb, fb->InitialWipeScreen.get());
 
 	// Draw the new screen on top of it.
-	DrawScreen(fb, fb->FinalWipeScreen.get(), GL_FUNC_ADD, ColorValue(0,0,0,Clock / 32.f), ColorRGBA(255,255,255,0));
+	DrawScreen(fb, fb->FinalWipeScreen.get(), true, ColorValue(0,0,0,Clock / 32.f), ColorRGBA(255,255,255,0));
 
 	return Clock >= 32;
 }
@@ -563,7 +565,9 @@ bool ZDFrameBuffer::Wiper_Burn::Run(int ticks, ZDFrameBuffer *fb)
 
 	fb->GetContext()->SetTexture(0, fb->FinalWipeScreen->Texture);
 	fb->GetContext()->SetTexture(1, BurnTexture->Texture);
-	fb->SetAlphaBlend(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	fb->GetContext()->SetBlend(
+		GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha,
+		GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha);
 	fb->SetPixelShader(fb->Shaders[SHADER_BurnWipe]);
 	fb->GetContext()->SetSampler(1, fb->SamplerClampToEdgeLinear);
 	fb->DrawSingleQuad(verts);

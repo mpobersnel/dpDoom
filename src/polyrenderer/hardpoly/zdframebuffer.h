@@ -229,9 +229,9 @@ private:
 	{
 		uint8_t Flags = 0;
 		uint8_t ShaderNum = 0;
-		int BlendOp = 0;
-		int SrcBlend = 0;
-		int DestBlend = 0;
+		GPUBlendEquation BlendOp = GPUBlendEquation::Add;
+		GPUBlendFunc SrcBlend = GPUBlendFunc::One;
+		GPUBlendFunc DestBlend = GPUBlendFunc::Zero;
 
 		uint8_t Desat = 0;
 		OpenGLPal *Palette = nullptr;
@@ -243,9 +243,9 @@ private:
 		{
 			Flags = 0;
 			ShaderNum = 0;
-			BlendOp = 0;
-			SrcBlend = 0;
-			DestBlend = 0;
+			BlendOp = GPUBlendEquation::Add;
+			SrcBlend = GPUBlendFunc::One;
+			DestBlend = GPUBlendFunc::Zero;
 		}
 
 		bool IsSameSetup(const BufferedTris &other) const
@@ -290,7 +290,7 @@ private:
 		virtual ~Wiper();
 		virtual bool Run(int ticks, ZDFrameBuffer *fb) = 0;
 
-		void DrawScreen(ZDFrameBuffer *fb, HWTexture *tex, int blendop = 0, uint32_t color0 = 0, uint32_t color1 = 0xFFFFFFF);
+		void DrawScreen(ZDFrameBuffer *fb, HWTexture *tex, bool alphablend = false, uint32_t color0 = 0, uint32_t color1 = 0xFFFFFFF);
 	};
 
 	static uint32_t ColorARGB(uint32_t a, uint32_t r, uint32_t g, uint32_t b) { return ((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | ((b) & 0xff); }
@@ -334,7 +334,7 @@ private:
 	PackedTexture *AllocPackedTexture(int width, int height, bool wrapping, GPUPixelFormat format);
 	void DrawPackedTextures(int packnum);
 	bool SetStyle(OpenGLTex *tex, DrawParms &parms, uint32_t &color0, uint32_t &color1, BufferedTris &quad);
-	static int GetStyleAlpha(int type);
+	static GPUBlendFunc GetStyleAlpha(int type);
 	static void SetColorOverlay(uint32_t color, float alpha, uint32_t &color0, uint32_t &color1);
 	void AddColorOnlyQuad(int left, int top, int width, int height, uint32_t color);
 	void AddColorOnlyRect(int left, int top, int width, int height, uint32_t color);
@@ -346,7 +346,6 @@ private:
 	void EndBatch();
 
 	void EnableAlphaTest(bool enabled);
-	void SetAlphaBlend(int op, int srcblend = 0, int destblend = 0);
 	void SetPixelShader(const std::shared_ptr<GPUProgram> &shader);
 	void SetPaletteTexture(HWTexture *texture, int count);
 

@@ -50,7 +50,6 @@ HardpolyRenderer::~HardpolyRenderer()
 
 void HardpolyRenderer::Begin()
 {
-	screen->GetContext()->Begin();
 	SetupFramebuffer();
 	CompileShaders();
 	CreateSamplers();
@@ -69,7 +68,6 @@ void HardpolyRenderer::End()
 	}
 
 	screen->GetContext()->SetViewport(0, 0, screen->GetWidth(), screen->GetHeight());
-	screen->GetContext()->End();
 
 	screen->SetUseHardwareScene(true);
 }
@@ -792,47 +790,63 @@ HardpolyRenderer::BlendSetterFunc HardpolyRenderer::GetBlendSetter(TriBlendMode 
 
 void HardpolyRenderer::SetOpaqueBlend(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetOpaqueBlend(srcalpha, destalpha);
+	screen->GetContext()->ResetBlend();
 }
 
 void HardpolyRenderer::SetMaskedBlend(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetMaskedBlend(srcalpha, destalpha);
+	screen->GetContext()->SetBlend(
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha,
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha);
 }
 
 void HardpolyRenderer::SetAlphaBlendFunc(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetAlphaBlendFunc(srcalpha, destalpha);
+	screen->GetContext()->SetBlend(
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha,
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha);
 }
 
 void HardpolyRenderer::SetAddClampBlend(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetAddClampBlend(srcalpha, destalpha);
+	screen->GetContext()->SetBlend(
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha,
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha);
 }
 
 void HardpolyRenderer::SetSubClampBlend(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetSubClampBlend(srcalpha, destalpha);
+	screen->GetContext()->SetBlend(
+		GPUBlendEquation::Subtract, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha,
+		GPUBlendEquation::Subtract, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha);
 }
 
 void HardpolyRenderer::SetRevSubClampBlend(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetRevSubClampBlend(srcalpha, destalpha);
+	screen->GetContext()->SetBlend(
+		GPUBlendEquation::ReverseSubtract, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha,
+		GPUBlendEquation::ReverseSubtract, GPUBlendFunc::One, GPUBlendFunc::InvSrcAlpha);
 }
 
 void HardpolyRenderer::SetAddSrcColorBlend(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetAddSrcColorBlend(srcalpha, destalpha);
+	screen->GetContext()->SetBlend(
+		GPUBlendEquation::Add, GPUBlendFunc::SrcColor, GPUBlendFunc::InvSrcColor,
+		GPUBlendEquation::Add, GPUBlendFunc::SrcAlpha, GPUBlendFunc::InvSrcAlpha);
 }
 
 void HardpolyRenderer::SetShadedBlend(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetShadedBlend(srcalpha, destalpha);
+	screen->GetContext()->SetBlend(
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::One,
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::One);
 }
 
 void HardpolyRenderer::SetAddClampShadedBlend(int srcalpha, int destalpha)
 {
-	screen->GetContext()->SetAddClampShadedBlend(srcalpha, destalpha);
+	screen->GetContext()->SetBlend(
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::One,
+		GPUBlendEquation::Add, GPUBlendFunc::One, GPUBlendFunc::One);
 }
 
 /////////////////////////////////////////////////////////////////////////////

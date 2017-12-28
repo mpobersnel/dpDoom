@@ -226,6 +226,36 @@ enum class GPUDrawMode
 	Triangles
 };
 
+enum class GPUBlendEquation
+{
+	Add,
+	Subtract,
+	ReverseSubtract,
+	Min,
+	Max
+};
+
+enum class GPUBlendFunc
+{
+	Zero,
+	One,
+	SrcColor,
+	InvSrcColor,
+	SrcAlpha,
+	InvSrcAlpha,
+	DestAlpha,
+	InvDestAlpha,
+	DestColor,
+	InvDestColor,
+	BlendFactor,
+	InvBlendFactor
+};
+
+inline int ToBlendKey(GPUBlendEquation opcolor, GPUBlendFunc srccolor, GPUBlendFunc destcolor, GPUBlendEquation opalpha, GPUBlendFunc srcalpha, GPUBlendFunc destalpha)
+{
+	return ((int)opcolor) | (((int)srccolor) << 4) | (((int)destcolor) << 8) | (((int)opalpha) << 12) | (((int)srcalpha) << 16) | (((int)destalpha) << 20);
+}
+
 class GPUContext
 {
 public:
@@ -249,9 +279,6 @@ public:
 	virtual void CopyColorBufferToTexture(const std::shared_ptr<GPUTexture2D> &dest) = 0;
 	virtual void GetPixelsBgra(int width, int height, uint32_t *pixels) = 0;
 
-	virtual void Begin() = 0;
-	virtual void End() = 0;
-	
 	virtual void ClearError() = 0;
 	virtual void CheckError() = 0;
 
@@ -272,18 +299,8 @@ public:
 	virtual void ClearScissorBox(float r, float g, float b, float a) = 0;
 	virtual void ResetScissor() = 0;
 
-	virtual void SetBlend(int op, int srcblend, int destblend) = 0;
+	virtual void SetBlend(GPUBlendEquation opcolor, GPUBlendFunc srccolor, GPUBlendFunc destcolor, GPUBlendEquation opalpha, GPUBlendFunc srcalpha, GPUBlendFunc destalpha, const Vec4f &blendcolor = Vec4f(0.0f)) = 0;
 	virtual void ResetBlend() = 0;
-
-	virtual void SetOpaqueBlend(int srcalpha, int destalpha) = 0;
-	virtual void SetMaskedBlend(int srcalpha, int destalpha) = 0;
-	virtual void SetAlphaBlendFunc(int srcalpha, int destalpha) = 0;
-	virtual void SetAddClampBlend(int srcalpha, int destalpha) = 0;
-	virtual void SetSubClampBlend(int srcalpha, int destalpha) = 0;
-	virtual void SetRevSubClampBlend(int srcalpha, int destalpha) = 0;
-	virtual void SetAddSrcColorBlend(int srcalpha, int destalpha) = 0;
-	virtual void SetShadedBlend(int srcalpha, int destalpha) = 0;
-	virtual void SetAddClampShadedBlend(int srcalpha, int destalpha) = 0;
 
 	virtual void SetVertexArray(const std::shared_ptr<GPUVertexArray> &vertexarray) = 0;
 	virtual void SetIndexBuffer(const std::shared_ptr<GPUIndexBuffer> &indexbuffer, GPUIndexFormat format = GPUIndexFormat::Uint16) = 0;
