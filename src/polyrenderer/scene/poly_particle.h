@@ -28,7 +28,7 @@
 class RenderPolyParticle
 {
 public:
-	void Render(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, particle_t *particle, subsector_t *sub, uint32_t stencilValue);
+	void Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, particle_t *particle, subsector_t *sub, uint32_t stencilValue);
 
 private:
 	static uint8_t *GetParticleTexture();
@@ -45,7 +45,7 @@ class PolyTranslucentParticle : public PolyTranslucentObject
 public:
 	PolyTranslucentParticle(particle_t *particle, subsector_t *sub, uint32_t subsectorDepth, uint32_t stencilValue) : PolyTranslucentObject(subsectorDepth, 0.0), particle(particle), sub(sub), StencilValue(stencilValue) { }
 
-	void Render(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &portalPlane) override
+	void Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &portalPlane) override
 	{
 		RenderPolyParticle spr;
 		spr.Render(thread, worldToClip, portalPlane, particle, sub, StencilValue + 1);

@@ -36,13 +36,13 @@
 void gl_FlushModels();
 bool polymodelsInUse;
 
-void PolyRenderModel(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, uint32_t stencilValue, float x, float y, float z, FSpriteModelFrame *smf, AActor *actor)
+void PolyRenderModel(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, uint32_t stencilValue, float x, float y, float z, FSpriteModelFrame *smf, AActor *actor)
 {
 	PolyModelRenderer renderer(thread, worldToClip, clipPlane, stencilValue);
 	renderer.RenderModel(x, y, z, smf, actor);
 }
 
-void PolyRenderHUDModel(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, uint32_t stencilValue, DPSprite *psp, float ofsx, float ofsy)
+void PolyRenderHUDModel(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, uint32_t stencilValue, DPSprite *psp, float ofsx, float ofsy)
 {
 	PolyModelRenderer renderer(thread, worldToClip, clipPlane, stencilValue);
 	renderer.RenderHUDModel(psp, ofsx, ofsy);
@@ -50,7 +50,7 @@ void PolyRenderHUDModel(PolyRenderThread *thread, const TriMatrix &worldToClip, 
 
 /////////////////////////////////////////////////////////////////////////////
 
-PolyModelRenderer::PolyModelRenderer(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, uint32_t stencilValue) : Thread(thread), WorldToClip(worldToClip), ClipPlane(clipPlane), StencilValue(stencilValue)
+PolyModelRenderer::PolyModelRenderer(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, uint32_t stencilValue) : Thread(thread), WorldToClip(worldToClip), ClipPlane(clipPlane), StencilValue(stencilValue)
 {
 	if (!polymodelsInUse)
 	{
@@ -62,7 +62,7 @@ PolyModelRenderer::PolyModelRenderer(PolyRenderThread *thread, const TriMatrix &
 void PolyModelRenderer::BeginDrawModel(AActor *actor, FSpriteModelFrame *smf, const VSMatrix &objectToWorldMatrix)
 {
 	ModelActor = actor;
-	const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.matrix);
+	const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.Matrix);
 }
 
 void PolyModelRenderer::EndDrawModel(AActor *actor, FSpriteModelFrame *smf)
@@ -85,14 +85,14 @@ void PolyModelRenderer::ResetVertexBuffer()
 
 VSMatrix PolyModelRenderer::GetViewToWorldMatrix()
 {
-	TriMatrix swapYZ = TriMatrix::null();
-	swapYZ.matrix[0 + 0 * 4] = 1.0f;
-	swapYZ.matrix[1 + 2 * 4] = 1.0f;
-	swapYZ.matrix[2 + 1 * 4] = 1.0f;
-	swapYZ.matrix[3 + 3 * 4] = 1.0f;
+	Mat4f swapYZ = Mat4f::Null();
+	swapYZ.Matrix[0 + 0 * 4] = 1.0f;
+	swapYZ.Matrix[1 + 2 * 4] = 1.0f;
+	swapYZ.Matrix[2 + 1 * 4] = 1.0f;
+	swapYZ.Matrix[3 + 3 * 4] = 1.0f;
 
 	VSMatrix worldToView;
-	worldToView.loadMatrix((PolyRenderer::Instance()->WorldToView * swapYZ).matrix);
+	worldToView.loadMatrix((PolyRenderer::Instance()->WorldToView * swapYZ).Matrix);
 	
 	VSMatrix objectToWorld;
 	worldToView.inverseMatrix(objectToWorld);
@@ -102,7 +102,7 @@ VSMatrix PolyModelRenderer::GetViewToWorldMatrix()
 void PolyModelRenderer::BeginDrawHUDModel(AActor *actor, const VSMatrix &objectToWorldMatrix)
 {
 	ModelActor = actor;
-	const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.matrix);
+	const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.Matrix);
 }
 
 void PolyModelRenderer::EndDrawHUDModel(AActor *actor)
@@ -131,16 +131,16 @@ void PolyModelRenderer::DrawArrays(int start, int count)
 	bool fullbrightSprite = ((ModelActor->renderflags & RF_FULLBRIGHT) || (ModelActor->flags5 & MF5_BRIGHT));
 	int lightlevel = fullbrightSprite ? 255 : ModelActor->Sector->lightlevel + actualextralight;
 
-	TriMatrix swapYZ = TriMatrix::null();
-	swapYZ.matrix[0 + 0 * 4] = 1.0f;
-	swapYZ.matrix[1 + 2 * 4] = 1.0f;
-	swapYZ.matrix[2 + 1 * 4] = 1.0f;
-	swapYZ.matrix[3 + 3 * 4] = 1.0f;
+	Mat4f swapYZ = Mat4f::Null();
+	swapYZ.Matrix[0 + 0 * 4] = 1.0f;
+	swapYZ.Matrix[1 + 2 * 4] = 1.0f;
+	swapYZ.Matrix[2 + 1 * 4] = 1.0f;
+	swapYZ.Matrix[3 + 3 * 4] = 1.0f;
 
-	TriMatrix *transform = Thread->FrameMemory->NewObject<TriMatrix>();
+	Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
 	*transform = WorldToClip * swapYZ * ObjectToWorld;
 
-	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld).matrix);
+	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld).Matrix);
 	Thread->DrawBatcher.MatrixUpdated();
 
 	PolyDrawArgs args;
@@ -156,7 +156,7 @@ void PolyModelRenderer::DrawArrays(int start, int count)
 	args.SetWriteStencil(false);
 	args.DrawArray(Thread, VertexBuffer + start, count);
 
-	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView).matrix);
+	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView).Matrix);
 	Thread->DrawBatcher.MatrixUpdated();
 }
 
@@ -171,16 +171,16 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 	bool fullbrightSprite = ((ModelActor->renderflags & RF_FULLBRIGHT) || (ModelActor->flags5 & MF5_BRIGHT));
 	int lightlevel = fullbrightSprite ? 255 : ModelActor->Sector->lightlevel + actualextralight;
 
-	TriMatrix swapYZ = TriMatrix::null();
-	swapYZ.matrix[0 + 0 * 4] = 1.0f;
-	swapYZ.matrix[1 + 2 * 4] = 1.0f;
-	swapYZ.matrix[2 + 1 * 4] = 1.0f;
-	swapYZ.matrix[3 + 3 * 4] = 1.0f;
+	Mat4f swapYZ = Mat4f::Null();
+	swapYZ.Matrix[0 + 0 * 4] = 1.0f;
+	swapYZ.Matrix[1 + 2 * 4] = 1.0f;
+	swapYZ.Matrix[2 + 1 * 4] = 1.0f;
+	swapYZ.Matrix[3 + 3 * 4] = 1.0f;
 
-	TriMatrix *transform = Thread->FrameMemory->NewObject<TriMatrix>();
+	Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
 	*transform = WorldToClip * swapYZ * ObjectToWorld;
 
-	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld).matrix);
+	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld).Matrix);
 	Thread->DrawBatcher.MatrixUpdated();
 
 	PolyDrawArgs args;
@@ -196,7 +196,7 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 	args.SetWriteStencil(false);
 	args.DrawElements(Thread, VertexBuffer, IndexBuffer + offset / sizeof(unsigned int), numIndices);
 
-	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView).matrix);
+	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView).Matrix);
 	Thread->DrawBatcher.MatrixUpdated();
 }
 

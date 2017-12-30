@@ -27,7 +27,7 @@
 class RenderPolySprite
 {
 public:
-	void Render(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, AActor *thing, subsector_t *sub, uint32_t stencilValue, float t1, float t2);
+	void Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, AActor *thing, subsector_t *sub, uint32_t stencilValue, float t1, float t2);
 
 	static bool GetLine(AActor *thing, DVector2 &left, DVector2 &right);
 	static bool IsThingCulled(AActor *thing);
@@ -45,7 +45,7 @@ class PolyTranslucentThing : public PolyTranslucentObject
 public:
 	PolyTranslucentThing(AActor *thing, subsector_t *sub, uint32_t subsectorDepth, double dist, float t1, float t2, uint32_t stencilValue) : PolyTranslucentObject(subsectorDepth, dist), thing(thing), sub(sub), SpriteLeft(t1), SpriteRight(t2), StencilValue(stencilValue) { }
 
-	void Render(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &portalPlane) override
+	void Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &portalPlane) override
 	{
 		if ((thing->renderflags & RF_SPRITETYPEMASK) == RF_WALLSPRITE)
 		{

@@ -35,12 +35,12 @@ PolySkyDome::PolySkyDome()
 	CreateDome();
 }
 
-void PolySkyDome::Render(PolyRenderThread *thread, const TriMatrix &worldToClip)
+void PolySkyDome::Render(PolyRenderThread *thread, const Mat4f &worldToClip)
 {
 #ifdef USE_GL_DOME_MATH
-	TriMatrix modelMatrix = GLSkyMath();
+	Mat4f modelMatrix = GLSkyMath();
 #else
-	TriMatrix modelMatrix = TriMatrix::identity();
+	Mat4f modelMatrix = Mat4f::Identity();
 
 	PolySkySetup frameSetup;
 	frameSetup.Update();
@@ -76,7 +76,7 @@ void PolySkyDome::Render(PolyRenderThread *thread, const TriMatrix &worldToClip)
 #endif
 
 	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
-	TriMatrix objectToWorld = TriMatrix::translate((float)viewpoint.Pos.X, (float)viewpoint.Pos.Y, (float)viewpoint.Pos.Z) * modelMatrix;
+	Mat4f objectToWorld = Mat4f::Translate((float)viewpoint.Pos.X, (float)viewpoint.Pos.Y, (float)viewpoint.Pos.Z) * modelMatrix;
 	objectToClip = worldToClip * objectToWorld;
 
 	int rc = mRows + 1;
@@ -204,7 +204,7 @@ void PolySkyDome::SkyVertex(int r, int c, bool zflip)
 	mInitialUV.Push({ vert.u, vert.v });
 }
 
-TriMatrix PolySkyDome::GLSkyMath()
+Mat4f PolySkyDome::GLSkyMath()
 {
 	PolySkySetup frameSetup;
 	frameSetup.Update();
@@ -222,43 +222,43 @@ TriMatrix PolySkyDome::GLSkyMath()
 	// 57 world units roughly represent one sky texel for the glTranslate call.
 	const float skyoffsetfactor = 57;
 
-	TriMatrix modelMatrix = TriMatrix::identity();
+	Mat4f modelMatrix = Mat4f::Identity();
 	if (tex)
 	{
 		texw = tex->GetWidth();
 		texh = tex->GetHeight();
 
-		modelMatrix = TriMatrix::rotate(-180.0f + x_offset, 0.f, 0.f, 1.f);
+		modelMatrix = Mat4f::Rotate(-180.0f + x_offset, 0.f, 0.f, 1.f);
 
 		float xscale = texw < 1024.f ? floor(1024.f / float(texw)) : 1.f;
 		float yscale = 1.f;
 		if (texh <= 128 && (level.flags & LEVEL_FORCETILEDSKY))
 		{
-			modelMatrix = modelMatrix * TriMatrix::translate(0.f, 0.f, (-40 + tex->SkyOffset + skyoffset)*skyoffsetfactor);
-			modelMatrix = modelMatrix * TriMatrix::scale(1.f, 1.f, 1.2f * 1.17f);
+			modelMatrix = modelMatrix * Mat4f::Translate(0.f, 0.f, (-40 + tex->SkyOffset + skyoffset)*skyoffsetfactor);
+			modelMatrix = modelMatrix * Mat4f::Scale(1.f, 1.f, 1.2f * 1.17f);
 			yscale = 240.f / texh;
 		}
 		else if (texh < 128)
 		{
 			// smaller sky textures must be tiled. We restrict it to 128 sky pixels, though
-			modelMatrix = modelMatrix * TriMatrix::translate(0.f, 0.f, -1250.f);
-			modelMatrix = modelMatrix * TriMatrix::scale(1.f, 1.f, 128 / 230.f);
+			modelMatrix = modelMatrix * Mat4f::Translate(0.f, 0.f, -1250.f);
+			modelMatrix = modelMatrix * Mat4f::Scale(1.f, 1.f, 128 / 230.f);
 			yscale = (float)(128 / texh); // intentionally left as integer.
 		}
 		else if (texh < 200)
 		{
-			modelMatrix = modelMatrix * TriMatrix::translate(0.f, 0.f, -1250.f);
-			modelMatrix = modelMatrix * TriMatrix::scale(1.f, 1.f, texh / 230.f);
+			modelMatrix = modelMatrix * Mat4f::Translate(0.f, 0.f, -1250.f);
+			modelMatrix = modelMatrix * Mat4f::Scale(1.f, 1.f, texh / 230.f);
 		}
 		else if (texh <= 240)
 		{
-			modelMatrix = modelMatrix * TriMatrix::translate(0.f, 0.f, (200 - texh + tex->SkyOffset + skyoffset)*skyoffsetfactor);
-			modelMatrix = modelMatrix * TriMatrix::scale(1.f, 1.f, 1.f + ((texh - 200.f) / 200.f) * 1.17f);
+			modelMatrix = modelMatrix * Mat4f::Translate(0.f, 0.f, (200 - texh + tex->SkyOffset + skyoffset)*skyoffsetfactor);
+			modelMatrix = modelMatrix * Mat4f::Scale(1.f, 1.f, 1.f + ((texh - 200.f) / 200.f) * 1.17f);
 		}
 		else
 		{
-			modelMatrix = modelMatrix * TriMatrix::translate(0.f, 0.f, (-40 + tex->SkyOffset + skyoffset)*skyoffsetfactor);
-			modelMatrix = modelMatrix * TriMatrix::scale(1.f, 1.f, 1.2f * 1.17f);
+			modelMatrix = modelMatrix * Mat4f::Translate(0.f, 0.f, (-40 + tex->SkyOffset + skyoffset)*skyoffsetfactor);
+			modelMatrix = modelMatrix * Mat4f::Scale(1.f, 1.f, 1.2f * 1.17f);
 			yscale = 240.f / texh;
 		}
 

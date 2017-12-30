@@ -29,6 +29,7 @@
 #include "doomdata.h"
 #include "r_utility.h"
 #include "polyrenderer/drawers/poly_triangle.h"
+#include "polyrenderer/math/gpu_types.h"
 #include "poly_playersprite.h"
 #include "poly_cull.h"
 
@@ -38,7 +39,7 @@ public:
 	PolyTranslucentObject(uint32_t subsectorDepth = 0, double distanceSquared = 0.0) : subsectorDepth(subsectorDepth), DistanceSquared(distanceSquared) { }
 	virtual ~PolyTranslucentObject() { }
 
-	virtual void Render(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &portalPlane) = 0;
+	virtual void Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &portalPlane) = 0;
 
 	bool operator<(const PolyTranslucentObject &other) const
 	{
@@ -59,7 +60,7 @@ class RenderPolyScene
 public:
 	RenderPolyScene();
 	~RenderPolyScene();
-	void SetViewpoint(const TriMatrix &worldToClip, const PolyClipPlane &portalPlane, uint32_t stencilValue);
+	void SetViewpoint(const Mat4f &worldToClip, const PolyClipPlane &portalPlane, uint32_t stencilValue);
 	void Render(int portalDepth);
 	void RenderTranslucent(int portalDepth);
 
@@ -79,7 +80,7 @@ private:
 	void RenderPolyNode(PolyRenderThread *thread, void *node, uint32_t subsectorDepth, sector_t *frontsector);
 	static int PointOnSide(const DVector2 &pos, const node_t *node);
 
-	TriMatrix WorldToClip;
+	Mat4f WorldToClip;
 	PolyClipPlane PortalPlane;
 	uint32_t StencilValue = 0;
 	PolyCull Cull;

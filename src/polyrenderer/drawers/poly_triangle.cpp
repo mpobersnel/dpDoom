@@ -222,10 +222,10 @@ void PolyTriangleDrawer::draw_arrays(const PolyDrawArgs &drawargs, WorkerThreadD
 
 ShadedTriVertex PolyTriangleDrawer::shade_vertex(const PolyDrawArgs &drawargs, const TriVertex &v)
 {
-	const TriMatrix &objectToClip = *drawargs.ObjectToClip();
+	const Mat4f &objectToClip = *drawargs.ObjectToClip();
 
 	// Apply transform to get clip coordinates:
-	FVector4 position = objectToClip * FVector4(v.x, v.y, v.z, v.w);
+	Vec4f position = objectToClip * Vec4f(v.x, v.y, v.z, v.w);
 
 	ShadedTriVertex sv;
 	sv.x = position.X;

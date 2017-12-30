@@ -59,6 +59,7 @@ PolyRenderer *PolyRenderer::Instance()
 
 PolyRenderer::PolyRenderer()
 {
+	Hardpoly = std::make_shared<HardpolyRenderer>();
 }
 
 void PolyRenderer::RenderView(player_t *player)
@@ -76,9 +77,6 @@ void PolyRenderer::RenderView(player_t *player)
 	if (r_hardpoly)
 	{
 		RedirectToHardpoly = true;
-		if (!Hardpoly)
-			Hardpoly = std::make_shared<HardpolyRenderer>();
-
 		Hardpoly->Begin();
 	}
 	else
@@ -242,14 +240,14 @@ void PolyRenderer::SetupPerspectiveMatrix()
 	float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(Viewpoint.FieldOfView.Radians() / 2) / fovratio)).Degrees);
 
 	WorldToView =
-		TriMatrix::rotate((float)Viewpoint.Angles.Roll.Radians(), 0.0f, 0.0f, 1.0f) *
-		TriMatrix::rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
-		TriMatrix::rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
-		TriMatrix::scale(1.0f, level.info->pixelstretch, 1.0f) *
-		TriMatrix::swapYZ() *
-		TriMatrix::translate((float)-Viewpoint.Pos.X, (float)-Viewpoint.Pos.Y, (float)-Viewpoint.Pos.Z);
+		Mat4f::Rotate((float)Viewpoint.Angles.Roll.Radians(), 0.0f, 0.0f, 1.0f) *
+		Mat4f::Rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
+		Mat4f::Rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
+		Mat4f::Scale(1.0f, level.info->pixelstretch, 1.0f) *
+		Mat4f::SwapYZ() *
+		Mat4f::Translate((float)-Viewpoint.Pos.X, (float)-Viewpoint.Pos.Y, (float)-Viewpoint.Pos.Z);
 
-	WorldToClip = TriMatrix::perspective(fovy, ratio, 5.0f, 65535.0f) * WorldToView;
+	WorldToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f, Handedness::Right, ClipZRange::NegativePositiveW) * WorldToView;
 
 	if (RedirectToHardpoly)
 	{

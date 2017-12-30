@@ -36,7 +36,7 @@
 
 EXTERN_CVAR(Int, r_3dfloors)
 
-void RenderPolyPlane::RenderPlanes(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, const PolyTransferHeights &fakeflat, uint32_t stencilValue, double skyCeilingHeight, double skyFloorHeight, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
+void RenderPolyPlane::RenderPlanes(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, const PolyTransferHeights &fakeflat, uint32_t stencilValue, double skyCeilingHeight, double skyFloorHeight, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
 {
 	if (fakeflat.FrontSector->CenterFloor() == fakeflat.FrontSector->CenterCeiling())
 		return;
@@ -46,7 +46,7 @@ void RenderPolyPlane::RenderPlanes(PolyRenderThread *thread, const TriMatrix &wo
 	plane.Render(thread, worldToClip, clipPlane, fakeflat, stencilValue, false, skyFloorHeight, sectorPortals);
 }
 
-void RenderPolyPlane::Render(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, const PolyTransferHeights &fakeflat, uint32_t stencilValue, bool ceiling, double skyHeight, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
+void RenderPolyPlane::Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, const PolyTransferHeights &fakeflat, uint32_t stencilValue, bool ceiling, double skyHeight, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
 {
 	FSectorPortal *portal = fakeflat.FrontSector->ValidatePortal(ceiling ? sector_t::ceiling : sector_t::floor);
 	if (!portal || (portal->mFlags & PORTSF_INSKYBOX) == PORTSF_INSKYBOX) // Do not recurse into portals we already recursed into
@@ -59,7 +59,7 @@ void RenderPolyPlane::Render(PolyRenderThread *thread, const TriMatrix &worldToC
 	}
 }
 
-void RenderPolyPlane::RenderNormal(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, const PolyTransferHeights &fakeflat, uint32_t stencilValue, bool ceiling, double skyHeight)
+void RenderPolyPlane::RenderNormal(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, const PolyTransferHeights &fakeflat, uint32_t stencilValue, bool ceiling, double skyHeight)
 {
 	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
 
@@ -104,7 +104,7 @@ void RenderPolyPlane::RenderNormal(PolyRenderThread *thread, const TriMatrix &wo
 	}
 }
 
-void RenderPolyPlane::RenderPortal(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, const PolyTransferHeights &fakeflat, uint32_t stencilValue, bool ceiling, double skyHeight, FSectorPortal *portal, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
+void RenderPolyPlane::RenderPortal(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, const PolyTransferHeights &fakeflat, uint32_t stencilValue, bool ceiling, double skyHeight, FSectorPortal *portal, std::vector<std::unique_ptr<PolyDrawSectorPortal>> &sectorPortals)
 {
 	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
 
@@ -421,7 +421,7 @@ PolyPlaneUVTransform::PolyPlaneUVTransform(const FTransform &transform, FTexture
 
 /////////////////////////////////////////////////////////////////////////////
 
-void Render3DFloorPlane::RenderPlanes(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane, subsector_t *sub, uint32_t stencilValue, uint32_t subsectorDepth, std::vector<PolyTranslucentObject *> &translucentObjects)
+void Render3DFloorPlane::RenderPlanes(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, subsector_t *sub, uint32_t stencilValue, uint32_t subsectorDepth, std::vector<PolyTranslucentObject *> &translucentObjects)
 {
 	if (!r_3dfloors || sub->sector->CenterFloor() == sub->sector->CenterCeiling())
 		return;
@@ -512,7 +512,7 @@ void Render3DFloorPlane::RenderPlanes(PolyRenderThread *thread, const TriMatrix 
 	}
 }
 
-void Render3DFloorPlane::Render(PolyRenderThread *thread, const TriMatrix &worldToClip, const PolyClipPlane &clipPlane)
+void Render3DFloorPlane::Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane)
 {
 	FTextureID picnum = ceiling ? *fakeFloor->bottom.texture : *fakeFloor->top.texture;
 	FTexture *tex = TexMan(picnum);

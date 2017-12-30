@@ -64,6 +64,7 @@ float4 LightShade(PixelIn input, float4 fg)
 
 float4 LightShadePal(PixelIn input, int fg)
 {
+#if defined(MIXPAL)
 	float light = max(SoftwareLightPal(input) - 0.5, 0.0);
 	float t = frac(light);
 	int index0 = int(light);
@@ -75,6 +76,9 @@ float4 LightShadePal(PixelIn input, int fg)
 	float4 mixcolor = lerp(color0, color1, t);
 	mixcolor.rgb = pow(mixcolor.rgb, float3(1.0/2.2, 1.0/2.2, 1.0/2.2));
 	return mixcolor;
+#else
+	return BasecolormapTexture.Load(int3(fg, int(SoftwareLightPal(input)), 0));
+#endif
 }
 
 float4 Translate(int fg)

@@ -25,7 +25,7 @@
 #include "swrenderer/drawers/r_draw.h"
 #include "swrenderer/drawers/r_thread.h"
 #include "polyrenderer/drawers/screen_triangle.h"
-#include "polyrenderer/math/tri_matrix.h"
+#include "polyrenderer/math/gpu_types.h"
 #include "polyrenderer/drawers/poly_buffer.h"
 #include "polyrenderer/drawers/poly_draw_args.h"
 

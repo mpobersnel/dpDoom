@@ -404,7 +404,7 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 	SetPaletteTexture(PaletteTexture.get(), 256);
 	GetContext()->ResetBlend();
 	EnableAlphaTest(false);
-	if (IsBgra())
+	if (IsBgra() || UseHardwareScene)
 		SetPixelShader(Shaders[SHADER_NormalColor]);
 	else
 		SetPixelShader(Shaders[SHADER_NormalColorPal]);
@@ -436,7 +436,7 @@ void ZDFrameBuffer::Draw3DPart(bool copy3d)
 			color1 = FlashColor1;
 		}
 		CalcFullscreenCoords(verts, Accel2D, color0, color1);
-		if (UseHardwareScene && !GetContext()->IsOpenGL())
+		if (UseHardwareScene && GetContext()->IsOpenGL())
 		{
 			for (int i = 0; i < 6; i++)
 				verts[i].tv = 1.0f - verts[i].tv;
@@ -1236,9 +1236,21 @@ void ZDFrameBuffer::KillNativeTexs()
 	}
 }
 
+void ZDFrameBuffer::SetUseHardwareScene(bool enable)
+{
+	UseHardwareScene = enable;
+
+	auto requiredFormat = (IsBgra() || UseHardwareScene) ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8;
+	if (!FBTexture || FBTexture->Texture->Format() != requiredFormat)
+	{
+		FBTexture.reset();
+		CreateFBTexture();
+	}
+}
+
 void ZDFrameBuffer::CreateFBTexture()
 {
-	FBTexture = CreateTexture("FBTexture", GetWidth(), GetHeight(), 1, IsBgra() ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
+	FBTexture = CreateTexture("FBTexture", GetWidth(), GetHeight(), 1, (IsBgra() || UseHardwareScene) ? GPUPixelFormat::BGRA8 : GPUPixelFormat::R8);
 }
 
 void ZDFrameBuffer::CreatePaletteTexture()

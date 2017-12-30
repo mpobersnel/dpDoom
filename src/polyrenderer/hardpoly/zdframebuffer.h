@@ -54,7 +54,7 @@ public:
 	virtual void SwapBuffers() = 0;
 
 	std::shared_ptr<GPUTexture2D> GetFBTexture() override { return FBTexture->Texture; }
-	void SetUseHardwareScene(bool enable) override { UseHardwareScene = enable; }
+	void SetUseHardwareScene(bool enable) override;
 
 	std::shared_ptr<GPUFrameBuffer> OutputFB;
 	std::shared_ptr<GPUTexture2D> OutputTexture;

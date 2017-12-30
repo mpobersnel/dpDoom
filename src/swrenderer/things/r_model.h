@@ -71,7 +71,7 @@ namespace swrenderer
 		RenderThread *Thread = nullptr;
 
 		AActor *ModelActor = nullptr;
-		TriMatrix ObjectToWorld;
+		Mat4f ObjectToWorld;
 		FTexture *SkinTexture = nullptr;
 		unsigned int *IndexBuffer = nullptr;
 		TriVertex *VertexBuffer = nullptr;

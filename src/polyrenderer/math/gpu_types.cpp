@@ -110,7 +110,7 @@ Mat4f Mat4f::Perspective(float fovy, float aspect, float z_near, float z_far, Ha
 	float f = (float)(1.0 / tan(fovy * M_PI / 360.0));
 	Mat4f m = Null();
 	m.Matrix[0 + 0 * 4] = f / aspect;
-	m.Matrix[1 + 1 * 4] = -f;
+	m.Matrix[1 + 1 * 4] = f;
 	m.Matrix[2 + 2 * 4] = (z_far + z_near) / (z_near - z_far);
 	m.Matrix[2 + 3 * 4] = (2.0f * z_far * z_near) / (z_near - z_far);
 	m.Matrix[3 + 2 * 4] = -1.0f;
@@ -182,10 +182,25 @@ Mat4f Mat4f::operator*(const Mat4f &mult) const
 Vec4f Mat4f::operator*(const Vec4f &v) const
 {
 	Vec4f result;
+#ifdef NO_SSE
 	result.X = Matrix[0 * 4 + 0] * v.X + Matrix[1 * 4 + 0] * v.Y + Matrix[2 * 4 + 0] * v.Z + Matrix[3 * 4 + 0] * v.W;
 	result.Y = Matrix[0 * 4 + 1] * v.X + Matrix[1 * 4 + 1] * v.Y + Matrix[2 * 4 + 1] * v.Z + Matrix[3 * 4 + 1] * v.W;
 	result.Z = Matrix[0 * 4 + 2] * v.X + Matrix[1 * 4 + 2] * v.Y + Matrix[2 * 4 + 2] * v.Z + Matrix[3 * 4 + 2] * v.W;
 	result.W = Matrix[0 * 4 + 3] * v.X + Matrix[1 * 4 + 3] * v.Y + Matrix[2 * 4 + 3] * v.Z + Matrix[3 * 4 + 3] * v.W;
+#else
+	__m128 m0 = _mm_loadu_ps(Matrix);
+	__m128 m1 = _mm_loadu_ps(Matrix + 4);
+	__m128 m2 = _mm_loadu_ps(Matrix + 8);
+	__m128 m3 = _mm_loadu_ps(Matrix + 12);
+	__m128 mv = _mm_loadu_ps(&v.X);
+	m0 = _mm_mul_ps(m0, _mm_shuffle_ps(mv, mv, _MM_SHUFFLE(0, 0, 0, 0)));
+	m1 = _mm_mul_ps(m1, _mm_shuffle_ps(mv, mv, _MM_SHUFFLE(1, 1, 1, 1)));
+	m2 = _mm_mul_ps(m2, _mm_shuffle_ps(mv, mv, _MM_SHUFFLE(2, 2, 2, 2)));
+	m3 = _mm_mul_ps(m3, _mm_shuffle_ps(mv, mv, _MM_SHUFFLE(3, 3, 3, 3)));
+	mv = _mm_add_ps(_mm_add_ps(_mm_add_ps(m0, m1), m2), m3);
+	Vec4f sv;
+	_mm_storeu_ps(&result.X, mv);
+#endif
 	return result;
 }
 

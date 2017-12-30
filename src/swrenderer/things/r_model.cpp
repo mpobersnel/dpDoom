@@ -92,7 +92,7 @@ namespace swrenderer
 	void SWModelRenderer::BeginDrawModel(AActor *actor, FSpriteModelFrame *smf, const VSMatrix &objectToWorldMatrix)
 	{
 		ModelActor = actor;
-		const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.matrix);
+		const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.Matrix);
 	}
 
 	void SWModelRenderer::EndDrawModel(AActor *actor, FSpriteModelFrame *smf)
@@ -127,21 +127,21 @@ namespace swrenderer
 		float ratio = Viewwindow.WidescreenRatio;
 		float fovratio = (Viewwindow.WidescreenRatio >= 1.3f) ? 1.333333f : ratio;
 		float fovy = (float)(2 * DAngle::ToDegrees(atan(tan(Viewpoint.FieldOfView.Radians() / 2) / fovratio)).Degrees);
-		TriMatrix altWorldToView =
-			TriMatrix::rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
-			TriMatrix::rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
-			TriMatrix::scale(1.0f, level.info->pixelstretch, 1.0f) *
-			TriMatrix::swapYZ() *
-			TriMatrix::translate((float)-Viewpoint.Pos.X, (float)-Viewpoint.Pos.Y, (float)-Viewpoint.Pos.Z);
+		Mat4f altWorldToView =
+			Mat4f::Rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
+			Mat4f::Rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
+			Mat4f::Scale(1.0f, level.info->pixelstretch, 1.0f) *
+			Mat4f::SwapYZ() *
+			Mat4f::Translate((float)-Viewpoint.Pos.X, (float)-Viewpoint.Pos.Y, (float)-Viewpoint.Pos.Z);
 
-		TriMatrix swapYZ = TriMatrix::null();
-		swapYZ.matrix[0 + 0 * 4] = 1.0f;
-		swapYZ.matrix[1 + 2 * 4] = 1.0f;
-		swapYZ.matrix[2 + 1 * 4] = 1.0f;
-		swapYZ.matrix[3 + 3 * 4] = 1.0f;
+		Mat4f swapYZ = Mat4f::Null();
+		swapYZ.Matrix[0 + 0 * 4] = 1.0f;
+		swapYZ.Matrix[1 + 2 * 4] = 1.0f;
+		swapYZ.Matrix[2 + 1 * 4] = 1.0f;
+		swapYZ.Matrix[3 + 3 * 4] = 1.0f;
 
 		VSMatrix worldToView;
-		worldToView.loadMatrix((altWorldToView * swapYZ).matrix);
+		worldToView.loadMatrix((altWorldToView * swapYZ).Matrix);
 
 		VSMatrix objectToWorld;
 		worldToView.inverseMatrix(objectToWorld);
@@ -151,7 +151,7 @@ namespace swrenderer
 	void SWModelRenderer::BeginDrawHUDModel(AActor *actor, const VSMatrix &objectToWorldMatrix)
 	{
 		ModelActor = actor;
-		const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.matrix);
+		const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.Matrix);
 	}
 
 	void SWModelRenderer::EndDrawHUDModel(AActor *actor)
@@ -180,13 +180,13 @@ namespace swrenderer
 		bool fullbrightSprite = ((ModelActor->renderflags & RF_FULLBRIGHT) || (ModelActor->flags5 & MF5_BRIGHT));
 		int lightlevel = fullbrightSprite ? 255 : ModelActor->Sector->lightlevel + actualextralight;
 
-		TriMatrix swapYZ = TriMatrix::null();
-		swapYZ.matrix[0 + 0 * 4] = 1.0f;
-		swapYZ.matrix[1 + 2 * 4] = 1.0f;
-		swapYZ.matrix[2 + 1 * 4] = 1.0f;
-		swapYZ.matrix[3 + 3 * 4] = 1.0f;
+		Mat4f swapYZ = Mat4f::Null();
+		swapYZ.Matrix[0 + 0 * 4] = 1.0f;
+		swapYZ.Matrix[1 + 2 * 4] = 1.0f;
+		swapYZ.Matrix[2 + 1 * 4] = 1.0f;
+		swapYZ.Matrix[3 + 3 * 4] = 1.0f;
 
-		TriMatrix *transform = Thread->FrameMemory->NewObject<TriMatrix>();
+		Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
 		*transform = Thread->Viewport->WorldToClip * swapYZ * ObjectToWorld;
 
 		PolyDrawArgs args;
@@ -218,13 +218,13 @@ namespace swrenderer
 		bool fullbrightSprite = ((ModelActor->renderflags & RF_FULLBRIGHT) || (ModelActor->flags5 & MF5_BRIGHT));
 		int lightlevel = fullbrightSprite ? 255 : ModelActor->Sector->lightlevel + actualextralight;
 
-		TriMatrix swapYZ = TriMatrix::null();
-		swapYZ.matrix[0 + 0 * 4] = 1.0f;
-		swapYZ.matrix[1 + 2 * 4] = 1.0f;
-		swapYZ.matrix[2 + 1 * 4] = 1.0f;
-		swapYZ.matrix[3 + 3 * 4] = 1.0f;
+		Mat4f swapYZ = Mat4f::Null();
+		swapYZ.Matrix[0 + 0 * 4] = 1.0f;
+		swapYZ.Matrix[1 + 2 * 4] = 1.0f;
+		swapYZ.Matrix[2 + 1 * 4] = 1.0f;
+		swapYZ.Matrix[3 + 3 * 4] = 1.0f;
 
-		TriMatrix *transform = Thread->FrameMemory->NewObject<TriMatrix>();
+		Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
 		*transform = Thread->Viewport->WorldToClip * swapYZ * ObjectToWorld;
 
 		PolyDrawArgs args;

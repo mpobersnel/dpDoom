@@ -47,7 +47,7 @@ RenderPolyScene::~RenderPolyScene()
 {
 }
 
-void RenderPolyScene::SetViewpoint(const TriMatrix &worldToClip, const PolyClipPlane &portalPlane, uint32_t stencilValue)
+void RenderPolyScene::SetViewpoint(const Mat4f &worldToClip, const PolyClipPlane &portalPlane, uint32_t stencilValue)
 {
 	WorldToClip = worldToClip;
 	StencilValue = stencilValue;

@@ -66,8 +66,8 @@ public:
 	FRenderViewpoint Viewpoint;
 	PolyLightVisibility Light;
 
-	TriMatrix WorldToView;
-	TriMatrix WorldToClip;
+	Mat4f WorldToView;
+	Mat4f WorldToClip;
 
 	bool RedirectToHardpoly = false;
 	std::shared_ptr<HardpolyRenderer> Hardpoly;
