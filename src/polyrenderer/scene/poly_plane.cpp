@@ -76,7 +76,6 @@ void RenderPolyPlane::RenderNormal(PolyRenderThread *thread, const PolyClipPlane
 		PolyDrawArgs args;
 		SetLightLevel(thread, args, fakeflat, ceiling);
 		SetDynLights(thread, args, fakeflat.Subsector, ceiling);
-		args.SetFaceCullCCW(true);
 		args.SetStencilTestValue(stencilValue);
 		args.SetWriteStencil(true, stencilValue + 1);
 		args.SetClipPlane(0, clipPlane);
@@ -89,7 +88,6 @@ void RenderPolyPlane::RenderNormal(PolyRenderThread *thread, const PolyClipPlane
 		TriVertex *vertices = CreateSkyPlaneVertices(thread, fakeflat.Subsector, skyHeight);
 
 		PolyDrawArgs args;
-		args.SetFaceCullCCW(true);
 		args.SetStencilTestValue(stencilValue);
 		args.SetWriteStencil(true, stencilValue + 1);
 		args.SetClipPlane(0, clipPlane);
@@ -158,7 +156,6 @@ void RenderPolyPlane::RenderPortal(PolyRenderThread *thread, const PolyClipPlane
 	TriVertex *vertices = CreateSkyPlaneVertices(thread, fakeflat.Subsector, skyHeight);
 
 	PolyDrawArgs args;
-	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(stencilValue);
 	args.SetWriteStencil(true, stencilValue + 1);
 	args.SetClipPlane(0, clipPlane);
@@ -169,7 +166,7 @@ void RenderPolyPlane::RenderPortal(PolyRenderThread *thread, const PolyClipPlane
 
 	RenderSkyWalls(thread, args, fakeflat.Subsector, polyportal, ceiling, skyHeight);
 
-	polyportal->Shape.push_back({ vertices, (int)fakeflat.Subsector->numlines, true });
+	polyportal->Shape.push_back({ vertices, (int)fakeflat.Subsector->numlines });
 }
 
 void RenderPolyPlane::RenderSkyWalls(PolyRenderThread *thread, PolyDrawArgs &args, subsector_t *sub, PolyDrawSectorPortal *polyportal, bool ceiling, double skyHeight)
@@ -247,7 +244,7 @@ void RenderPolyPlane::RenderSkyWalls(PolyRenderThread *thread, PolyDrawArgs &arg
 
 		if (polyportal)
 		{
-			polyportal->Shape.push_back({ wallvert, 4, args.FaceCullCCW() });
+			polyportal->Shape.push_back({ wallvert, 4 });
 		}
 	}
 }
@@ -565,7 +562,6 @@ void Render3DFloorPlane::Render(PolyRenderThread *thread, const PolyClipPlane &c
 		args.SetWriteDepth(true);
 		args.SetWriteStencil(false);
 	}
-	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(stencilValue);
 	args.SetWriteStencil(true, stencilValue + 1);
 	args.SetTexture(tex);

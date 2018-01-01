@@ -75,7 +75,6 @@ public:
 	void SetWriteColor(bool enable) { mWriteColor = enable; }
 	void SetWriteStencil(bool enable, uint8_t stencilWriteValue = 0) { mWriteStencil = enable; mStencilWriteValue = stencilWriteValue; }
 	void SetWriteDepth(bool enable) { mWriteDepth = enable; }
-	void SetFaceCullCCW(bool counterclockwise) { mFaceCullCCW = counterclockwise; }
 	void SetStyle(TriBlendMode blendmode, double srcalpha = 1.0, double destalpha = 1.0) { mBlendMode = blendmode; mSrcAlpha = (uint32_t)(srcalpha * 256.0 + 0.5); mDestAlpha = (uint32_t)(destalpha * 256.0 + 0.5); }
 	void SetStyle(const FRenderStyle &renderstyle, double alpha, uint32_t fillcolor, uint32_t translationID, FTexture *texture, bool fullbright);
 	void SetColor(uint32_t bgra, uint8_t palindex);
@@ -93,7 +92,6 @@ public:
 	const unsigned int *Elements() const { return mElements; }
 	PolyDrawMode DrawMode() const { return mDrawMode; }
 
-	bool FaceCullCCW() const { return mFaceCullCCW; }
 	bool WriteColor() const { return mWriteColor; }
 
 	FTexture *Texture() const { return mTexture; }
@@ -143,7 +141,6 @@ private:
 	int mVertexCount = 0;
 	const unsigned int *mElements = nullptr;
 	PolyDrawMode mDrawMode = PolyDrawMode::Triangles;
-	bool mFaceCullCCW = false;
 	bool mDepthTest = false;
 	bool mWriteStencil = true;
 	bool mWriteColor = true;

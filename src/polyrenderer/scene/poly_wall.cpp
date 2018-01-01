@@ -322,7 +322,6 @@ void RenderPolyWall::Render(PolyRenderThread *thread, const PolyClipPlane &clipP
 
 	PolyDrawArgs args;
 	args.SetLight(Colormap, GetLightLevel(), PolyRenderer::Instance()->Light.WallGlobVis(foggy), false);
-	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(StencilValue);
 	args.SetWriteStencil(true, StencilValue + 1);
 	if (Texture && !Polyportal)
@@ -349,7 +348,7 @@ void RenderPolyWall::Render(PolyRenderThread *thread, const PolyClipPlane &clipP
 		args.SetWriteColor(false);
 		args.SetWriteDepth(false);
 		args.DrawArray(thread, vertices, 4, PolyDrawMode::TriangleFan);
-		Polyportal->Shape.push_back({ vertices, 4, true });
+		Polyportal->Shape.push_back({ vertices, 4 });
 	}
 	else if (!Masked)
 	{

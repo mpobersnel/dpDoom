@@ -26,10 +26,9 @@
 
 struct PolyPortalVertexRange
 {
-	PolyPortalVertexRange(const TriVertex *vertices, int count, bool ccw) : Vertices(vertices), Count(count), Ccw(ccw) { }
+	PolyPortalVertexRange(const TriVertex *vertices, int count) : Vertices(vertices), Count(count) { }
 	const TriVertex *Vertices;
 	int Count;
-	bool Ccw;
 };
 
 class PolyPortalSegment

@@ -102,7 +102,6 @@ void RenderPolyWallSprite::Render(PolyRenderThread *thread, const PolyClipPlane 
 
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sub->sector->Colormap, sub->sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.WallGlobVis(foggy), fullbrightSprite);
-	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(stencilValue);
 	args.SetTexture(tex);
 	args.SetClipPlane(0, clipPlane);

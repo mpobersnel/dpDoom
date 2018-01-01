@@ -82,7 +82,6 @@ void RenderPolyParticle::Render(PolyRenderThread *thread, const PolyClipPlane &c
 	args.SetDepthTest(true);
 	args.SetColor(particle->color | 0xff000000, particle->color >> 24);
 	args.SetStyle(TriBlendMode::Shaded, particle->alpha, 1.0 - particle->alpha);
-	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(stencilValue);
 	args.SetWriteStencil(false);
 	args.SetWriteDepth(false);

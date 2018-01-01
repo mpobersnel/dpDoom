@@ -117,13 +117,10 @@ void PolyTriangleThreadData::DrawElements(const PolyDrawArgs &drawargs)
 	args.stencilMasks = PolyStencilBuffer::Instance()->Masks();
 	args.zbuffer = PolyZBuffer::Instance()->Values();
 
-	bool ccw = drawargs.FaceCullCCW();
+	bool ccw = !mirror;
 	const TriVertex *vinput = drawargs.Vertices();
 	const unsigned int *elements = drawargs.Elements();
 	int vcount = drawargs.VertexCount();
-
-	if (mirror)
-		ccw = !ccw;
 
 	ShadedTriVertex vert[3];
 	if (drawargs.DrawMode() == PolyDrawMode::Triangles)
@@ -178,12 +175,9 @@ void PolyTriangleThreadData::DrawArrays(const PolyDrawArgs &drawargs)
 	args.stencilMasks = PolyStencilBuffer::Instance()->Masks();
 	args.zbuffer = PolyZBuffer::Instance()->Values();
 
-	bool ccw = drawargs.FaceCullCCW();
+	bool ccw = !mirror;
 	const TriVertex *vinput = drawargs.Vertices();
 	int vcount = drawargs.VertexCount();
-
-	if (mirror)
-		ccw = !ccw;
 
 	ShadedTriVertex vert[3];
 	if (drawargs.DrawMode() == PolyDrawMode::Triangles)

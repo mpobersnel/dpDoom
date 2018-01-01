@@ -115,7 +115,6 @@ void PolySkyDome::Render(PolyRenderThread *thread, const Mat4f &worldToView, con
 
 void PolySkyDome::RenderRow(PolyRenderThread *thread, PolyDrawArgs &args, int row, uint32_t capcolor, uint8_t capcolorindex)
 {
-	args.SetFaceCullCCW(false);
 	args.SetColor(capcolor, capcolorindex);
 	args.SetStyle(TriBlendMode::Skycap);
 	args.DrawArray(thread, &mVertices[mPrimStart[row]], mPrimStart[row + 1] - mPrimStart[row], PolyDrawMode::TriangleStrip);
@@ -126,7 +125,6 @@ void PolySkyDome::RenderCapColorRow(PolyRenderThread *thread, PolyDrawArgs &args
 	uint32_t solid = skytex->GetSkyCapColor(bottomCap);
 	uint8_t palsolid = RGB32k.RGB[(RPART(solid) >> 3)][(GPART(solid) >> 3)][(BPART(solid) >> 3)];
 
-	args.SetFaceCullCCW(bottomCap);
 	args.SetColor(solid, palsolid);
 	args.SetStyle(TriBlendMode::FillOpaque);
 	args.DrawArray(thread, &mVertices[mPrimStart[row]], mPrimStart[row + 1] - mPrimStart[row], PolyDrawMode::TriangleFan);
@@ -149,7 +147,7 @@ void PolySkyDome::CreateSkyHemisphere(bool zflip)
 
 	for (c = 0; c < mColumns; c++)
 	{
-		SkyVertex(1, c, zflip);
+		SkyVertex(1, zflip ? c : (mColumns - 1 - c), zflip);
 	}
 
 	// The total number of triangles per hemisphere can be calculated
@@ -159,8 +157,8 @@ void PolySkyDome::CreateSkyHemisphere(bool zflip)
 		mPrimStart.Push(mVertices.Size());
 		for (c = 0; c <= mColumns; c++)
 		{
-			SkyVertex(r + zflip, c, zflip);
 			SkyVertex(r + 1 - zflip, c, zflip);
+			SkyVertex(r + zflip, c, zflip);
 		}
 	}
 }

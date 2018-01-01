@@ -152,7 +152,6 @@ void PolyModelRenderer::DrawArrays(int start, int count)
 
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sector->Colormap, sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
-	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(StencilValue);
 	args.SetClipPlane(0, PolyClipPlane());
 	args.SetStyle(TriBlendMode::TextureOpaque);
@@ -176,7 +175,6 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sector->Colormap, sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
-	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(StencilValue);
 	args.SetClipPlane(0, PolyClipPlane());
 	args.SetStyle(TriBlendMode::TextureOpaque);

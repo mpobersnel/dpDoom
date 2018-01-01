@@ -100,7 +100,6 @@ void HardpolyRenderer::DrawElements(PolyRenderThread *thread, const PolyDrawArgs
 	if (!drawargs.WriteColor())
 		return;
 
-	bool ccw = drawargs.FaceCullCCW();
 	int totalvcount = drawargs.VertexCount();
 	if (totalvcount < 3)
 		return;
@@ -182,7 +181,6 @@ void HardpolyRenderer::DrawArray(PolyRenderThread *thread, const PolyDrawArgs &d
 	if (!drawargs.WriteColor())
 		return;
 
-	bool ccw = drawargs.FaceCullCCW();
 	int vcount = drawargs.VertexCount();
 	if (vcount < 3)
 		return;

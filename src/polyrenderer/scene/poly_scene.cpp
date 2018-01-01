@@ -327,7 +327,6 @@ void RenderPolyScene::RenderPortals(int portalDepth)
 			args.SetWriteStencil(true, portal->StencilValue + 1);
 			for (const auto &verts : portal->Shape)
 			{
-				args.SetFaceCullCCW(verts.Ccw);
 				args.DrawArray(thread, verts.Vertices, verts.Count, PolyDrawMode::TriangleFan);
 			}
 		}
@@ -338,7 +337,6 @@ void RenderPolyScene::RenderPortals(int portalDepth)
 			args.SetWriteStencil(true, portal->StencilValue + 1);
 			for (const auto &verts : portal->Shape)
 			{
-				args.SetFaceCullCCW(verts.Ccw);
 				args.DrawArray(thread, verts.Vertices, verts.Count, PolyDrawMode::TriangleFan);
 			}
 		}
@@ -372,7 +370,6 @@ void RenderPolyScene::RenderTranslucent(int portalDepth)
 			args.SetClipPlane(0, PortalPlane);
 			for (const auto &verts : portal->Shape)
 			{
-				args.SetFaceCullCCW(verts.Ccw);
 				args.SetWriteColor(false);
 				args.DrawArray(thread, verts.Vertices, verts.Count, PolyDrawMode::TriangleFan);
 			}
@@ -389,7 +386,6 @@ void RenderPolyScene::RenderTranslucent(int portalDepth)
 			args.SetClipPlane(0, PortalPlane);
 			for (const auto &verts : portal->Shape)
 			{
-				args.SetFaceCullCCW(verts.Ccw);
 				args.SetWriteColor(false);
 				args.DrawArray(thread, verts.Vertices, verts.Count, PolyDrawMode::TriangleFan);
 			}
