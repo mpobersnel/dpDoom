@@ -30,7 +30,7 @@
 #include "polyrenderer/scene/poly_light.h"
 #include "polyrenderer/poly_renderthread.h"
 
-void RenderPolyWallSprite::Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, AActor *thing, subsector_t *sub, uint32_t stencilValue)
+void RenderPolyWallSprite::Render(PolyRenderThread *thread, const PolyClipPlane &clipPlane, AActor *thing, subsector_t *sub, uint32_t stencilValue)
 {
 	if (RenderPolySprite::IsThingCulled(thing))
 		return;
@@ -102,7 +102,6 @@ void RenderPolyWallSprite::Render(PolyRenderThread *thread, const Mat4f &worldTo
 
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sub->sector->Colormap, sub->sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.WallGlobVis(foggy), fullbrightSprite);
-	args.SetTransform(&worldToClip);
 	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(stencilValue);
 	args.SetTexture(tex);

@@ -72,7 +72,7 @@ void HardpolyRenderer::End()
 	screen->SetUseHardwareScene(true);
 }
 
-void HardpolyRenderer::ClearBuffers(DCanvas *canvas)
+void HardpolyRenderer::ClearBuffers()
 {
 	for (auto &thread : PolyRenderer::Instance()->Threads.Threads)
 	{
@@ -85,7 +85,7 @@ void HardpolyRenderer::ClearBuffers(DCanvas *canvas)
 	screen->GetContext()->ClearDepthStencilBuffer(1.0f, 0);
 }
 
-void HardpolyRenderer::SetViewport(int x, int y, int width, int height, DCanvas *canvas)
+void HardpolyRenderer::SetViewport(int x, int y, int width, int height)
 {
 	for (auto &thread : PolyRenderer::Instance()->Threads.Threads)
 	{

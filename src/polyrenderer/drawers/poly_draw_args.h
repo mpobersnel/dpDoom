@@ -78,7 +78,6 @@ public:
 	void SetFaceCullCCW(bool counterclockwise) { mFaceCullCCW = counterclockwise; }
 	void SetStyle(TriBlendMode blendmode, double srcalpha = 1.0, double destalpha = 1.0) { mBlendMode = blendmode; mSrcAlpha = (uint32_t)(srcalpha * 256.0 + 0.5); mDestAlpha = (uint32_t)(destalpha * 256.0 + 0.5); }
 	void SetStyle(const FRenderStyle &renderstyle, double alpha, uint32_t fillcolor, uint32_t translationID, FTexture *texture, bool fullbright);
-	void SetTransform(const Mat4f *objectToClip) { mObjectToClip = objectToClip; }
 	void SetColor(uint32_t bgra, uint8_t palindex);
 	void SetLights(PolyLight *lights, int numLights) { mLights = lights; mNumLights = numLights; }
 	void SetDynLightColor(uint32_t color) { mDynLightColor = color; }
@@ -87,7 +86,6 @@ public:
 	void DrawArray(const DrawerCommandQueuePtr &queue, const TriVertex *vertices, int vcount, PolyDrawMode mode = PolyDrawMode::Triangles);
 	void DrawElements(const DrawerCommandQueuePtr &queue, const TriVertex *vertices, const unsigned int *elements, int count, PolyDrawMode mode = PolyDrawMode::Triangles);
 
-	const Mat4f *ObjectToClip() const { return mObjectToClip; }
 	const PolyClipPlane &ClipPlane(int index) const { return mClipPlane[index]; }
 
 	const TriVertex *Vertices() const { return mVertices; }
@@ -141,7 +139,6 @@ public:
 	void SetNormal(const FVector3 &normal) { mNormal = normal; }
 
 private:
-	const Mat4f *mObjectToClip = nullptr;
 	const TriVertex *mVertices = nullptr;
 	int mVertexCount = 0;
 	const unsigned int *mElements = nullptr;

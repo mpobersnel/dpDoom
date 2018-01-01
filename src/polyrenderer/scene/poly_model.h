@@ -48,6 +48,8 @@ public:
 	void DrawElements(int numIndices, size_t offset) override;
 	double GetTimeFloat() override;
 
+	void SetTransform();
+
 	PolyRenderThread *Thread = nullptr;
 	const Mat4f &WorldToClip;
 	const PolyClipPlane &ClipPlane;

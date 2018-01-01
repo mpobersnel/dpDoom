@@ -32,7 +32,7 @@
 #include "a_sharedglobal.h"
 #include "swrenderer/scene/r_scene.h"
 
-void RenderPolyDecal::RenderWallDecals(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, const seg_t *line, uint32_t stencilValue)
+void RenderPolyDecal::RenderWallDecals(PolyRenderThread *thread, const PolyClipPlane &clipPlane, const seg_t *line, uint32_t stencilValue)
 {
 	if (line->linedef == nullptr && line->sidedef == nullptr)
 		return;
@@ -40,11 +40,11 @@ void RenderPolyDecal::RenderWallDecals(PolyRenderThread *thread, const Mat4f &wo
 	for (DBaseDecal *decal = line->sidedef->AttachedDecals; decal != nullptr; decal = decal->WallNext)
 	{
 		RenderPolyDecal render;
-		render.Render(thread, worldToClip, clipPlane, decal, line, stencilValue);
+		render.Render(thread, clipPlane, decal, line, stencilValue);
 	}
 }
 
-void RenderPolyDecal::Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, DBaseDecal *decal, const seg_t *line, uint32_t stencilValue)
+void RenderPolyDecal::Render(PolyRenderThread *thread, const PolyClipPlane &clipPlane, DBaseDecal *decal, const seg_t *line, uint32_t stencilValue)
 {
 	if (decal->RenderFlags & RF_INVISIBLE || !viewactive || !decal->PicNum.isValid())
 		return;
@@ -186,7 +186,6 @@ void RenderPolyDecal::Render(PolyRenderThread *thread, const Mat4f &worldToClip,
 	args.SetLight(GetColorTable(front->Colormap), lightlevel, PolyRenderer::Instance()->Light.WallGlobVis(foggy), fullbrightSprite);
 	args.SetColor(0xff000000 | decal->AlphaColor, decal->AlphaColor >> 24);
 	args.SetStyle(decal->RenderStyle, decal->Alpha, decal->AlphaColor, decal->Translation, tex, false);
-	args.SetTransform(&worldToClip);
 	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(stencilValue);
 	args.SetWriteStencil(true, stencilValue);

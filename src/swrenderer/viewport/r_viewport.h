@@ -20,7 +20,7 @@ namespace swrenderer
 		void SetViewport(RenderThread *thread, int width, int height, float trueratio);
 		void SetupFreelook();
 		
-		void SetupPolyViewport();
+		void SetupPolyViewport(RenderThread *thread);
 
 		Mat4f WorldToView;
 		Mat4f ViewToClip;

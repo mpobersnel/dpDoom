@@ -47,8 +47,9 @@ RenderPolyScene::~RenderPolyScene()
 {
 }
 
-void RenderPolyScene::SetViewpoint(const Mat4f &worldToClip, const PolyClipPlane &portalPlane, uint32_t stencilValue)
+void RenderPolyScene::SetViewpoint(const Mat4f &worldToView, const Mat4f &worldToClip, const PolyClipPlane &portalPlane, uint32_t stencilValue)
 {
+	WorldToView = worldToView;
 	WorldToClip = worldToClip;
 	StencilValue = stencilValue;
 	PortalPlane = portalPlane;
@@ -81,6 +82,16 @@ void RenderPolyScene::RenderSectors()
 
 	PolyRenderer::Instance()->Threads.RenderThreadSlices(totalcount, [&](PolyRenderThread *thread)
 	{
+		if (PolyRenderer::Instance()->RedirectToHardpoly)
+		{
+			thread->DrawBatcher.WorldToView = WorldToView;
+			thread->DrawBatcher.MatrixUpdated();
+		}
+		else
+		{
+			PolyTriangleDrawer::SetTransform(thread->DrawQueue, thread->FrameMemory->NewObject<Mat4f>(WorldToClip));
+		}
+
 		TranslucentObjects[thread->ThreadIndex].clear();
 
 		int start = thread->Start;
@@ -128,15 +139,15 @@ void RenderPolyScene::RenderSubsector(PolyRenderThread *thread, subsector_t *sub
 			RenderPolyNode(thread, &sub->BSP->Nodes.Last(), subsectorDepth, frontsector);
 		}
 
-		Render3DFloorPlane::RenderPlanes(thread, WorldToClip, PortalPlane, sub, StencilValue, subsectorDepth, TranslucentObjects[thread->ThreadIndex]);
-		RenderPolyPlane::RenderPlanes(thread, WorldToClip, PortalPlane, sub, StencilValue, Cull.MaxCeilingHeight, Cull.MinFloorHeight, SectorPortals);
+		Render3DFloorPlane::RenderPlanes(thread, PortalPlane, sub, StencilValue, subsectorDepth, TranslucentObjects[thread->ThreadIndex]);
+		RenderPolyPlane::RenderPlanes(thread, PortalPlane, sub, StencilValue, Cull.MaxCeilingHeight, Cull.MinFloorHeight, SectorPortals);
 	}
 	else
 	{
 		PolyTransferHeights fakeflat(sub);
 
-		Render3DFloorPlane::RenderPlanes(thread, WorldToClip, PortalPlane, sub, StencilValue, subsectorDepth, TranslucentObjects[thread->ThreadIndex]);
-		RenderPolyPlane::RenderPlanes(thread, WorldToClip, PortalPlane, fakeflat, StencilValue, Cull.MaxCeilingHeight, Cull.MinFloorHeight, SectorPortals);
+		Render3DFloorPlane::RenderPlanes(thread, PortalPlane, sub, StencilValue, subsectorDepth, TranslucentObjects[thread->ThreadIndex]);
+		RenderPolyPlane::RenderPlanes(thread, PortalPlane, fakeflat, StencilValue, Cull.MaxCeilingHeight, Cull.MinFloorHeight, SectorPortals);
 
 		for (uint32_t i = 0; i < sub->numlines; i++)
 		{
@@ -207,7 +218,7 @@ void RenderPolyScene::RenderPolySubsector(PolyRenderThread *thread, subsector_t 
 				sub->flags |= SSECF_DRAWN;
 			}
 
-			RenderPolyWall::RenderLine(thread, WorldToClip, PortalPlane, line, frontsector, subsectorDepth, StencilValue, TranslucentObjects[thread->ThreadIndex], LinePortals, LastPortalLine);
+			RenderPolyWall::RenderLine(thread, PortalPlane, line, frontsector, subsectorDepth, StencilValue, TranslucentObjects[thread->ThreadIndex], LinePortals, LastPortalLine);
 		}
 	}
 }
@@ -281,12 +292,12 @@ void RenderPolyScene::RenderLine(PolyRenderThread *thread, subsector_t *sub, seg
 		for (unsigned int i = 0; i < line->backsector->e->XFloor.ffloors.Size(); i++)
 		{
 			F3DFloor *fakeFloor = line->backsector->e->XFloor.ffloors[i];
-			RenderPolyWall::Render3DFloorLine(thread, WorldToClip, PortalPlane, line, frontsector, subsectorDepth, StencilValue, fakeFloor, TranslucentObjects[thread->ThreadIndex]);
+			RenderPolyWall::Render3DFloorLine(thread, PortalPlane, line, frontsector, subsectorDepth, StencilValue, fakeFloor, TranslucentObjects[thread->ThreadIndex]);
 		}
 	}
 
 	// Render wall, and update culling info if its an occlusion blocker
-	RenderPolyWall::RenderLine(thread, WorldToClip, PortalPlane, line, frontsector, subsectorDepth, StencilValue, TranslucentObjects[thread->ThreadIndex], LinePortals, LastPortalLine);
+	RenderPolyWall::RenderLine(thread, PortalPlane, line, frontsector, subsectorDepth, StencilValue, TranslucentObjects[thread->ThreadIndex], LinePortals, LastPortalLine);
 }
 
 void RenderPolyScene::RenderPortals(int portalDepth)
@@ -305,7 +316,6 @@ void RenderPolyScene::RenderPortals(int portalDepth)
 	else // Fill with black
 	{
 		PolyDrawArgs args;
-		args.SetTransform(&WorldToClip);
 		args.SetLight(&NormalLight, 255, PolyRenderer::Instance()->Light.WallGlobVis(foggy), true);
 		args.SetColor(0, 0);
 		args.SetClipPlane(0, PortalPlane);
@@ -339,6 +349,16 @@ void RenderPolyScene::RenderTranslucent(int portalDepth)
 {
 	PolyRenderThread *thread = PolyRenderer::Instance()->Threads.MainThread();
 
+	if (PolyRenderer::Instance()->RedirectToHardpoly)
+	{
+		thread->DrawBatcher.WorldToView = WorldToView;
+		thread->DrawBatcher.MatrixUpdated();
+	}
+	else
+	{
+		PolyTriangleDrawer::SetTransform(thread->DrawQueue, thread->FrameMemory->NewObject<Mat4f>(WorldToClip));
+	}
+
 	if (portalDepth < r_portal_recursions)
 	{
 		for (auto it = SectorPortals.rbegin(); it != SectorPortals.rend(); ++it)
@@ -347,7 +367,6 @@ void RenderPolyScene::RenderTranslucent(int portalDepth)
 			portal->RenderTranslucent(portalDepth + 1);
 		
 			PolyDrawArgs args;
-			args.SetTransform(&WorldToClip);
 			args.SetStencilTestValue(portal->StencilValue + 1);
 			args.SetWriteStencil(true, StencilValue + 1);
 			args.SetClipPlane(0, PortalPlane);
@@ -365,7 +384,6 @@ void RenderPolyScene::RenderTranslucent(int portalDepth)
 			portal->RenderTranslucent(portalDepth + 1);
 		
 			PolyDrawArgs args;
-			args.SetTransform(&WorldToClip);
 			args.SetStencilTestValue(portal->StencilValue + 1);
 			args.SetWriteStencil(true, StencilValue + 1);
 			args.SetClipPlane(0, PortalPlane);
@@ -398,7 +416,7 @@ void RenderPolyScene::RenderTranslucent(int portalDepth)
 	for (auto it = TranslucentObjects[0].rbegin(); it != TranslucentObjects[0].rend(); ++it)
 	{
 		PolyTranslucentObject *obj = *it;
-		obj->Render(thread, WorldToClip, PortalPlane);
+		obj->Render(thread, PortalPlane);
 		obj->~PolyTranslucentObject();
 	}
 

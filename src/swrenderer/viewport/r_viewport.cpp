@@ -59,12 +59,12 @@ namespace swrenderer
 	{
 	}
 
-	void RenderViewport::SetupPolyViewport()
+	void RenderViewport::SetupPolyViewport(RenderThread *thread)
 	{
 		PolyStencilBuffer::Instance()->Clear(RenderTarget->GetWidth(), RenderTarget->GetHeight(), 0);
 		PolyZBuffer::Instance()->Resize(RenderTarget->GetPitch(), RenderTarget->GetHeight());
 
-		PolyTriangleDrawer::set_viewport(viewwindowx, viewwindowy, viewwidth, viewheight, RenderTarget);
+		PolyTriangleDrawer::SetViewport(thread->DrawQueue, viewwindowx, viewwindowy, viewwidth, viewheight, RenderTarget);
 		WorldToView = SoftwareWorldToView(viewpoint);
 		ViewToClip = SoftwareViewToClip(viewwindow.FocalTangent, CenterY, YaspectMul);
 		WorldToClip = ViewToClip * WorldToView;

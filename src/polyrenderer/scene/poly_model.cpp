@@ -120,6 +120,25 @@ void PolyModelRenderer::SetMaterial(FTexture *skin, bool clampNoFilter, int tran
 	SkinTexture = skin;
 }
 
+void PolyModelRenderer::SetTransform()
+{
+	Mat4f swapYZ = Mat4f::Null();
+	swapYZ.Matrix[0 + 0 * 4] = 1.0f;
+	swapYZ.Matrix[1 + 2 * 4] = 1.0f;
+	swapYZ.Matrix[2 + 1 * 4] = 1.0f;
+	swapYZ.Matrix[3 + 3 * 4] = 1.0f;
+
+	if (PolyRenderer::Instance()->RedirectToHardpoly)
+	{
+		Thread->DrawBatcher.WorldToView = PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld;
+		Thread->DrawBatcher.MatrixUpdated();
+	}
+	else
+	{
+		PolyTriangleDrawer::SetTransform(Thread->DrawQueue, Thread->FrameMemory->NewObject<Mat4f>(WorldToClip * swapYZ * ObjectToWorld));
+	}
+}
+
 void PolyModelRenderer::DrawArrays(int start, int count)
 {
 	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
@@ -131,21 +150,8 @@ void PolyModelRenderer::DrawArrays(int start, int count)
 	bool fullbrightSprite = ((ModelActor->renderflags & RF_FULLBRIGHT) || (ModelActor->flags5 & MF5_BRIGHT));
 	int lightlevel = fullbrightSprite ? 255 : ModelActor->Sector->lightlevel + actualextralight;
 
-	Mat4f swapYZ = Mat4f::Null();
-	swapYZ.Matrix[0 + 0 * 4] = 1.0f;
-	swapYZ.Matrix[1 + 2 * 4] = 1.0f;
-	swapYZ.Matrix[2 + 1 * 4] = 1.0f;
-	swapYZ.Matrix[3 + 3 * 4] = 1.0f;
-
-	Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
-	*transform = WorldToClip * swapYZ * ObjectToWorld;
-
-	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld).Matrix);
-	Thread->DrawBatcher.MatrixUpdated();
-
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sector->Colormap, sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
-	args.SetTransform(transform);
 	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(StencilValue);
 	args.SetClipPlane(0, PolyClipPlane());
@@ -155,9 +161,6 @@ void PolyModelRenderer::DrawArrays(int start, int count)
 	args.SetWriteDepth(true);
 	args.SetWriteStencil(false);
 	args.DrawArray(Thread, VertexBuffer + start, count);
-
-	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView).Matrix);
-	Thread->DrawBatcher.MatrixUpdated();
 }
 
 void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
@@ -171,21 +174,8 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 	bool fullbrightSprite = ((ModelActor->renderflags & RF_FULLBRIGHT) || (ModelActor->flags5 & MF5_BRIGHT));
 	int lightlevel = fullbrightSprite ? 255 : ModelActor->Sector->lightlevel + actualextralight;
 
-	Mat4f swapYZ = Mat4f::Null();
-	swapYZ.Matrix[0 + 0 * 4] = 1.0f;
-	swapYZ.Matrix[1 + 2 * 4] = 1.0f;
-	swapYZ.Matrix[2 + 1 * 4] = 1.0f;
-	swapYZ.Matrix[3 + 3 * 4] = 1.0f;
-
-	Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
-	*transform = WorldToClip * swapYZ * ObjectToWorld;
-
-	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView * swapYZ * ObjectToWorld).Matrix);
-	Thread->DrawBatcher.MatrixUpdated();
-
 	PolyDrawArgs args;
 	args.SetLight(GetColorTable(sector->Colormap, sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
-	args.SetTransform(transform);
 	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(StencilValue);
 	args.SetClipPlane(0, PolyClipPlane());
@@ -195,9 +185,6 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 	args.SetWriteDepth(true);
 	args.SetWriteStencil(false);
 	args.DrawElements(Thread, VertexBuffer, IndexBuffer + offset / sizeof(unsigned int), numIndices);
-
-	Thread->DrawBatcher.WorldToView = Mat4f::FromValues((PolyRenderer::Instance()->WorldToView).Matrix);
-	Thread->DrawBatcher.MatrixUpdated();
 }
 
 double PolyModelRenderer::GetTimeFloat()

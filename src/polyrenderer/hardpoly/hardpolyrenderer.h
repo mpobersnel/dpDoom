@@ -154,8 +154,8 @@ public:
 	~HardpolyRenderer();
 
 	void Begin();
-	void ClearBuffers(DCanvas *canvas);
-	void SetViewport(int x, int y, int width, int height, DCanvas *canvas);
+	void ClearBuffers();
+	void SetViewport(int x, int y, int width, int height);
 	void DrawElements(PolyRenderThread *thread, const PolyDrawArgs &args);
 	void DrawArray(PolyRenderThread *thread, const PolyDrawArgs &args);
 	void DrawRect(PolyRenderThread *thread, const RectDrawArgs &args);

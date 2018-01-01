@@ -93,6 +93,7 @@ namespace swrenderer
 	{
 		ModelActor = actor;
 		const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.Matrix);
+		SetTransform();
 	}
 
 	void SWModelRenderer::EndDrawModel(AActor *actor, FSpriteModelFrame *smf)
@@ -152,6 +153,7 @@ namespace swrenderer
 	{
 		ModelActor = actor;
 		const_cast<VSMatrix &>(objectToWorldMatrix).copy(ObjectToWorld.Matrix);
+		SetTransform();
 	}
 
 	void SWModelRenderer::EndDrawHUDModel(AActor *actor)
@@ -169,6 +171,19 @@ namespace swrenderer
 		SkinTexture = skin;
 	}
 
+	void SWModelRenderer::SetTransform()
+	{
+		Mat4f swapYZ = Mat4f::Null();
+		swapYZ.Matrix[0 + 0 * 4] = 1.0f;
+		swapYZ.Matrix[1 + 2 * 4] = 1.0f;
+		swapYZ.Matrix[2 + 1 * 4] = 1.0f;
+		swapYZ.Matrix[3 + 3 * 4] = 1.0f;
+
+		Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
+		*transform = Thread->Viewport->WorldToClip * swapYZ * ObjectToWorld;
+		PolyTriangleDrawer::SetTransform(Thread->DrawQueue, transform);
+	}
+
 	void SWModelRenderer::DrawArrays(int start, int count)
 	{
 		const auto &viewpoint = Thread->Viewport->viewpoint;
@@ -180,18 +195,8 @@ namespace swrenderer
 		bool fullbrightSprite = ((ModelActor->renderflags & RF_FULLBRIGHT) || (ModelActor->flags5 & MF5_BRIGHT));
 		int lightlevel = fullbrightSprite ? 255 : ModelActor->Sector->lightlevel + actualextralight;
 
-		Mat4f swapYZ = Mat4f::Null();
-		swapYZ.Matrix[0 + 0 * 4] = 1.0f;
-		swapYZ.Matrix[1 + 2 * 4] = 1.0f;
-		swapYZ.Matrix[2 + 1 * 4] = 1.0f;
-		swapYZ.Matrix[3 + 3 * 4] = 1.0f;
-
-		Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
-		*transform = Thread->Viewport->WorldToClip * swapYZ * ObjectToWorld;
-
 		PolyDrawArgs args;
 		args.SetLight(GetColorTable(sector->Colormap, sector->SpecialColors[sector_t::sprites], true), lightlevel, Thread->Light->SpriteGlobVis(foggy), fullbrightSprite);
-		args.SetTransform(transform);
 		args.SetFaceCullCCW(true);
 		args.SetClipPlane(0, PolyClipPlane());
 		args.SetStyle(TriBlendMode::TextureOpaque);
@@ -218,18 +223,8 @@ namespace swrenderer
 		bool fullbrightSprite = ((ModelActor->renderflags & RF_FULLBRIGHT) || (ModelActor->flags5 & MF5_BRIGHT));
 		int lightlevel = fullbrightSprite ? 255 : ModelActor->Sector->lightlevel + actualextralight;
 
-		Mat4f swapYZ = Mat4f::Null();
-		swapYZ.Matrix[0 + 0 * 4] = 1.0f;
-		swapYZ.Matrix[1 + 2 * 4] = 1.0f;
-		swapYZ.Matrix[2 + 1 * 4] = 1.0f;
-		swapYZ.Matrix[3 + 3 * 4] = 1.0f;
-
-		Mat4f *transform = Thread->FrameMemory->NewObject<Mat4f>();
-		*transform = Thread->Viewport->WorldToClip * swapYZ * ObjectToWorld;
-
 		PolyDrawArgs args;
 		args.SetLight(GetColorTable(sector->Colormap, sector->SpecialColors[sector_t::sprites], true), lightlevel, Thread->Light->SpriteGlobVis(foggy), fullbrightSprite);
-		args.SetTransform(transform);
 		args.SetFaceCullCCW(true);
 		args.SetClipPlane(0, PolyClipPlane());
 		args.SetStyle(TriBlendMode::TextureOpaque);

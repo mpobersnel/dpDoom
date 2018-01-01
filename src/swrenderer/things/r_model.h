@@ -68,6 +68,8 @@ namespace swrenderer
 		void DrawElements(int numIndices, size_t offset) override;
 		double GetTimeFloat() override;
 
+		void SetTransform();
+
 		RenderThread *Thread = nullptr;
 
 		AActor *ModelActor = nullptr;

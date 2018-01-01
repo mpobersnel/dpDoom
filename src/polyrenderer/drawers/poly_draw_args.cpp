@@ -137,7 +137,7 @@ void PolyDrawArgs::DrawArray(const DrawerCommandQueuePtr &queue, const TriVertex
 	mVertexCount = vcount;
 	mElements = nullptr;
 	mDrawMode = mode;
-	queue->Push<DrawPolyTrianglesCommand>(*this, PolyTriangleDrawer::is_mirror());
+	queue->Push<DrawPolyTrianglesCommand>(*this);
 }
 
 void PolyDrawArgs::DrawElements(const DrawerCommandQueuePtr &queue, const TriVertex *vertices, const unsigned int *elements, int count, PolyDrawMode mode)
@@ -146,7 +146,7 @@ void PolyDrawArgs::DrawElements(const DrawerCommandQueuePtr &queue, const TriVer
 	mElements = elements;
 	mVertexCount = count;
 	mDrawMode = mode;
-	queue->Push<DrawPolyTrianglesCommand>(*this, PolyTriangleDrawer::is_mirror());
+	queue->Push<DrawPolyTrianglesCommand>(*this);
 }
 
 void PolyDrawArgs::DrawArray(PolyRenderThread *thread, const TriVertex *vertices, int vcount, PolyDrawMode mode)
@@ -158,7 +158,7 @@ void PolyDrawArgs::DrawArray(PolyRenderThread *thread, const TriVertex *vertices
 	if (PolyRenderer::Instance()->RedirectToHardpoly)
 		PolyRenderer::Instance()->Hardpoly->DrawArray(thread, *this);
 	else
-		thread->DrawQueue->Push<DrawPolyTrianglesCommand>(*this, PolyTriangleDrawer::is_mirror());
+		thread->DrawQueue->Push<DrawPolyTrianglesCommand>(*this);
 }
 
 void PolyDrawArgs::DrawElements(PolyRenderThread *thread, const TriVertex *vertices, const unsigned int *elements, int count, PolyDrawMode mode)
@@ -170,7 +170,7 @@ void PolyDrawArgs::DrawElements(PolyRenderThread *thread, const TriVertex *verti
 	if (PolyRenderer::Instance()->RedirectToHardpoly)
 		PolyRenderer::Instance()->Hardpoly->DrawElements(thread, *this);
 	else
-		thread->DrawQueue->Push<DrawPolyTrianglesCommand>(*this, PolyTriangleDrawer::is_mirror());
+		thread->DrawQueue->Push<DrawPolyTrianglesCommand>(*this);
 }
 
 void PolyDrawArgs::SetStyle(const FRenderStyle &renderstyle, double alpha, uint32_t fillcolor, uint32_t translationID, FTexture *tex, bool fullbright)

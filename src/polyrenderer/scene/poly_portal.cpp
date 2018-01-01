@@ -68,7 +68,7 @@ void PolyDrawSectorPortal::Render(int portalDepth)
 	Mat4f worldToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f, Handedness::Right, ClipZRange::NegativePositiveW) * worldToView;
 
 	PolyClipPlane portalPlane(0.0f, 0.0f, 0.0f, 1.0f);
-	RenderPortal.SetViewpoint(worldToClip, portalPlane, StencilValue);
+	RenderPortal.SetViewpoint(worldToView, worldToClip, portalPlane, StencilValue);
 	//RenderPortal.SetPortalSegments(Segments);
 	RenderPortal.Render(portalDepth);
 	
@@ -203,7 +203,7 @@ void PolyDrawLinePortal::Render(int portalDepth)
 	Segments.push_back({ angle1, angle2 });*/
 
 	RenderPortal.LastPortalLine = clipLine;
-	RenderPortal.SetViewpoint(worldToClip, portalPlane, StencilValue);
+	RenderPortal.SetViewpoint(worldToView, worldToClip, portalPlane, StencilValue);
 	//RenderPortal.SetPortalSegments(Segments);
 	RenderPortal.Render(portalDepth);
 
@@ -303,8 +303,8 @@ void PolyDrawLinePortal::SaveGlobals()
 	viewpoint.sector = R_PointInSubsector(viewpoint.Pos)->sector;
 	R_SetViewAngle(viewpoint, viewwindow);
 
-	if (Mirror)
-		PolyTriangleDrawer::toggle_mirror();
+	if (Mirror && !PolyRenderer::Instance()->RedirectToHardpoly)
+		PolyTriangleDrawer::ToggleMirror(PolyRenderer::Instance()->Threads.MainThread()->DrawQueue);
 }
 
 void PolyDrawLinePortal::RestoreGlobals()
@@ -327,6 +327,6 @@ void PolyDrawLinePortal::RestoreGlobals()
 	viewpoint.Path[1] = savedViewPath[1];
 	R_SetViewAngle(viewpoint, viewwindow);
 
-	if (Mirror)
-		PolyTriangleDrawer::toggle_mirror();
+	if (Mirror && !PolyRenderer::Instance()->RedirectToHardpoly)
+		PolyTriangleDrawer::ToggleMirror(PolyRenderer::Instance()->Threads.MainThread()->DrawQueue);
 }

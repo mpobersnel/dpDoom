@@ -35,7 +35,7 @@ PolySkyDome::PolySkyDome()
 	CreateDome();
 }
 
-void PolySkyDome::Render(PolyRenderThread *thread, const Mat4f &worldToClip)
+void PolySkyDome::Render(PolyRenderThread *thread, const Mat4f &worldToView, const Mat4f &worldToClip)
 {
 #ifdef USE_GL_DOME_MATH
 	Mat4f modelMatrix = GLSkyMath();
@@ -77,13 +77,21 @@ void PolySkyDome::Render(PolyRenderThread *thread, const Mat4f &worldToClip)
 
 	const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
 	Mat4f objectToWorld = Mat4f::Translate((float)viewpoint.Pos.X, (float)viewpoint.Pos.Y, (float)viewpoint.Pos.Z) * modelMatrix;
-	objectToClip = worldToClip * objectToWorld;
 
 	int rc = mRows + 1;
 
+	if (PolyRenderer::Instance()->RedirectToHardpoly)
+	{
+		thread->DrawBatcher.WorldToView = worldToView * objectToWorld;
+		thread->DrawBatcher.MatrixUpdated();
+	}
+	else
+	{
+		PolyTriangleDrawer::SetTransform(thread->DrawQueue, thread->FrameMemory->NewObject<Mat4f>(worldToClip * objectToWorld));
+	}
+
 	PolyDrawArgs args;
 	args.SetLight(&NormalLight, 255, PolyRenderer::Instance()->Light.WallGlobVis(false), true);
-	args.SetTransform(&objectToClip);
 	args.SetStencilTestValue(255);
 	args.SetWriteStencil(true, 1);
 	args.SetClipPlane(0, PolyClipPlane(0.0f, 0.0f, 0.0f, 1.0f));

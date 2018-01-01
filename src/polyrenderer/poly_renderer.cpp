@@ -172,9 +172,9 @@ void PolyRenderer::RenderActorView(AActor *actor, bool dontmaplines)
 	ClearBuffers();
 	SetSceneViewport();
 	SetupPerspectiveMatrix();
-	MainPortal.SetViewpoint(WorldToClip, PolyClipPlane(0.0f, 0.0f, 0.0f, 1.0f), GetNextStencilValue());
+	MainPortal.SetViewpoint(WorldToView, WorldToClip, PolyClipPlane(0.0f, 0.0f, 0.0f, 1.0f), GetNextStencilValue());
 	MainPortal.Render(0);
-	Skydome.Render(Threads.MainThread(), WorldToClip);
+	Skydome.Render(Threads.MainThread(), WorldToView, WorldToClip);
 	MainPortal.RenderTranslucent(0);
 	PlayerSprites.Render(Threads.MainThread());
 
@@ -192,7 +192,14 @@ void PolyRenderer::RenderRemainingPlayerSprites()
 void PolyRenderer::ClearBuffers()
 {
 	Threads.Clear();
-	PolyTriangleDrawer::clear_buffers(RenderTarget);
+	if (RedirectToHardpoly)
+	{
+		Hardpoly->ClearBuffers();
+	}
+	else
+	{
+		PolyTriangleDrawer::ClearBuffers(RenderTarget);
+	}
 	NextStencilValue = 0;
 }
 
@@ -209,11 +216,17 @@ void PolyRenderer::SetSceneViewport()
 			height = (screenblocks*SCREENHEIGHT / 10) & ~7;
 
 		int bottom = SCREENHEIGHT - (height + viewwindowy - ((height - viewheight) / 2));
-		PolyTriangleDrawer::set_viewport(viewwindowx, SCREENHEIGHT - bottom - height, viewwidth, height, RenderTarget);
+		if (RedirectToHardpoly)
+			Hardpoly->SetViewport(viewwindowx, SCREENHEIGHT - bottom - height, viewwidth, height);
+		else
+			PolyTriangleDrawer::SetViewport(Threads.MainThread()->DrawQueue, viewwindowx, SCREENHEIGHT - bottom - height, viewwidth, height, RenderTarget);
 	}
 	else // Rendering to camera texture
 	{
-		PolyTriangleDrawer::set_viewport(0, 0, RenderTarget->GetWidth(), RenderTarget->GetHeight(), RenderTarget);
+		if (RedirectToHardpoly)
+			Hardpoly->SetViewport(0, 0, RenderTarget->GetWidth(), RenderTarget->GetHeight());
+		else
+			PolyTriangleDrawer::SetViewport(Threads.MainThread()->DrawQueue, 0, 0, RenderTarget->GetWidth(), RenderTarget->GetHeight(), RenderTarget);
 	}
 }
 
@@ -251,14 +264,7 @@ void PolyRenderer::SetupPerspectiveMatrix()
 
 	if (RedirectToHardpoly)
 	{
-		Threads.MainThread()->DrawBatcher.WorldToView =
-			Mat4f::Rotate((float)Viewpoint.Angles.Roll.Radians(), 0.0f, 0.0f, 1.0f) *
-			Mat4f::Rotate(adjustedPitch, 1.0f, 0.0f, 0.0f) *
-			Mat4f::Rotate(adjustedViewAngle, 0.0f, -1.0f, 0.0f) *
-			Mat4f::Scale(1.0f, level.info->pixelstretch, 1.0f) *
-			Mat4f::SwapYZ() *
-			Mat4f::Translate((float)-Viewpoint.Pos.X, (float)-Viewpoint.Pos.Y, (float)-Viewpoint.Pos.Z);
-
+		Threads.MainThread()->DrawBatcher.WorldToView = WorldToView;
 		Threads.MainThread()->DrawBatcher.ViewToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f, Handedness::Right, screen->GetContext()->GetClipZRange());
 		Threads.MainThread()->DrawBatcher.MatrixUpdated();
 	}

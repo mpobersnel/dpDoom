@@ -72,7 +72,7 @@ bool RenderPolySprite::GetLine(AActor *thing, DVector2 &left, DVector2 &right)
 	return true;
 }
 
-void RenderPolySprite::Render(PolyRenderThread *thread, const Mat4f &worldToClip, const PolyClipPlane &clipPlane, AActor *thing, subsector_t *sub, uint32_t stencilValue, float t1, float t2)
+void RenderPolySprite::Render(PolyRenderThread *thread, const PolyClipPlane &clipPlane, AActor *thing, subsector_t *sub, uint32_t stencilValue, float t1, float t2)
 {
 	int spritenum = thing->sprite;
 	bool isPicnumOverride = thing->picnum.isValid();
@@ -81,7 +81,7 @@ void RenderPolySprite::Render(PolyRenderThread *thread, const Mat4f &worldToClip
 	{
 		const auto &viewpoint = PolyRenderer::Instance()->Viewpoint;
 		DVector3 pos = thing->InterpolatedPosition(viewpoint.TicFrac);
-		PolyRenderModel(thread, worldToClip, clipPlane, stencilValue, (float)pos.X, (float)pos.Y, (float)pos.Z, modelframe, thing);
+		PolyRenderModel(thread, PolyRenderer::Instance()->WorldToClip, clipPlane, stencilValue, (float)pos.X, (float)pos.Y, (float)pos.Z, modelframe, thing);
 		return;
 	}
 
@@ -157,7 +157,6 @@ void RenderPolySprite::Render(PolyRenderThread *thread, const Mat4f &worldToClip
 	PolyDrawArgs args;
 	SetDynlight(thing, args);
 	args.SetLight(GetColorTable(sub->sector->Colormap, sub->sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
-	args.SetTransform(&worldToClip);
 	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(stencilValue);
 	args.SetWriteStencil(true, stencilValue);
