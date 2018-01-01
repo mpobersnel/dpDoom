@@ -158,7 +158,6 @@ void RenderPolySprite::Render(PolyRenderThread *thread, const PolyClipPlane &cli
 	SetDynlight(thing, args);
 	args.SetLight(GetColorTable(sub->sector->Colormap, sub->sector->SpecialColors[sector_t::sprites], true), lightlevel, PolyRenderer::Instance()->Light.SpriteGlobVis(foggy), fullbrightSprite);
 	args.SetStencilTestValue(stencilValue);
-	args.SetWriteStencil(true, stencilValue);
 	args.SetClipPlane(0, clipPlane);
 	if ((thing->renderflags & RF_ZDOOMTRANS) && r_UseVanillaTransparency)
 		args.SetStyle(LegacyRenderStyles[STYLE_Normal], 1.0f, thing->fillcolor, thing->Translation, tex, fullbrightSprite);

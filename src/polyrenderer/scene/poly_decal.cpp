@@ -187,7 +187,6 @@ void RenderPolyDecal::Render(PolyRenderThread *thread, const PolyClipPlane &clip
 	args.SetColor(0xff000000 | decal->AlphaColor, decal->AlphaColor >> 24);
 	args.SetStyle(decal->RenderStyle, decal->Alpha, decal->AlphaColor, decal->Translation, tex, false);
 	args.SetStencilTestValue(stencilValue);
-	args.SetWriteStencil(true, stencilValue);
 	args.SetClipPlane(0, clipPlane);
 	args.SetDepthTest(true);
 	args.SetWriteStencil(false);

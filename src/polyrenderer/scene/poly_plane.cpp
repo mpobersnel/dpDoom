@@ -89,7 +89,6 @@ void RenderPolyPlane::RenderNormal(PolyRenderThread *thread, const PolyClipPlane
 
 		PolyDrawArgs args;
 		args.SetStencilTestValue(stencilValue);
-		args.SetWriteStencil(true, stencilValue + 1);
 		args.SetClipPlane(0, clipPlane);
 		args.SetWriteStencil(true, 255);
 		args.SetWriteColor(false);
@@ -157,7 +156,6 @@ void RenderPolyPlane::RenderPortal(PolyRenderThread *thread, const PolyClipPlane
 
 	PolyDrawArgs args;
 	args.SetStencilTestValue(stencilValue);
-	args.SetWriteStencil(true, stencilValue + 1);
 	args.SetClipPlane(0, clipPlane);
 	args.SetWriteStencil(true, polyportal->StencilValue);
 	args.SetWriteColor(false);
@@ -560,7 +558,6 @@ void Render3DFloorPlane::Render(PolyRenderThread *thread, const PolyClipPlane &c
 		args.SetStyle(TriBlendMode::TextureAdd, srcalpha, destalpha);
 		args.SetDepthTest(true);
 		args.SetWriteDepth(true);
-		args.SetWriteStencil(false);
 	}
 	args.SetStencilTestValue(stencilValue);
 	args.SetWriteStencil(true, stencilValue + 1);
