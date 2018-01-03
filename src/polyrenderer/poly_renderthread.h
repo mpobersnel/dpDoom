@@ -30,6 +30,9 @@
 class DrawerCommandQueue;
 typedef std::shared_ptr<DrawerCommandQueue> DrawerCommandQueuePtr;
 class RenderMemory;
+class PolyTranslucentObject;
+class PolyDrawSectorPortal;
+class PolyDrawLinePortal;
 
 class PolyRenderThread
 {
@@ -47,6 +50,10 @@ public:
 	std::unique_ptr<RenderMemory> FrameMemory;
 	DrawerCommandQueuePtr DrawQueue;
 	DrawBatcher DrawBatcher;
+
+	std::vector<PolyTranslucentObject *> TranslucentObjects;
+	std::vector<std::unique_ptr<PolyDrawSectorPortal>> SectorPortals;
+	std::vector<std::unique_ptr<PolyDrawLinePortal>> LinePortals;
 
 	// Make sure texture can accessed safely
 	void PrepareTexture(FTexture *texture);

@@ -30,6 +30,7 @@
 #include "poly_portal.h"
 #include "polyrenderer/poly_renderer.h"
 #include "polyrenderer/scene/poly_light.h"
+#include "polyrenderer/scene/poly_scene.h"
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -67,22 +68,26 @@ void PolyDrawSectorPortal::Render(int portalDepth)
 		Mat4f::Translate((float)-viewpoint.Pos.X, (float)-viewpoint.Pos.Y, (float)-viewpoint.Pos.Z);
 	Mat4f worldToClip = Mat4f::Perspective(fovy, ratio, 5.0f, 65535.0f, Handedness::Right, ClipZRange::NegativePositiveW) * worldToView;
 
-	PolyClipPlane portalPlane(0.0f, 0.0f, 0.0f, 1.0f);
-	RenderPortal.SetViewpoint(worldToView, worldToClip, portalPlane, StencilValue);
-	//RenderPortal.SetPortalSegments(Segments);
-	RenderPortal.Render(portalDepth);
+	PortalViewpoint = PolyPortalViewpoint();
+	PortalViewpoint.WorldToView = worldToView;
+	PortalViewpoint.WorldToClip = worldToClip;
+	PortalViewpoint.StencilValue = StencilValue;
+	PortalViewpoint.PortalPlane = PolyClipPlane(0.0f, 0.0f, 0.0f, 1.0f);
+	PortalViewpoint.PortalDepth = portalDepth;
+
+	PolyRenderer::Instance()->Scene.Render(&PortalViewpoint);
 	
 	RestoreGlobals();
 }
 
-void PolyDrawSectorPortal::RenderTranslucent(int portalDepth)
+void PolyDrawSectorPortal::RenderTranslucent()
 {
 	if (Portal->mType == PORTS_HORIZON || Portal->mType == PORTS_PLANE)
 		return;
 
 	SaveGlobals();
 		
-	RenderPortal.RenderTranslucent(portalDepth);
+	PolyRenderer::Instance()->Scene.RenderTranslucent(&PortalViewpoint);
 
 	RestoreGlobals();
 }
@@ -202,18 +207,23 @@ void PolyDrawLinePortal::Render(int portalDepth)
 	Segments.clear();
 	Segments.push_back({ angle1, angle2 });*/
 
-	RenderPortal.LastPortalLine = clipLine;
-	RenderPortal.SetViewpoint(worldToView, worldToClip, portalPlane, StencilValue);
-	//RenderPortal.SetPortalSegments(Segments);
-	RenderPortal.Render(portalDepth);
+	PortalViewpoint = PolyPortalViewpoint();
+	PortalViewpoint.WorldToView = worldToView;
+	PortalViewpoint.WorldToClip = worldToClip;
+	PortalViewpoint.StencilValue = StencilValue;
+	PortalViewpoint.PortalPlane = portalPlane;
+	PortalViewpoint.PortalDepth = portalDepth;
+	PortalViewpoint.LastPortalLine = clipLine;
+
+	PolyRenderer::Instance()->Scene.Render(&PortalViewpoint);
 
 	RestoreGlobals();
 }
 
-void PolyDrawLinePortal::RenderTranslucent(int portalDepth)
+void PolyDrawLinePortal::RenderTranslucent()
 {
 	SaveGlobals();
-	RenderPortal.RenderTranslucent(portalDepth);
+	PolyRenderer::Instance()->Scene.RenderTranslucent(&PortalViewpoint);
 	RestoreGlobals();
 }
 

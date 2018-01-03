@@ -65,6 +65,7 @@ public:
 	FViewWindow Viewwindow;
 	FRenderViewpoint Viewpoint;
 	PolyLightVisibility Light;
+	RenderPolyScene Scene;
 
 	Mat4f WorldToView;
 	Mat4f WorldToClip;
@@ -78,7 +79,6 @@ private:
 	void SetSceneViewport();
 	void SetupPerspectiveMatrix();
 
-	RenderPolyScene MainPortal;
 	PolySkyDome Skydome;
 	RenderPolyPlayerSprites PlayerSprites;
 	uint32_t NextStencilValue = 0;

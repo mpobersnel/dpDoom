@@ -172,10 +172,15 @@ void PolyRenderer::RenderActorView(AActor *actor, bool dontmaplines)
 	ClearBuffers();
 	SetSceneViewport();
 	SetupPerspectiveMatrix();
-	MainPortal.SetViewpoint(WorldToView, WorldToClip, PolyClipPlane(0.0f, 0.0f, 0.0f, 1.0f), GetNextStencilValue());
-	MainPortal.Render(0);
+
+	PolyPortalViewpoint mainViewpoint;
+	mainViewpoint.WorldToView = WorldToView;
+	mainViewpoint.WorldToClip = WorldToClip;
+	mainViewpoint.StencilValue = GetNextStencilValue();
+	mainViewpoint.PortalPlane = PolyClipPlane(0.0f, 0.0f, 0.0f, 1.0f);
+	Scene.Render(&mainViewpoint);
 	Skydome.Render(Threads.MainThread(), WorldToView, WorldToClip);
-	MainPortal.RenderTranslucent(0);
+	Scene.RenderTranslucent(&mainViewpoint);
 	PlayerSprites.Render(Threads.MainThread());
 
 	Viewpoint.camera->renderflags = savedflags;
@@ -201,6 +206,9 @@ void PolyRenderer::ClearBuffers()
 		PolyTriangleDrawer::ClearBuffers(RenderTarget);
 	}
 	NextStencilValue = 0;
+	Threads.MainThread()->SectorPortals.clear();
+	Threads.MainThread()->LinePortals.clear();
+	Threads.MainThread()->TranslucentObjects.clear();
 }
 
 void PolyRenderer::SetSceneViewport()

@@ -54,42 +54,52 @@ class PolyDrawSectorPortal;
 class PolyDrawLinePortal;
 class PolyPortalSegment;
 
+class PolyPortalViewpoint
+{
+public:
+	Mat4f WorldToView;
+	Mat4f WorldToClip;
+	PolyClipPlane PortalPlane;
+	uint32_t StencilValue = 0;
+	int PortalDepth = 0;
+
+	line_t *LastPortalLine = nullptr;
+
+	size_t ObjectsStart = 0;
+	size_t ObjectsEnd = 0;
+	size_t SectorPortalsStart = 0;
+	size_t SectorPortalsEnd = 0;
+	size_t LinePortalsStart = 0;
+	size_t LinePortalsEnd = 0;
+};
+
 // Renders everything from a specific viewpoint
 class RenderPolyScene
 {
 public:
 	RenderPolyScene();
 	~RenderPolyScene();
-	void SetViewpoint(const Mat4f &worldToView, const Mat4f &worldToClip, const PolyClipPlane &portalPlane, uint32_t stencilValue);
-	void Render(int portalDepth);
-	void RenderTranslucent(int portalDepth);
+
+	void Render(PolyPortalViewpoint *viewpoint);
+	void RenderTranslucent(PolyPortalViewpoint *viewpoint);
 
 	static const uint32_t SkySubsectorDepth = 0x7fffffff;
 
-	line_t *LastPortalLine = nullptr;
+	PolyPortalViewpoint *CurrentViewpoint = nullptr;
 
 private:
-	void RenderPortals(int portalDepth);
+	void RenderPortals();
 	void RenderSectors();
 	void RenderSubsector(PolyRenderThread *thread, subsector_t *sub, uint32_t subsectorDepth);
 	void RenderLine(PolyRenderThread *thread, subsector_t *sub, seg_t *line, sector_t *frontsector, uint32_t subsectorDepth);
-	void RenderSprite(PolyRenderThread *thread, AActor *thing, double sortDistance, const DVector2 &left, const DVector2 &right);
-	void RenderSprite(PolyRenderThread *thread, AActor *thing, double sortDistance, DVector2 left, DVector2 right, double t1, double t2, void *node);
+	void AddSprite(PolyRenderThread *thread, AActor *thing, double sortDistance, const DVector2 &left, const DVector2 &right);
+	void AddSprite(PolyRenderThread *thread, AActor *thing, double sortDistance, DVector2 left, DVector2 right, double t1, double t2, void *node);
 
 	void RenderPolySubsector(PolyRenderThread *thread, subsector_t *sub, uint32_t subsectorDepth, sector_t *frontsector);
 	void RenderPolyNode(PolyRenderThread *thread, void *node, uint32_t subsectorDepth, sector_t *frontsector);
 	static int PointOnSide(const DVector2 &pos, const node_t *node);
 
-	Mat4f WorldToView;
-	Mat4f WorldToClip;
-	PolyClipPlane PortalPlane;
-	uint32_t StencilValue = 0;
 	PolyCull Cull;
-	bool PortalSegmentsAdded = false;
-
-	std::vector<std::vector<PolyTranslucentObject *>> TranslucentObjects;
-	std::vector<std::unique_ptr<PolyDrawSectorPortal>> SectorPortals;
-	std::vector<std::unique_ptr<PolyDrawLinePortal>> LinePortals;
 };
 
 enum class PolyWaterFakeSide
