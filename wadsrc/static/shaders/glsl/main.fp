@@ -305,6 +305,13 @@ vec2 pointLightAttenuation(vec4 lightpos, float lightcolorA)
 	}
 }
 
+float spotLightAttenuation(vec4 lightpos, vec3 spotdir, float lightCosInnerAngle, float lightCosOuterAngle)
+{
+	vec3 lightDirection = normalize(lightpos.xyz - pixelpos.xyz);
+	float cosDir = dot(lightDirection, spotdir);
+	return smoothstep(lightCosOuterAngle, lightCosInnerAngle, cosDir);
+}
+
 //===========================================================================
 //
 // Calculate light
@@ -376,24 +383,32 @@ vec4 getLightColor(vec4 material, float fogdist, float fogfactor)
 			//
 			// modulated lights
 			//
-			for(int i=lightRange.x; i<lightRange.y; i+=2)
+			for(int i=lightRange.x; i<lightRange.y; i+=4)
 			{
 				vec4 lightpos = lights[i];
 				vec4 lightcolor = lights[i+1];
+				vec4 lightspot1 = lights[i+2];
+				vec4 lightspot2 = lights[i+3];
 				
 				vec2 attenuation = pointLightAttenuation(lightpos, lightcolor.a);
+				if (lightspot1.w == 1.0)
+					attenuation.xy *= spotLightAttenuation(lightpos, lightspot1.xyz, lightspot2.x, lightspot2.y);
 				dynlight.rgb += lightcolor.rgb * attenuation.x;
 				specular.rgb += lightcolor.rgb * attenuation.y;
 			}
 			//
 			// subtractive lights
 			//
-			for(int i=lightRange.y; i<lightRange.z; i+=2)
+			for(int i=lightRange.y; i<lightRange.z; i+=4)
 			{
 				vec4 lightpos = lights[i];
 				vec4 lightcolor = lights[i+1];
+				vec4 lightspot1 = lights[i+2];
+				vec4 lightspot2 = lights[i+3];
 				
 				vec2 attenuation = pointLightAttenuation(lightpos, lightcolor.a);
+				if (lightspot1.w == 1.0)
+					attenuation.xy *= spotLightAttenuation(lightpos, lightspot1.xyz, lightspot2.x, lightspot2.y);
 				dynlight.rgb -= lightcolor.rgb * attenuation.x;
 				specular.rgb -= lightcolor.rgb * attenuation.y;
 			}
@@ -501,12 +516,17 @@ void main()
 					//
 					// additive lights - these can be done after the alpha test.
 					//
-					for(int i=lightRange.z; i<lightRange.w; i+=2)
+					for(int i=lightRange.z; i<lightRange.w; i+=4)
 					{
 						vec4 lightpos = lights[i];
 						vec4 lightcolor = lights[i+1];
+						vec4 lightspot1 = lights[i+2];
+						vec4 lightspot2 = lights[i+3];
 						
-						lightcolor.rgb *= pointLightAttenuation(lightpos, lightcolor.a).x;
+						float attenuation = pointLightAttenuation(lightpos, lightcolor.a).x;
+						if (lightspot1.w == 1.0)
+							attenuation *= spotLightAttenuation(lightpos, lightspot1.xyz, lightspot2.x, lightspot2.y);
+						lightcolor.rgb *= attenuation;
 						addlight.rgb += lightcolor.rgb;
 					}
 					frag.rgb = clamp(frag.rgb + desaturate(addlight).rgb, 0.0, 1.0);
